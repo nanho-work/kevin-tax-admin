@@ -1,0 +1,40 @@
+# 기본 node 환경
+node_modules/
+.next/
+dist/
+out/
+build/
+.env
+.env.local
+.env.development
+.env.production
+
+# 로그 및 분석
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS별 불필요 파일
+.DS_Store
+Thumbs.db
+
+# IDE 관련
+.vscode/
+.idea/
+*.swp
+
+# 테스트 및 커버리지
+coverage/
+*.lcov
+
+# 실행 결과물 (배포 관련 빌드 산출물)
+*.log
+*.tgz
+
+# CI/CD 또는 백업
+*.bak
+*.orig
+
+# 이미지 최적화 캐시 (Next.js)
+public/cache/
