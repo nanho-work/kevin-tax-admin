@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base global styling */
+html, body {
+  font-family: 'Inter', sans-serif;
+  @apply bg-gray-50 text-gray-900;
+}
+
+/* Button defaults */
+button {
+  @apply transition duration-150 ease-in-out;
+}
+
+/* Spinner */
+.spinner {
+  @apply animate-spin rounded-full border-4 border-gray-300 border-t-blue-600 w-6 h-6;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black bg-opacity-50 z-40;
+}
+
+/* Modal box */
+.modal-content {
+  @apply bg-white p-6 rounded-lg shadow-lg z-50;
+}
+
+/* Table responsiveness */
+.table-responsive {
+  @apply overflow-x-auto;
+}
