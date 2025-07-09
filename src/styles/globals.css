@@ -4,6 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 /* Base global styling */
 html, body {
   font-family: 'Inter', sans-serif;
@@ -33,4 +34,11 @@ button {
 /* Table responsiveness */
 .table-responsive {
   @apply overflow-x-auto;
+}
+.fc-day-sun {
+  background-color: #fff0f0; /* 일요일 배경 */
+}
+
+.fc-day-sat {
+  background-color: #f0f8ff; /* 토요일 배경 */
 }

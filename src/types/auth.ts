@@ -9,16 +9,23 @@ export interface LoginRequest {
 // 서버가 로그인 성공 시 발급하는 토큰 및 관리자 정보를 포함합니다.
 export interface LoginResponse {
   access_token: string     // Access Token (JWT)
-  refresh_token: string    // Refresh Token
   token_type: string       // ex: "Bearer"
   admin_id: number         // 로그인한 관리자 ID
   email: string            // 로그인한 관리자 이메일
-  role: AdminRole          // 관리자 권한 (STAFF / MANAGER / SUPER)
+  role: AdminRole          // 관리자 권한 (SUPER 개발자 / MASTER대표  / CLERK 사무직 / TAX 세무직)
 }
 
 // ✅ 관리자 권한 타입 정의
 // 시스템 내 관리자 권한은 3단계로 구분됨
-export type AdminRole = 'STAFF' | 'MANAGER' | 'SUPER'
+export type AdminRole =
+  | 'SUPER'
+  | 'MASTER'
+  | 'CLERK_ASSIST'
+  | 'CLERK_SENIOR'
+  | 'CLERK_MANAGER'
+  | 'TAX_JUNIOR'
+  | 'TAX_SENIOR'
+  | 'TAX_MANAGER'
 
 export interface AdminSession {
   id: number

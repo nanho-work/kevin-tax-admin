@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { logoutAdmin } from '@/services/authService'
+import NotificationBell from './single-schedule/NotificationBell' 
 
 const Header = () => {
   const router = useRouter()
@@ -22,13 +23,14 @@ const Header = () => {
         <Link href="#">상담 관리</Link>
         <Link href="#">리뷰 관리</Link>
         <Link href="#">서비스 관리</Link>
-        <Link href="#">업체 관리</Link>
-        <Link href="#">직원 관리</Link>
+        <Link href="/companies">업체 관리</Link>
+        <Link href="/staff">직원 관리</Link>
         <Link href="/single-schedule">일정 관리</Link>
       </nav>
 
-      {/* 우측: 로그아웃 */}
-      <div>
+      {/* 우측: 알림 + 로그아웃 */}
+      <div className="flex items-center gap-4">
+        <NotificationBell />
         <button onClick={handleLogout} className="text-red-500 hover:underline">로그아웃</button>
       </div>
     </header>

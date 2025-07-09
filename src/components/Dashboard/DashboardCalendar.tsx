@@ -6,7 +6,9 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import koLocale from '@fullcalendar/core/locales/ko';
 import { EventInput } from '@fullcalendar/core';
-import axios from 'axios';
+
+import { fetchTaxSchedules } from '@/services/taxSchedulService';
+import { fetchSingleTaxes } from '@/services/single_scheduleService';
 
 // ✅ 일정명 한글 변환
 const scheduleTypeMap: Record<string, string> = {
@@ -36,9 +38,9 @@ export default function DashboardCalendar() {
   useEffect(() => {
     const fetchAllSchedules = async () => {
       try {
-        const [regular, single] = await Promise.all([
-          fetchRegularTaxSchedules(),
-          fetchSingleTaxSchedules()
+        const [regular, singleRes] = await Promise.all([
+          fetchTaxSchedules(),
+          fetchSingleTaxes(1, 100) // 페이지/개수 지정
         ]);
 
         const regularEvents: EventInput[] = regular.map((item: any) => ({
@@ -49,15 +51,16 @@ export default function DashboardCalendar() {
           textColor: 'black',
         }));
 
-        const singleEvents: EventInput[] = single.map((item: any) => ({
+        const singleEvents: EventInput[] = singleRes.items.map((item) => ({
           id: `s-${item.id}`,
           title: `[단발성] ${item.client_name} - ${scheduleTypeMap[item.schedule_type] || item.schedule_type}`,
-          start: item.due_date.split('T')[0],
+          start: item.due_date?.split('T')[0],
           color: '#FFDAC1',
           textColor: 'black',
         }));
 
-        setEvents([...regularEvents, ...singleEvents]);
+        const allEvents = [...regularEvents, ...singleEvents];
+        setEvents(allEvents);
       } catch (error) {
         console.error('일정 불러오기 실패:', error);
       }
@@ -67,13 +70,12 @@ export default function DashboardCalendar() {
   }, []);
 
   return (
-    <div className="bg-white rounded shadow p-6">
-      <h2 className="text-xl font-bold mb-4">세무 일정 캘린더</h2>
+    <div className="bg-white">
       <FullCalendar
         plugins={[dayGridPlugin, interactionPlugin]}
         locale={koLocale}
         initialView="dayGridMonth"
-        height="700px"
+        height="800px"
         headerToolbar={{
           left: '',
           center: 'title',
@@ -83,32 +85,7 @@ export default function DashboardCalendar() {
         fixedWeekCount={false}
         showNonCurrentDates={false}
         dayMaxEventRows={3}
-        dayHeaderClassNames="text-gray-700 font-semibold"
-        eventContent={(arg) => {
-          return {
-            domNodes: [
-              (() => {
-                const container = document.createElement('div');
-                container.style.fontSize = '0.85rem';
-                container.style.whiteSpace = 'normal';
-                container.textContent = arg.event.title;
-                return container;
-              })(),
-            ],
-          };
-        }}
       />
     </div>
   );
-}
-
-// ✅ API 호출 함수들
-async function fetchRegularTaxSchedules() {
-  const res = await axios.get('/admin/tax-schedule/list');
-  return res.data.items;
-}
-
-async function fetchSingleTaxSchedules() {
-  const res = await axios.get('/admin/tax-schedule/singletax');
-  return res.data.items;
 }

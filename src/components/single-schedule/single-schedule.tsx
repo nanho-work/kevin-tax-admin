@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchSingleTaxes, updateSingleTaxStatus } from '@/services/single_scheduleService';
 import { SingleTaxResponse, StatusUpdateRequest } from '@/types/single_schedule';
+import SingleScheduleForm from './single-schedule-form';
 
 const SingleSchedulePage = () => {
   const STATUS_LABELS: Record<string, string> = {
@@ -34,22 +35,30 @@ const SingleSchedulePage = () => {
   }, [page, keyword]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">단발성 일정 목록</h1>
-      <div className="mb-4 flex items-center gap-2">
-        <input
-          type="text"
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="제목 또는 고객명 검색"
-          className="border border-gray-300 rounded px-3 py-2 w-64"
-        />
-        <button
-          onClick={() => setPage(1)}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          검색
-        </button>
+    <div>
+      <h1 className="text-2xl font-bold ">단발성 일정 목록</h1>
+      <div className="mb-4 flex items-start justify-between gap-4 w-full">
+        {/* 검색 영역 */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="제목 또는 고객명 검색"
+            className="border border-gray-300 rounded px-3 py-2 w-64"
+          />
+          <button
+            onClick={() => setPage(1)}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          >
+            검색
+          </button>
+        </div>
+
+        {/* 스케줄 폼 */}
+        <div className="flex items-end">
+          <SingleScheduleForm />
+        </div>
       </div>
       {loading ? (
         <p>로딩 중...</p>
@@ -74,6 +83,11 @@ const SingleSchedulePage = () => {
                 <tr key={item.id} className="text-center">
                   <td className="border border-gray-300 px-4 py-2">{item.title}</td>
                   <td className="border border-gray-300 px-4 py-2">{item.client_name}</td>
+
+                  <td className="border border-gray-300 px-4 py-2">{item.schedule_type}</td>
+                  <td className="border border-gray-300 px-4 py-2">{item.due_date?.slice(0, 10)}</td>
+                  <td className="border border-gray-300 px-4 py-2">{item.memo}</td>
+                  <td className="border border-gray-300 px-4 py-2">{item.created_at?.slice(0, 10)}</td>
                   <td className="border border-gray-300 px-4 py-2">
                     <select
                       className="border rounded px-2 py-1"
@@ -85,6 +99,7 @@ const SingleSchedulePage = () => {
                           setItems((prev) =>
                             prev.map((el) => (el.id === item.id ? { ...el, status: res.status } : el))
                           );
+                          window.location.reload();
                         } catch (err) {
                           alert('상태 변경에 실패했습니다.');
                           console.error(err);
@@ -96,10 +111,6 @@ const SingleSchedulePage = () => {
                       <option value="CANCELED">취소됨</option>
                     </select>
                   </td>
-                  <td className="border border-gray-300 px-4 py-2">{item.schedule_type}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.due_date?.slice(0, 10)}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.memo}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.created_at?.slice(0, 10)}</td>
                   <td className="border border-gray-300 px-4 py-2">{item.completed_at?.slice(0, 10) || '-'}</td>
                   <td className="border border-gray-300 px-4 py-2">{item.status_updated_by_name || '-'}</td>
                 </tr>

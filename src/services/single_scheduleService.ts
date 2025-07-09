@@ -23,12 +23,19 @@ export const fetchSingleTaxes = async (
 };
 
 // 단발성 일정 등록
-export const createSingleTax = async (
-  payload: SingleTaxCreate
-): Promise<SingleTaxResponse> => {
-  const res = await axios.post(`${BASE}/tax-schedule/singletax`, payload);
+
+// ✅ 단발성 일정 등록
+export async function createSingleTax(
+  payload: Omit<SingleTaxCreate, 'admin_id'>
+): Promise<SingleTaxResponse> {
+  const token = localStorage.getItem('admin_access_token');
+  const res = await axios.post(`${BASE}/tax-schedule/singletax`, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   return res.data;
-};
+}
 
 // 단발성 일정 상태 변경
 export const updateSingleTaxStatus = async (

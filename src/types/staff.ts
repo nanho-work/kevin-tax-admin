@@ -19,12 +19,24 @@ export interface CreateStaffRequest {
   name: string               // 이름 (필수)
   password: string           // 비밀번호 (필수)
   phone?: string             // (선택) 연락처
-  role: 'STAFF' | 'MANAGER'  // SUPER는 직접 생성 불가
+  role:
+    | 'CLERK_ASSIST'
+    | 'CLERK_SENIOR'
+    | 'CLERK_MANAGER'
+    | 'TAX_JUNIOR'
+    | 'TAX_SENIOR'
+    | 'TAX_MANAGER'
 }
 
 // ✅ 관리자 수정 요청 - 수정 시 서버에 전송하는 타입
 export interface UpdateStaffRequest {
   name?: string              // 이름 (선택 수정)
   phone?: string             // 연락처 (선택 수정)
-  role?: 'STAFF' | 'MANAGER' // 권한 (SUPER는 변경 불가)
+  role?:
+    | 'CLERK_ASSIST'
+    | 'CLERK_SENIOR'
+    | 'CLERK_MANAGER'
+    | 'TAX_JUNIOR'
+    | 'TAX_SENIOR'
+    | 'TAX_MANAGER'
 }
