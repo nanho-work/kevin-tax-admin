@@ -1,6 +1,5 @@
 import axios from 'axios'
 import type {
-  AdminRole,
   LoginRequest,
   LoginResponse,
   AdminSession
@@ -54,11 +53,11 @@ export async function checkAdminSession(access_token?: string): Promise<AdminSes
       timeout: 5000,
     })
 
-    if (!res.data || !res.data.role) {
+    if (!res.data || !res.data.role_id) {
       throw new Error("세션 정보가 유효하지 않음")
     }
 
-    return res.data
+    return res.data // ✅ profile_image_url 포함됨
   } catch (error) {
     console.warn("❌ 세션 확인 실패:", error)
     throw error
@@ -72,3 +71,4 @@ export async function logoutAdmin(): Promise<{ message: string }> {
   const res = await axios.post(`${BASE}/logout`)
   return res.data as { message: string }
 }
+

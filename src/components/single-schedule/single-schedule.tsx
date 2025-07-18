@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { fetchSingleTaxes, updateSingleTaxStatus } from '@/services/single_scheduleService';
 import { SingleTaxResponse, StatusUpdateRequest } from '@/types/single_schedule';
 import SingleScheduleForm from './single-schedule-form';
+import Pagination from '../common/Pagination';
 
 const SingleSchedulePage = () => {
   const STATUS_LABELS: Record<string, string> = {
@@ -34,12 +35,15 @@ const SingleSchedulePage = () => {
     loadData();
   }, [page, keyword]);
 
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'DONE' | 'CANCELED'>('PENDING');
+
+  const filteredItems = statusFilter === 'ALL' ? items : items.filter((item) => item.status === statusFilter);
+
   return (
     <div>
-      <h1 className="text-2xl font-bold ">단발성 일정 목록</h1>
-      <div className="mb-4 flex items-start justify-between gap-4 w-full">
-        {/* 검색 영역 */}
-        <div className="flex items-center gap-2">
+      <div className="mb-4 flex text-sm flex-wrap items-start justify-between gap-4 w-full">
+        {/* 좌측: 검색 + 필터 */}
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             value={keyword}
@@ -49,13 +53,25 @@ const SingleSchedulePage = () => {
           />
           <button
             onClick={() => setPage(1)}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mr-6"
           >
             검색
           </button>
+
+          {/* 상태 필터 버튼 */}
+          {['ALL', 'PENDING', 'DONE', 'CANCELED'].map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status as any)}
+              className={`px-4 py-2 rounded ${statusFilter === status ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+            >
+              {STATUS_LABELS[status] ?? '전체'}
+            </button>
+          ))}
         </div>
 
-        {/* 스케줄 폼 */}
+        {/* 우측: 스케줄 폼 */}
         <div className="flex items-end">
           <SingleScheduleForm />
         </div>
@@ -64,7 +80,7 @@ const SingleSchedulePage = () => {
         <p>로딩 중...</p>
       ) : (
         <>
-          <table className="w-full table-auto border-collapse border border-gray-300">
+          <table className="w-full table-auto border-collapse border border-gray-300 text-sm">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 px-4 py-2">제목</th>
@@ -79,7 +95,7 @@ const SingleSchedulePage = () => {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <tr key={item.id} className="text-center">
                   <td className="border border-gray-300 px-4 py-2">{item.title}</td>
                   <td className="border border-gray-300 px-4 py-2">{item.client_name}</td>
@@ -117,25 +133,12 @@ const SingleSchedulePage = () => {
               ))}
             </tbody>
           </table>
-          <div className="mt-4 flex justify-center items-center gap-4">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-              disabled={page === 1}
-            >
-              이전
-            </button>
-            <span>
-              페이지 {page} / {Math.ceil(totalCount / 10) || 1}
-            </span>
-            <button
-              onClick={() => setPage((prev) => prev + 1)}
-              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-              disabled={page * 10 >= totalCount}
-            >
-              다음
-            </button>
-          </div>
+          <Pagination
+            page={page}
+            total={totalCount}
+            limit={10}
+            onPageChange={(newPage) => setPage(newPage)}
+          />
         </>
       )}
     </div>

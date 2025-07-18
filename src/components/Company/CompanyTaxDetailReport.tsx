@@ -41,7 +41,7 @@ export default function CompanyTaxDetailReport() {
     : null;
 
   return (
-    <div className="p-5">
+    <div className="p-5 overflow-x-auto">
       <div className="mb-4 flex gap-6 flex-wrap items-end">
         <input
           type="text"
@@ -71,7 +71,7 @@ export default function CompanyTaxDetailReport() {
         </select>
       </div>
 
-      <table className="w-full table-fixed border border-gray-300 mb-6 bg-white text-m">
+      <table className="min-w-[1400px] table-fixed border border-gray-300 mb-6 bg-white text-m">
         <thead>
           <tr className="bg-[#456bbd] border-b border-gray-300 text-white font-bold">
             <th colSpan={3} className="px-4 py-2 font-semibold border-r border-gray-300">기본정보</th>

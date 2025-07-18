@@ -97,7 +97,6 @@ export default function CompanyCreateForm() {
     return (
         <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-white shadow rounded">
             <h2 className="text-xl font-bold">업체 등록</h2>
-            <h3 className="text-base font-bold text-blue-800 mb-3 mt-6">📌 기본 정보</h3>
             <section className="bg-gray-50 p-4 rounded border mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>

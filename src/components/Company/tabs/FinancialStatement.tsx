@@ -129,7 +129,7 @@ export default function FinancialStatementTab({ selectedCompanyId }: Props) {
         return row[field];
     };
     return (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[calc(100vh-220px)]">
             <div className="mb-2">
                 <button
                     className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"

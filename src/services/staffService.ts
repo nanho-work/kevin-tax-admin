@@ -1,9 +1,8 @@
 import axios from 'axios'
 import type {
   Admin,
-  CreateStaffRequest,
-  UpdateStaffRequest
 } from '@/types/staff'
+
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin`
 
@@ -22,6 +21,12 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   limit: number
+}
+
+// ✅ 관리자 세션 확인
+export async function fetchAdminSession(): Promise<Admin> {
+  const res = await axios.get(`${BASE}/session`, authHeader())
+  return res.data
 }
 
 // ✅ 관리자(직원) 목록 조회 (검색 + 페이징 포함)
@@ -45,36 +50,47 @@ export async function fetchAdminStaffs(
 // ✅ 관리자(직원) 등록
 // - POST /api/admin/staffs
 export async function createAdminStaff(
-  data: CreateStaffRequest
+  data: FormData
 ): Promise<{ message: string; id: number; email: string; role: string }> {
-  const res = await axios.post(`${BASE}/staffs`, data, authHeader())
+  const res = await axios.post(`${BASE}/staffs`, data, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('admin_access_token')}`,
+      'Content-Type': 'multipart/form-data',
+    },
+  })
   return res.data
 }
 
 // ✅ 관리자(직원) 정보 수정
-// - PUT /api/admin/staffs/{admin_id}
+// - PUT /api/admin/staffs/{id}
 export async function updateAdminStaff(
-  admin_id: number,
-  data: UpdateStaffRequest
+  id: number,
+  data: FormData
 ): Promise<{ message: string }> {
-  const res = await axios.put(`${BASE}/staffs/${admin_id}`, data, authHeader())
+  const res = await axios.put(`${BASE}/staffs/${id}`, data, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('admin_access_token')}`,
+      'Content-Type': 'multipart/form-data',
+    },
+  })
   return res.data
 }
 
 // ✅ 관리자(직원) 비활성화 처리
-// - DELETE /api/admin/staffs/{admin_id}
+// - DELETE /api/admin/staffs/{id}
 export async function deactivateAdminStaff(
-  admin_id: number
+  id: number
 ): Promise<{ message: string }> {
-  const res = await axios.delete(`${BASE}/staffs/${admin_id}`, authHeader())
+  const res = await axios.delete(`${BASE}/staffs/${id}`, authHeader())
   return res.data
 }
 
 // ✅ 관리자(직원) 활성화 처리
-// - PUT /api/admin/staffs/{admin_id}/activate
+// - PUT /api/admin/staffs/{id}/activate
 export async function activateAdminStaff(
-  admin_id: number
+  id: number
 ): Promise<{ message: string }> {
-  const res = await axios.put(`${BASE}/staffs/${admin_id}/activate`, undefined, authHeader())
+  const res = await axios.put(`${BASE}/staffs/${id}/activate`, undefined, authHeader())
   return res.data
 }
+

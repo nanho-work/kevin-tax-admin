@@ -1,3 +1,9 @@
+
+import type { ClientOut } from "./Client";
+import type { TeamOut } from "./team";
+import type { RoleOut } from "./role";
+
+
 // ✅ 로그인 요청 시 사용되는 타입
 // 클라이언트가 로그인 시 서버에 전달하는 이메일과 비밀번호 정보를 담습니다.
 export interface LoginRequest {
@@ -8,29 +14,41 @@ export interface LoginRequest {
 // ✅ 로그인 성공 시 서버로부터 받는 응답 타입
 // 서버가 로그인 성공 시 발급하는 토큰 및 관리자 정보를 포함합니다.
 export interface LoginResponse {
-  access_token: string     // Access Token (JWT)
-  token_type: string       // ex: "Bearer"
-  admin_id: number         // 로그인한 관리자 ID
-  email: string            // 로그인한 관리자 이메일
-  role: AdminRole          // 관리자 권한 (SUPER 개발자 / MASTER대표  / CLERK 사무직 / TAX 세무직)
+  access_token: string
+  token_type: "bearer"
+  admin: AdminOut
 }
 
-// ✅ 관리자 권한 타입 정의
-// 시스템 내 관리자 권한은 3단계로 구분됨
-export type AdminRole =
-  | 'SUPER'
-  | 'MASTER'
-  | 'CLERK_ASSIST'
-  | 'CLERK_SENIOR'
-  | 'CLERK_MANAGER'
-  | 'TAX_JUNIOR'
-  | 'TAX_SENIOR'
-  | 'TAX_MANAGER'
+export interface AdminOut {
+  id: number
+  name: string
+  email: string
+  is_active: boolean
+  last_login_at?: string
+  profile_image_url?: string
+  hired_at?: string
+  retired_at?: string
+  client_id: number
+  team_id?: number
+  team?: TeamOut | null
+  role_id?: number
+  role?: RoleOut | null
+  client?: ClientOut | null
+}
 
 export interface AdminSession {
   id: number
+  name: string
   email: string
-  role: AdminRole
   is_active: boolean
-  last_login_at: string // ISO 포맷 문자열
+  last_login_at: string
+  profile_image_url?: string
+  hired_at?: string
+  retired_at?: string
+  client_id: number
+  team_id?: number
+  team?: TeamOut | null
+  role_id?: number
+  role?: RoleOut | null
+  client?: ClientOut | null
 }

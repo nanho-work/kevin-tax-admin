@@ -138,7 +138,8 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full overflow-auto max-h-[calc(100vh-220px)]">
+      <div className="min-w-[7000px]">
       {selectedIds.length > 0 && (
         <div className="mb-4 flex justify-between items-center">
           <span className="text-sm text-gray-600">
@@ -171,7 +172,7 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
           + 원천세 항목 추가
         </button>
       </div>
-      <table className="table-auto border border-gray-200 text-sm min-w-[3000px]">
+      <table className="table-auto border border-gray-200 text-sm w-full">
         <thead>
           <tr className="bg-gray-100 text-center">
             <th className="p-2">
@@ -281,78 +282,33 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
                   className="w-16 border rounded px-2 text-center"
                 />
               </td>
-              {/* employee_count - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "employee_count")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "employee_count", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "employee_count", e.target.value)}
-                  className="w-16 border rounded px-2 text-center"
-                />
-              </td>
-              {/* employee_amount - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "employee_amount")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "employee_amount", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "employee_amount", e.target.value)}
-                  className="w-28 border rounded px-2 text-right"
-                />
-              </td>
-              {/* untaxed_submitted - editable */}
-              <td className="p-2">
-                <input
-                  type="text"
-                  defaultValue={
-                    getEditableValue(row, row.id, "untaxed_submitted")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "untaxed_submitted", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "untaxed_submitted", e.target.value)}
-                  className="w-20 border rounded px-2 text-right"
-                />
-              </td>
-              {/* simple_employee - editable */}
-              <td className="p-2">
-                <input
-                  type="text"
-                  defaultValue={
-                    getEditableValue(row, row.id, "simple_employee")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "simple_employee", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "simple_employee", e.target.value)}
-                  className="w-20 border rounded px-2 text-center"
-                />
-              </td>
-              {/* daily_worker_count - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "daily_worker_count")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "daily_worker_count", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "daily_worker_count", e.target.value)}
-                  className="w-16 border rounded px-2 text-center"
-                />
-              </td>
-              {/* daily_worker_amount - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "daily_worker_amount")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "daily_worker_amount", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "daily_worker_amount", e.target.value)}
-                  className="w-28 border rounded px-2 text-right"
-                />
-              </td>
+              {/* 반복 입력 필드들 */}
+              {[
+                { key: "employee_count", label: "근로인원", width: "w-16", align: "text-center" },
+                { key: "employee_amount", label: "근로금액", width: "w-28", align: "text-right" },
+                { key: "untaxed_submitted", label: "비과세 제출", width: "w-20", align: "text-right" },
+                { key: "simple_employee", label: "간이 근로", width: "w-20", align: "text-center" },
+                { key: "daily_worker_count", label: "일용인원", width: "w-16", align: "text-center" },
+                { key: "daily_worker_amount", label: "일용금액", width: "w-28", align: "text-right" },
+                { key: "business_worker_count", label: "사업인원", width: "w-16", align: "text-center" },
+                { key: "business_worker_amount", label: "사업금액", width: "w-28", align: "text-right" },
+                { key: "etc_worker_count", label: "기타인원", width: "w-16", align: "text-center" },
+                { key: "etc_worker_amount", label: "기타금액", width: "w-28", align: "text-right" },
+                { key: "retirement_count", label: "퇴직인원", width: "w-16", align: "text-center" },
+                { key: "retirement_amount", label: "퇴직금액", width: "w-28", align: "text-right" },
+              ].map(({ key, width, align }) => (
+                <td key={key} className={`p-2`}>
+                  <input
+                    type="number"
+                    defaultValue={
+                      getEditableValue(row, row.id, key as keyof WithholdingTaxDetailResponse)?.toString() ?? ""
+                    }
+                    onChange={(e) => handleEditableChange(row.id, key, e.target.value)}
+                    onBlur={(e) => handleBlur(row, key as keyof WithholdingTaxDetailResponse, e.target.value)}
+                    className={`${width} border rounded px-2 ${align}`}
+                  />
+                </td>
+              ))}
               {/* daily_worker_filed - editable boolean */}
               <td className="p-2">
                 <select
@@ -365,30 +321,6 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
                   <option value="X">X</option>
                 </select>
               </td>
-              {/* business_worker_count - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "business_worker_count")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "business_worker_count", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "business_worker_count", e.target.value)}
-                  className="w-16 border rounded px-2 text-center"
-                />
-              </td>
-              {/* business_worker_amount - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "business_worker_amount")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "business_worker_amount", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "business_worker_amount", e.target.value)}
-                  className="w-28 border rounded px-2 text-right"
-                />
-              </td>
               {/* simple_business - editable boolean */}
               <td className="p-2">
                 <select
@@ -400,54 +332,6 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
                   <option value="O">O</option>
                   <option value="X">X</option>
                 </select>
-              </td>
-              {/* etc_worker_count - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "etc_worker_count")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "etc_worker_count", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "etc_worker_count", e.target.value)}
-                  className="w-16 border rounded px-2 text-center"
-                />
-              </td>
-              {/* etc_worker_amount - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "etc_worker_amount")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "etc_worker_amount", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "etc_worker_amount", e.target.value)}
-                  className="w-28 border rounded px-2 text-right"
-                />
-              </td>
-              {/* retirement_count - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "retirement_count")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "retirement_count", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "retirement_count", e.target.value)}
-                  className="w-16 border rounded px-2 text-center"
-                />
-              </td>
-              {/* retirement_amount - editable */}
-              <td className="p-2">
-                <input
-                  type="number"
-                  defaultValue={
-                    getEditableValue(row, row.id, "retirement_amount")?.toString() ?? ""
-                  }
-                  onChange={(e) => handleEditableChange(row.id, "retirement_amount", e.target.value)}
-                  onBlur={(e) => handleBlur(row, "retirement_amount", e.target.value)}
-                  className="w-28 border rounded px-2 text-right"
-                />
               </td>
               {/* created_at - read only */}
               <td className="p-2">{row.created_at?.split("T")[0]}</td>
@@ -463,5 +347,6 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
         </tbody>
       </table>
     </div>
+  </div>
   );
 }

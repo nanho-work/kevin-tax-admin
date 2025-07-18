@@ -24,7 +24,19 @@ export default function StaffForm() {
         password: '',
         phone: '',
         role: 'CLERK_ASSIST',
+        hired_at: '',
     })
+    // 프로필 이미지 상태 추가
+    const [profileImage, setProfileImage] = useState<File | null>(null)
+
+    const roleLabels: Record<CreateStaffRequest['role'], string> = {
+        CLERK_ASSIST: '사원',
+        CLERK_SENIOR: '대리',
+        CLERK_MANAGER: '과장',
+        TAX_JUNIOR: '세무 주니어',
+        TAX_SENIOR: '세무 시니어',
+        TAX_MANAGER: '세무 매니저',
+    }
 
     // 📌 입력 값 변경 핸들러
     // - input/select 요소의 name과 value를 추출하여 form 상태를 업데이트
@@ -34,34 +46,151 @@ export default function StaffForm() {
     }
 
     // 📌 폼 제출 시 호출되는 함수
-    // - 기본 동작 막고(createAdminStaff 호출)
-    // - 성공 시 alert, 실패 시 alert
+    // - FormData를 사용하여 파일 포함 제출
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
-            const res = await createAdminStaff(form) // 서버에 form 데이터를 전송
-            alert(`직원 등록 완료: ${res.email}`)    // 성공 메시지
-            // TODO: 등록 후 목록 리프레시 또는 폼 초기화 등 후속 처리 필요
+            const formData = new FormData()
+            formData.append('email', form.email)
+            formData.append('name', form.name)
+            formData.append('password', form.password)
+            formData.append('phone', form.phone ?? '')
+            formData.append('role', form.role)
+            formData.append('hired_at', form.hired_at ?? '')
+            if (profileImage) {
+                formData.append('profile_image', profileImage)
+            }
+
+            const res = await createAdminStaff(formData)
+            alert(`직원 등록 완료: ${res.email}`)
+            window.location.reload();
         } catch (err) {
-            alert('직원 등록 실패') // 에러 발생 시 사용자 알림
+            alert('직원 등록 실패')
         }
     }
 
     return (
-        <form onSubmit={handleSubmit} className="flex items-end gap-4 flex-wrap">
-            <input name="email" value={form.email} onChange={handleChange} placeholder="이메일" className="border px-2 py-1 w-60" />
-            <input name="name" value={form.name} onChange={handleChange} placeholder="이름" className="border px-2 py-1 w-36" />
-            <input name="password" value={form.password} onChange={handleChange} placeholder="비밀번호" type="password" className="border px-2 py-1 w-36" />
-            <input name="phone" value={form.phone} onChange={handleChange} placeholder="전화번호" className="border px-2 py-1 w-40" />
-            <select name="role" value={form.role} onChange={handleChange} className="border px-2 py-1 w-48">
-                <option value="CLERK_ASSIST">CLERK_ASSIST</option>
-                <option value="CLERK_SENIOR">CLERK_SENIOR</option>
-                <option value="CLERK_MANAGER">CLERK_MANAGER</option>
-                <option value="TAX_JUNIOR">TAX_JUNIOR</option>
-                <option value="TAX_SENIOR">TAX_SENIOR</option>
-                <option value="TAX_MANAGER">TAX_MANAGER</option>
-            </select>
-            <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded">등록</button>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6 mx-auto max-w-2xl w-full">
+            {/* 이메일 + 전화번호 */}
+            <div className="flex gap-6">
+                <div className="flex flex-col w-full">
+                    <label htmlFor="email" className="font-medium">이메일</label>
+                    <input
+                        id="email"
+                        name="email"
+                        value={form.email}
+                        onChange={handleChange}
+                        placeholder="이메일"
+                        type="email"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+                <div className="flex flex-col w-full">
+                    <label htmlFor="phone" className="font-medium">전화번호</label>
+                    <input
+                        id="phone"
+                        name="phone"
+                        value={form.phone}
+                        onChange={handleChange}
+                        placeholder="전화번호"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+            </div>
+
+            {/* 이름 + 비밀번호 */}
+            <div className="flex gap-6">
+                <div className="flex flex-col w-full">
+                    <label htmlFor="name" className="font-medium">이름</label>
+                    <input
+                        id="name"
+                        name="name"
+                        value={form.name}
+                        onChange={handleChange}
+                        placeholder="이름"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+                <div className="flex flex-col w-full">
+                    <label htmlFor="password" className="font-medium">비밀번호</label>
+                    <input
+                        id="password"
+                        name="password"
+                        value={form.password}
+                        onChange={handleChange}
+                        placeholder="비밀번호"
+                        type="password"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+            </div>
+
+
+            
+
+            {/* 입사일 + 역할 */}
+            <div className="flex gap-6">
+                <div className="flex flex-col w-full">
+                    <label htmlFor="hired_at" className="font-medium">입사일</label>
+                    <input
+                        id="hired_at"
+                        name="hired_at"
+                        value={form.hired_at}
+                        onChange={handleChange}
+                        type="date"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+                <div className="flex flex-col w-full">
+                    <label htmlFor="role" className="font-medium">역할</label>
+                    <select
+                        id="role"
+                        name="role"
+                        value={form.role}
+                        onChange={handleChange}
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    >
+                        <option value="">권한을 선택하세요</option>
+                        {Object.entries(roleLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                                {label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+            {/* 프로필 업로드 + 미리보기 */}
+            <div className="flex gap-6 items-end">
+                <div className="flex flex-col w-60">
+                    <label htmlFor="profile_image" className="font-medium">프로필 이미지</label>
+                    <input
+                        id="profile_image"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                                setProfileImage(e.target.files[0])
+                            }
+                        }}
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
+                {profileImage && (
+                    <img
+                        src={URL.createObjectURL(profileImage)}
+                        alt="프로필 미리보기"
+                        className="rounded-md w-20 h-20 object-cover border"
+                    />
+                )}
+            </div>
+
+            {/* 등록 버튼 */}
+            <button
+                type="submit"
+                className="bg-blue-600 text-white px-6 py-2 rounded-md shadow hover:bg-blue-700 transition font-semibold mt-5 w-40 self-center"
+            >
+                등록
+            </button>
         </form>
     )
 }

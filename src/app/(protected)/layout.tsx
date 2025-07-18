@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import { checkAdminSession } from '@/services/authService'
+import Sidebar from '@/components/Sidebar'
 
 
 export default function ProtectedLayout({
@@ -34,9 +35,12 @@ export default function ProtectedLayout({
   }
 
   return (
-    <>
-      <Header />
-      <main className="p-6">{children}</main>
-    </>
+    <div className="flex h-screen">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Header />
+        <main className="p-6 flex-1 overflow-y-auto">{children}</main>
+      </div>
+    </div>
   )
 }

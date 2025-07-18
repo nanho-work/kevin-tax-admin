@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/authService'
+import { checkInAdmin } from '@/services/staffService'
 import type { LoginRequest } from '@/types/auth'
 
 export default function LoginForm() {
@@ -31,6 +32,13 @@ export default function LoginForm() {
       console.log('🔐 서버 응답 데이터:', loginResponse)
       console.log('✅ 로그인 성공')
       localStorage.setItem("admin_access_token", loginResponse.access_token)
+
+      try {
+        await checkInAdmin()
+      } catch (checkInError: any) {
+        console.warn("⚠️ 출근 실패:", checkInError?.response?.data?.detail || checkInError.message)
+      }
+
       router.push('/dashboard')
     } catch (err: any) {
       console.error('❌ 로그인 실패:', err?.response?.data?.detail || err.message)
