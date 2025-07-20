@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
-import { checkAdminSession } from '@/services/authService'
+import { checkAdminSession } from '@/services/adminService'
 import Sidebar from '@/components/Sidebar'
 
 

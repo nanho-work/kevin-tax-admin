@@ -2,13 +2,33 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { logoutAdmin } from '@/services/authService'
+import { logoutAdmin } from '@/services/adminService'
 import NotificationBell from './single-schedule/NotificationBell'
 import { checkOutAdmin } from '@/services/attendanceLogService'
+import { gsap } from 'gsap'
+import { useEffect, useRef } from 'react'
 
 const Header = () => {
   const router = useRouter()
   const pathname = usePathname()
+
+  const navRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (navRef.current) {
+      gsap.fromTo(
+        navRef.current.querySelectorAll('.nav-item'),
+        { opacity: 0, y: -10 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          stagger: 0.1,
+          ease: 'power3.out',
+        }
+      )
+    }
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -34,16 +54,16 @@ const Header = () => {
   return (
     <header className="flex justify-between items-center px-6 py-3 border-b bg-white text-base">
       {/* 좌측: 메뉴 */}
-      <nav className="flex gap-2">
+      <nav ref={navRef} className="flex gap-2">
         {menus.map(({ label, href }) => {
           const isActive = pathname.startsWith(href)
           return (
             <Link
               key={href}
               href={href}
-              className={`px-3 py-1 rounded ${isActive
-                  ? 'font-bold bg-blue-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
+              className={`nav-item px-3 py-1 rounded ${isActive
+                ? 'font-bold bg-blue-600 text-white'
+                : 'text-gray-700 hover:bg-gray-100'
                 }`}
             >
               {label}

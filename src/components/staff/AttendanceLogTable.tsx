@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getAttendanceLogs } from '@/services/staffService'
-import type { AttendanceLog } from '@/types/staff'
+import { getAttendanceLogs } from '@/services/attendanceLogService'
+import type { AttendanceLog } from '@/types/attendanceLog'
 import Pagination from '../common/Pagination'
 
 function formatTime(dateTime?: string | null): string {

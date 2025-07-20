@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { checkAdminSession } from '@/services/authService'
+import { checkAdminSession } from '@/services/adminService'
 
 export default function Home() {
   const router = useRouter()

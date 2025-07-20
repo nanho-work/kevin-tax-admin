@@ -5,15 +5,22 @@
 
 'use client'
 
-import { Admin } from '@/types/staff'
+import { AdminOut } from '@/types/admin'
 import { useEffect, useRef, useState } from 'react'
-import { updateAdminStaff } from '@/services/staffService'
-import type { UpdateStaffRequest } from '@/types/staff'
+import { updateAdminStaff } from '@/services/adminService'
+import { getRoles } from '@/services/roleService'
+import { getDepartments } from '@/services/departmentService'
+import { getTeams } from '@/services/teamService'
+import type { UpdateStaffRequest } from '@/types/admin'
+import type { RoleOut } from '@/types/role'
+import type { DepartmentOut } from '@/types/department'
+import type { TeamOut } from '@/types/team'
+import { gsap } from 'gsap'
 
-type StaffRole = NonNullable<UpdateStaffRequest['role']>
+type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
 
 interface Props {
-  staff: Admin
+  staff: AdminOut
   onClose: () => void
 }
 
@@ -21,28 +28,60 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [roles, setRoles] = useState<RoleOut[]>([])
+  const [departments, setDepartments] = useState<DepartmentOut[]>([])
+  const [teams, setTeams] = useState<TeamOut[]>([])
+
   const [form, setForm] = useState({
+    name: staff.name || '',
     phone: staff.phone || '',
-    role: staff.role,
     profile_image: null as File | null,
     profile_image_url: staff.profile_image_url || '',
     hired_at: staff.hired_at || '',
     retired_at: staff.retired_at || '',
-    name: staff.name || '',
+    team_id: staff.team_id || undefined,
+    role_id: staff.role_id || undefined,
   })
   useEffect(() => {
     if (staff) {
       setForm({
+        name: staff.name || '',
         phone: staff.phone || '',
-        role: staff.role,
         profile_image: null,
         profile_image_url: staff.profile_image_url || '',
         hired_at: staff.hired_at || '',
         retired_at: staff.retired_at || '',
-        name: staff.name || '',
+        team_id: staff.team_id || undefined,
+        role_id: staff.role_id || undefined,
       })
     }
   }, [staff])
+
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (modalRef.current) {
+      gsap.fromTo(
+        modalRef.current,
+        { y: -50, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' }
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    async function loadOptions() {
+      const [roleList, departmentList, teamList] = await Promise.all([
+        getRoles(),
+        getDepartments(),
+        getTeams(),
+      ])
+      setRoles(roleList)
+      setDepartments(departmentList)
+      setTeams(teamList)
+    }
+    loadOptions()
+  }, [])
 
   console.log('초기 데이터:', staff);
 
@@ -50,9 +89,10 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
     try {
       setLoading(true)
       const formData = new FormData()
-      formData.append('name', form.name)
-      formData.append('phone', form.phone)
-      formData.append('role', form.role)
+      if (form.name) formData.append('name', form.name)
+      if (form.phone) formData.append('phone', form.phone)
+      if (form.role_id !== undefined) formData.append('role_id', String(form.role_id))
+      if (form.team_id !== undefined) formData.append('team_id', String(form.team_id))
       if (form.hired_at) formData.append('hired_at', form.hired_at)
       if (form.retired_at) formData.append('retired_at', form.retired_at)
       if (form.profile_image) {
@@ -80,19 +120,9 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
       setLoading(false)
     }
   }
-  const roleLabelMap: Record<string, string> = {
-    SUPER: '대표',
-    MASTER: '관리자',
-    CLERK_ASSIST: '선임',
-    CLERK_SENIOR: '책임',
-    CLERK_MANAGER: '수석',
-    TAX_JUNIOR: '세무 주니어',
-    TAX_SENIOR: '세무 시니어',
-    TAX_MANAGER: '세무 매니저',
-  }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+    <div ref={modalRef} className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
       <div className="bg-white p-4 rounded w-96 shadow-lg space-y-3">
         <h2 className="text-lg font-bold mb-2">직원 상세 정보</h2>
         <div className="flex flex-col items-center space-y-2">
@@ -106,7 +136,7 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
             className="w-24 h-24 rounded-full object-cover border-2 border-white"
           />
           <div className="text-lg font-semibold">
-            {staff.name} {roleLabelMap[staff.role] || staff.role}님
+            {staff.name} {staff.role?.name || ''}님
           </div>
         </div>
 
@@ -132,23 +162,53 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
 
         <div>
           <label className="block font-medium">직급:</label>
-          {staff.role === 'SUPER' || staff.role === 'MASTER' ? (
-            <p>{roleLabelMap[staff.role] || staff.role}</p>
+          {staff.role_id === 1 || staff.role_id === 2 ? (
+            <p>{staff.role?.name || ''}</p>
           ) : (
             <select
-              value={form.role}
-              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as StaffRole }))}
+              value={form.role_id ?? ''}
+              onChange={(e) => setForm((prev) => ({ ...prev, role_id: Number(e.target.value) }))}
               className="border px-2 py-1 w-full rounded"
             >
-              <option value="CLERK_ASSIST">선임</option>
-              <option value="CLERK_SENIOR">책임</option>
-              <option value="CLERK_MANAGER">수석</option>
-              <option value="TAX_JUNIOR">세무 주니어</option>
-              <option value="TAX_SENIOR">세무 시니어</option>
-              <option value="TAX_MANAGER">세무 매니저</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
             </select>
           )}
         </div>
+
+        <div>
+          <label className="block font-medium">팀:</label>
+          <select
+            value={form.team_id ?? ''}
+            onChange={(e) => setForm((prev) => ({ ...prev, team_id: Number(e.target.value) }))}
+            className="border px-2 py-1 w-full rounded"
+          >
+            <option value="">선택</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} {t.department?.name ? `(${t.department.name})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block font-medium">부서:</label>
+          <select
+            value={
+              teams.find((t) => t.id === form.team_id)?.department?.id ?? ''
+            }
+            disabled
+            className="border px-2 py-1 w-full rounded bg-gray-100 cursor-not-allowed"
+          >
+            <option value="">(자동 선택)</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label className="block font-medium">입사일:</label>
           <input

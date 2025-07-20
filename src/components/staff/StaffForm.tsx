@@ -5,9 +5,15 @@
 
 'use client'
 
-import { useState } from 'react'
-import type { CreateStaffRequest } from '@/types/staff'
-import { createAdminStaff } from '@/services/staffService'
+import { useState, useEffect } from 'react'
+import type { CreateStaffRequest } from '@/types/admin'
+import { createAdminStaff, fetchAdminSession } from '@/services/adminService'
+import { getRoles } from '@/services/roleService'
+import { getTeams } from '@/services/teamService'
+import { getDepartments } from '@/services/departmentService'
+import type { RoleOut } from '@/types/role'
+import type { TeamOut } from '@/types/team'
+import type { DepartmentOut } from '@/types/department'
 
 // ✅ 직원 등록 폼 컴포넌트
 // - 신규 직원을 등록할 때 사용하는 폼
@@ -23,19 +29,50 @@ export default function StaffForm() {
         name: '',
         password: '',
         phone: '',
-        role: 'CLERK_ASSIST',
         hired_at: '',
+        client_id: 0,
+        team_id: undefined,
+        role_id: 0,
+        // department_id: undefined,
     })
     // 프로필 이미지 상태 추가
     const [profileImage, setProfileImage] = useState<File | null>(null)
+    const [roles, setRoles] = useState<RoleOut[]>([])
+    const [teams, setTeams] = useState<TeamOut[]>([])
+    const [departments, setDepartments] = useState<DepartmentOut[]>([])
 
-    const roleLabels: Record<CreateStaffRequest['role'], string> = {
-        CLERK_ASSIST: '사원',
-        CLERK_SENIOR: '대리',
-        CLERK_MANAGER: '과장',
-        TAX_JUNIOR: '세무 주니어',
-        TAX_SENIOR: '세무 시니어',
-        TAX_MANAGER: '세무 매니저',
+    const [visibleTeams, setVisibleTeams] = useState<TeamOut[]>([])
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | ''>('')
+
+    useEffect(() => {
+        async function loadData() {
+            const [roleRes, teamRes, deptRes, sessionRes] = await Promise.all([
+                getRoles(),
+                getTeams(),
+                getDepartments(),
+                fetchAdminSession(),
+            ])
+            setRoles(roleRes)
+            setTeams(teamRes)
+            setDepartments(deptRes)
+            setVisibleTeams(teamRes)
+            setForm((prev) => ({
+            ...prev,
+            client_id: sessionRes.client_id,
+        }))
+        }
+        loadData()
+    }, [])
+
+    const handleDepartmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedDeptId = Number(e.target.value)
+        const filteredTeams = departments.find(dep => dep.id === selectedDeptId)
+          ? teams.filter(team => team.department_id === selectedDeptId)
+          : teams
+
+        setForm({ ...form, team_id: undefined })
+        setVisibleTeams(filteredTeams)
+        setSelectedDepartmentId(selectedDeptId)
     }
 
     // 📌 입력 값 변경 핸들러
@@ -55,8 +92,11 @@ export default function StaffForm() {
             formData.append('name', form.name)
             formData.append('password', form.password)
             formData.append('phone', form.phone ?? '')
-            formData.append('role', form.role)
             formData.append('hired_at', form.hired_at ?? '')
+            formData.append('client_id', String(form.client_id))
+            formData.append('team_id', form.team_id ? String(form.team_id) : '')
+            formData.append('role_id', form.role_id ? String(form.role_id) : '')
+            // Removed department_id append line
             if (profileImage) {
                 formData.append('profile_image', profileImage)
             }
@@ -126,7 +166,6 @@ export default function StaffForm() {
             </div>
 
 
-            
 
             {/* 입사일 + 역할 */}
             <div className="flex gap-6">
@@ -142,18 +181,52 @@ export default function StaffForm() {
                     />
                 </div>
                 <div className="flex flex-col w-full">
-                    <label htmlFor="role" className="font-medium">역할</label>
+                    <label htmlFor="role_id" className="font-medium">역할</label>
                     <select
-                        id="role"
-                        name="role"
-                        value={form.role}
+                        id="role_id"
+                        name="role_id"
+                        value={form.role_id}
                         onChange={handleChange}
                         className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
                     >
                         <option value="">권한을 선택하세요</option>
-                        {Object.entries(roleLabels).map(([value, label]) => (
-                            <option key={value} value={value}>
-                                {label}
+                        {roles.map(role => (
+                            <option key={role.id} value={role.id}>
+                                {role.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex flex-col w-full">
+                    <label htmlFor="department_id" className="font-medium">소속 부서</label>
+                    <select
+                        id="department_id"
+                        name="department_id"
+                        value={selectedDepartmentId}
+                        onChange={handleDepartmentChange}
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    >
+                        <option value="">부서를 선택하세요</option>
+                        {departments.map(dept => (
+                            <option key={dept.id} value={dept.id}>
+                                {dept.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex flex-col w-full">
+                    <label htmlFor="team_id" className="font-medium">소속 팀</label>
+                    <select
+                        id="team_id"
+                        name="team_id"
+                        value={form.team_id ?? ''}
+                        onChange={handleChange}
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    >
+                        <option value="">팀을 선택하세요</option>
+                        {visibleTeams.map(team => (
+                            <option key={team.id} value={team.id}>
+                                {team.name}
                             </option>
                         ))}
                     </select>

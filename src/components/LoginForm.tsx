@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { adminLogin } from '@/services/authService'
-import { checkInAdmin } from '@/services/staffService'
-import type { LoginRequest } from '@/types/auth'
+import { adminLogin } from '@/services/adminService'
+import { checkInAdmin } from '@/services/attendanceLogService'
+import type { LoginRequest } from '@/types/admin'
 
 export default function LoginForm() {
   const router = useRouter()
@@ -107,7 +107,7 @@ export default function LoginForm() {
             className={`w-full py-2 rounded ${loading
               ? 'bg-gray-400 text-white cursor-not-allowed'
               : 'bg-blue-900 text-white hover:bg-blue-800'
-            }`}
+              }`}
           >
             {loading ? '로딩 중...' : '로그인'}
           </button>

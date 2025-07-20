@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getAttendanceLogs } from '@/services/attendanceLogService'
-import { checkAdminSession } from '@/services/authService'
+import { checkAdminSession } from '@/services/adminService'
 import { format } from 'date-fns'
 import { RoleOut } from '@/types/role'
 
@@ -84,7 +84,7 @@ export default function Sidebar() {
         return () => clearInterval(timeInterval)
     }, [])
     return (
-        <aside className="py-10 bg-teal-700 text-white w-[240px] min-w-[240px] flex-shrink-0">
+        <aside className="py-10 bg-sky-600 text-white w-[240px] min-w-[240px] flex-shrink-0">
             {/* 상단 사용자 정보 */}
             <div className="flex flex-col items-center space-y-2">
                 {user && (
@@ -95,7 +95,7 @@ export default function Sidebar() {
                             className="w-24 h-24 rounded-full object-cover border-2 border-white"
                         />
                         <div className="text-base font-semibold">
-                           {user.name} {user.role?.name || ''}님 환영합니다.
+                            {user.name} {user.role?.name || ''}님 환영합니다.
                         </div>
                         <div className="text-sm text-gray-300">출근시간: {user.checkIn}</div>
                         <div className="text-sm text-gray-300">현재시간: {currentTime}</div>

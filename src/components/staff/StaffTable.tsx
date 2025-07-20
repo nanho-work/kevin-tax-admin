@@ -2,27 +2,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Admin, UpdateStaffRequest } from '@/types/staff'
+import { AdminOut } from '@/types/admin'
 import {
-    fetchAdminStaffs, activateAdminStaff,
+    getAdminStaffs, activateAdminStaff,
     deactivateAdminStaff, updateAdminStaff,
-} from '@/services/staffService'
+} from '@/services/adminService'
 import StaffDetailModal from './StaffDetailModal'
 
 export default function StaffTable() {
-    const [staffs, setStaffs] = useState<Admin[]>([])
+    const [staffs, setStaffs] = useState<AdminOut[]>([])
     const [keyword, setKeyword] = useState('')
     const [page, setPage] = useState(1)
     const [total, setTotal] = useState(0)
     const limit = 10
 
-    const [selectedStaff, setSelectedStaff] = useState<Admin | null>(null)
+    const [selectedStaff, setSelectedStaff] = useState<AdminOut | null>(null)
     const [showDetail, setShowDetail] = useState(false)
 
     useEffect(() => {
         const loadStaffs = async () => {
             try {
-                const res = await fetchAdminStaffs(page, limit, keyword)
+                const res = await getAdminStaffs(page, limit, keyword)
                 setStaffs(res.items)
                 setTotal(res.total)
             } catch (err) {
@@ -36,17 +36,14 @@ export default function StaffTable() {
     const totalPages = Math.ceil(total / limit)
 
     const handleToggleStatus = async (id: number, is_active: boolean) => {
-        console.log('토글 요청: id =', id, '현재 상태 =', is_active)
         try {
-            console.log('직원 객체 확인:', { id, is_active })
             if (is_active) {
                 await deactivateAdminStaff(id)
             } else {
                 await activateAdminStaff(id)
             }
-            console.log('토글 성공')
             // 성공 후 목록 새로고침
-            const res = await fetchAdminStaffs(page, limit, keyword)
+            const res = await getAdminStaffs(page, limit, keyword)
             setStaffs(res.items)
             setTotal(res.total)
         } catch (err) {
@@ -98,7 +95,6 @@ export default function StaffTable() {
                         </tr>
                     ) : (
                         staffs.map((staff) => {
-                            console.log('렌더링 중인 staff 객체:', staff)
                             return (
                             <tr
                                 key={staff.id}
