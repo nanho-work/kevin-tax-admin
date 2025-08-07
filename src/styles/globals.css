@@ -8,7 +8,7 @@
 /* Base global styling */
 html, body {
   font-family: 'Inter', sans-serif;
-  @apply bg-gray-50 text-gray-900;
+  @apply bg-gray-100 text-gray-900;
 }
 
 /* Button defaults */

@@ -31,6 +31,11 @@ const settingMenuItems = [
     { label: '직급 관리', href: '/setting/role', icon: '/looptax.png' },
 ]
 
+const blogMenuItems = [
+    { label: '블로그 목록', href: '/blog/list', icon: '/blog_list.png' },
+    { label: '글 작성', href: '/blog/create', icon: '/blog_write.png' },
+]
+
 export default function Sidebar() {
     const pathname = usePathname()
 
@@ -117,6 +122,8 @@ export default function Sidebar() {
                         menuItems = hrdMenuItems
                     } else if (pathname.startsWith('/setting')) {
                         menuItems = settingMenuItems
+                    } else if (pathname.startsWith('/blog')) {
+                        menuItems = blogMenuItems
                     }
                     return (
                         <div className="grid grid-cols-2 gap-2 px-4">

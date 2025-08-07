@@ -48,6 +48,7 @@ const Header = () => {
     { label: '업체 관리', href: '/companies' },
     { label: '직원 관리', href: '/staff' },
     { label: '일정 관리', href: '/single-schedule' },
+    { label: '블로그', href: '/blog' },
     { label: '설정', href: '/setting' },
   ]
 
