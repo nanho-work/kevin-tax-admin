@@ -33,7 +33,7 @@ const settingMenuItems = [
 
 const blogMenuItems = [
     { label: '블로그 목록', href: '/blog/list', icon: '/blog_list.png' },
-    { label: '글 작성', href: '/blog/create', icon: '/blog_write.png' },
+    { label: '블로그 작성', href: '/blog/create', icon: '/blog_write.png' },
 ]
 
 export default function Sidebar() {
