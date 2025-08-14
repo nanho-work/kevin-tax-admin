@@ -99,3 +99,4 @@ button {
 .tiptap-toolbar button.is-active {
   @apply bg-blue-500 text-white;
 }
+

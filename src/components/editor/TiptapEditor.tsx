@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Toolbar } from './TiptapToolbar';
+import TextAlign from '@tiptap/extension-text-align';
 
 interface TiptapEditorProps {
   content: string;
@@ -23,6 +24,9 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
       Placeholder.configure({
         placeholder: '내용을 입력하세요...',
       }),
+      TextAlign.configure({
+      types: ['heading', 'paragraph'],
+    }),
     ],
     content,
     onUpdate: ({ editor }) => {
