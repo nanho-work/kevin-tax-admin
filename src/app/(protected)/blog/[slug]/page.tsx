@@ -4,11 +4,13 @@ import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
 
 interface BlogDetailPageProps {
-  params: { slug: string };
+  params: {
+    slug: string
+  }
 }
 
 export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
-  const slug = (await params).slug; // ✅
+  const slug = params.slug;
 
   // 서버 컴포넌트에서 데이터 호출
   let post: BlogPostResponse | null = null;
