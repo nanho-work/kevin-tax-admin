@@ -1,16 +1,15 @@
 // app/blog/[slug]/page.tsx
+import BlogDetail from '@/components/blog/BlogDetail';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
-import BlogDetail from '@/components/blog/BlogDetail';
 
-interface BlogDetailPageProps {
-  params: {
-    slug: string;
-  };
-}
-
-export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
-  const slug = (await params).slug; // ✅ Next.js 15 대응
+export default async function BlogDetailPage({
+  params,
+}: {
+  params: Promise<{ slug: string }> | { slug: string }
+}) {
+  const resolvedParams = params instanceof Promise ? await params : params;
+  const slug = resolvedParams.slug;
 
   let post: BlogPostResponse | null = null;
   try {
@@ -28,8 +27,7 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* BlogDetail 컴포넌트에 데이터 전달 */}
+    <div className="p-6">
       <BlogDetail post={post} />
     </div>
   );
