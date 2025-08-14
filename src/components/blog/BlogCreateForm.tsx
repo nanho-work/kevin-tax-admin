@@ -146,6 +146,23 @@ export default function BlogCreateForm() {
     }
   }
 
+  const handleCancel = async () => {
+    if (thumbnailUrl) {
+      try {
+        await blogService.deleteBodyImages([thumbnailUrl])
+      } catch (err) {
+        console.warn('썸네일 삭제 실패:', err)
+      }
+    }
+    setTitle('')
+    setSubtitle('')
+    setSummary('')
+    setCategoryId('')
+    setKeywordIds([])
+    setThumbnailUrl('')
+    editorRef.current?.getInstance().setMarkdown('')
+  }
+
   return (
     <div className="space-y-6">
       <input
@@ -216,7 +233,7 @@ export default function BlogCreateForm() {
           )}
         </div>
         <input
-          type="text"
+          type="hidden"
           placeholder="썸네일 이미지 URL (직접 입력시 업로드 URL을 덮어씁니다)"
           value={thumbnailUrl}
           onChange={(e) => setThumbnailUrl(e.target.value)}
@@ -234,13 +251,22 @@ export default function BlogCreateForm() {
         usageStatistics={false}
       />
 
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
-      >
-        {loading ? '처리 중...' : '저장하기'}
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
+        >
+          {loading ? '처리 중...' : '저장하기'}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="bg-gray-300 text-black px-4 py-2 rounded"
+        >
+          취소
+        </button>
+      </div>
     </div>
   )
 }

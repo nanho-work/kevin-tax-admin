@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
 
@@ -87,9 +88,9 @@ export default function BlogList() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="text-left font-medium px-4 py-3 w-16">ID</th>
-              <th className="text-left font-medium px-4 py-3">제목</th>
+              {/* <th className="text-left font-medium px-4 py-3 w-16">ID</th> */}
               <th className="text-left font-medium px-4 py-3">카테고리</th>
+              <th className="text-left font-medium px-4 py-3">제목</th>
               <th className="text-left font-medium px-4 py-3">상태</th>
               <th className="text-left font-medium px-4 py-3">게시일</th>
               <th className="text-left font-medium px-4 py-3">작성자</th>
@@ -99,29 +100,34 @@ export default function BlogList() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">불러오는 중…</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">불러오는 중…</td>
               </tr>
             ) : err ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-600">{err}</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-red-600">{err}</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">데이터가 없습니다.</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">데이터가 없습니다.</td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-500">{r.id}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{r.title}</div>
-                    {r.summary ? (
-                      <div className="text-gray-500 text-xs line-clamp-1">{r.summary}</div>
-                    ) : null}
-                  </td>
+                  {/* <td className="px-4 py-3 text-gray-500">{r.id}</td> */}
                   <td className="px-4 py-3 text-gray-700">
                     {/* 서버가 category 객체를 포함하면 name 우선, 없으면 id 표기 */}
                     {r.category?.name ?? (r as any).category_name ?? (r.category_id ? `#${r.category_id}` : '-')}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/blog/${r.slug}`}
+                      className="text-blue-600 hover:underline font-medium"
+                    >
+                      {r.title}
+                    </Link>
+                    {r.summary ? (
+                      <div className="text-gray-500 text-xs line-clamp-1">{r.summary}</div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border">
