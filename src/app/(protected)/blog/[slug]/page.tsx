@@ -1,18 +1,17 @@
 // app/blog/[slug]/page.tsx
-import BlogDetail from '@/components/blog/BlogDetail';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
+import BlogDetail from '@/components/blog/BlogDetail';
 
 interface BlogDetailPageProps {
   params: {
-    slug: string
-  }
+    slug: string;
+  };
 }
 
 export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
-  const slug = params.slug;
+  const { slug } = params;
 
-  // 서버 컴포넌트에서 데이터 호출
   let post: BlogPostResponse | null = null;
   try {
     post = await blogService.getPostBySlug(slug);
@@ -29,7 +28,8 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 max-w-4xl mx-auto">
+      {/* BlogDetail 컴포넌트에 데이터 전달 */}
       <BlogDetail post={post} />
     </div>
   );
