@@ -6,12 +6,9 @@ import type { BlogPostResponse } from '@/types/blog';
 export default async function BlogDetailPage({
   params,
 }: {
-  params: { slug: string } | Promise<{ slug: string }>
+  params: Promise<{ slug: string }>
 }) {
-  // Promise 여부를 안전하게 처리
-  const resolvedParams =
-    params instanceof Promise ? await params : params;
-  const slug = resolvedParams.slug;
+  const { slug } = await params;
 
   let post: BlogPostResponse | null = null;
   try {
