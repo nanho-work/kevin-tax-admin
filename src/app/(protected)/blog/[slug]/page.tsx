@@ -10,7 +10,7 @@ interface BlogDetailPageProps {
 }
 
 export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
-  const { slug } = params;
+  const { slug } = await params; // ✅ Next.js 15 대응
 
   let post: BlogPostResponse | null = null;
   try {
