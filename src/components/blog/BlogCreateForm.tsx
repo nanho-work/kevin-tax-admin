@@ -1,8 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
-import '@toast-ui/editor/dist/toastui-editor.css'
+import { useEffect, useState } from 'react'
 
 // 서비스 & 타입 임포트
 import { blogService } from '@/services/blogService'
@@ -12,8 +10,7 @@ import type {
   BlogPostCreate,
 } from '@/types/blog'
 
-// Toast UI Editor 동적 로딩 (SSR 비활성화)
-const ToastEditor = dynamic(() => import('@toast-ui/react-editor').then(mod => mod.Editor), { ssr: false })
+import TiptapEditor from '../editor/TiptapEditor'
 
 // 간단 슬러그 변환 (제목 → slug). 백엔드가 자동 생성한다면 빈 문자열로 넘겨도 됨.
 const slugify = (s: string) =>
@@ -25,8 +22,6 @@ const slugify = (s: string) =>
     .replace(/-+/g, '-')
 
 export default function BlogCreateForm() {
-  const editorRef = useRef<any>(null)
-
   // 폼 상태
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -34,6 +29,7 @@ export default function BlogCreateForm() {
   const [categoryId, setCategoryId] = useState<number | ''>('')
   const [keywordIds, setKeywordIds] = useState<number[]>([])
   const [thumbnailUrl, setThumbnailUrl] = useState('')
+  const [content, setContent] = useState('')
 
   // 보조 데이터
   const [categories, setCategories] = useState<BlogCategoryResponse[]>([])
@@ -98,9 +94,8 @@ export default function BlogCreateForm() {
   }
 
   // 제출
-  const handleSubmit = async () => {
-    const content = editorRef.current?.getInstance().getMarkdown() ?? ''
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!title.trim()) {
       alert('제목을 입력하세요.')
       return
@@ -128,7 +123,6 @@ export default function BlogCreateForm() {
     try {
       setLoading(true)
       const created = await blogService.createPost(payload)
-      console.log('생성 완료:', created)
       alert('블로그 글이 생성되었습니다.')
       // 초기화
       setTitle('')
@@ -137,7 +131,7 @@ export default function BlogCreateForm() {
       setCategoryId('')
       setKeywordIds([])
       setThumbnailUrl('')
-      editorRef.current?.getInstance().setMarkdown('')
+      setContent('')
     } catch (err: any) {
       console.error('생성 실패:', err)
       alert(err?.message || '생성 중 오류가 발생했습니다.')
@@ -147,26 +141,20 @@ export default function BlogCreateForm() {
   }
 
   const handleCancel = async () => {
-    if (thumbnailUrl) {
-      try {
-        await blogService.deleteBodyImages([thumbnailUrl])
-      } catch (err) {
-        console.warn('썸네일 삭제 실패:', err)
-      }
-    }
     setTitle('')
     setSubtitle('')
     setSummary('')
     setCategoryId('')
     setKeywordIds([])
     setThumbnailUrl('')
-    editorRef.current?.getInstance().setMarkdown('')
+    setContent('')
   }
 
   return (
-    <div className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <input
         type="text"
+        name="title"
         placeholder="제목을 입력하세요"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -175,6 +163,7 @@ export default function BlogCreateForm() {
 
       <input
         type="text"
+        name="subtitle"
         placeholder="서브 타이틀을 입력하세요"
         value={subtitle}
         onChange={(e) => setSubtitle(e.target.value)}
@@ -182,6 +171,7 @@ export default function BlogCreateForm() {
       />
 
       <textarea
+        name="summary"
         placeholder="요약(summary)을 입력하세요"
         value={summary}
         onChange={(e) => setSummary(e.target.value)}
@@ -191,6 +181,7 @@ export default function BlogCreateForm() {
 
       {/* 카테고리 선택 (API 연동) */}
       <select
+        name="category"
         value={categoryId}
         onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
         className="border p-2 w-full"
@@ -212,6 +203,7 @@ export default function BlogCreateForm() {
               <label key={kw.id} className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
+                  name={`keyword_${kw.id}`}
                   checked={keywordIds.includes(kw.id)}
                   onChange={() => handleToggleKeyword(kw.id)}
                 />
@@ -234,6 +226,7 @@ export default function BlogCreateForm() {
         </div>
         <input
           type="hidden"
+          name="thumbnailUrl"
           placeholder="썸네일 이미지 URL (직접 입력시 업로드 URL을 덮어씁니다)"
           value={thumbnailUrl}
           onChange={(e) => setThumbnailUrl(e.target.value)}
@@ -241,19 +234,12 @@ export default function BlogCreateForm() {
         />
       </div>
 
-      <ToastEditor
-        ref={editorRef}
-        height="400px"
-        initialEditType="wysiwyg"
-        previewStyle="vertical"
-        language="ko-KR"
-        useCommandShortcut
-        usageStatistics={false}
-      />
+      {/* Tiptap 에디터 */}
+      <TiptapEditor content={content} onChange={setContent} />
 
       <div className="flex gap-3">
         <button
-          onClick={handleSubmit}
+          type="submit"
           disabled={loading}
           className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
         >
@@ -267,6 +253,6 @@ export default function BlogCreateForm() {
           취소
         </button>
       </div>
-    </div>
+    </form>
   )
 }
