@@ -152,6 +152,21 @@ export default function BlogCreateForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 카테고리 선택 (API 연동) */}
+      <select
+        name="category"
+        value={categoryId}
+        onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+        className="border p-2 w-40"
+      >
+        <option value="">카테고리 선택</option>
+        {categories.map(cat => (
+          <option key={cat.id} value={cat.id}>
+            {cat.name}
+          </option>
+        ))}
+      </select>
+
       <input
         type="text"
         name="title"
@@ -179,40 +194,7 @@ export default function BlogCreateForm() {
         rows={3}
       />
 
-      {/* 카테고리 선택 (API 연동) */}
-      <select
-        name="category"
-        value={categoryId}
-        onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
-        className="border p-2 w-full"
-      >
-        <option value="">카테고리 선택</option>
-        {categories.map(cat => (
-          <option key={cat.id} value={cat.id}>
-            {cat.name}
-          </option>
-        ))}
-      </select>
-
-      {/* 키워드 선택 (체크박스) */}
-      {keywords.length > 0 && (
-        <div className="border p-3 rounded">
-          <div className="mb-2 text-sm text-gray-600">키워드 선택</div>
-          <div className="flex flex-wrap gap-3">
-            {keywords.map(kw => (
-              <label key={kw.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name={`keyword_${kw.id}`}
-                  checked={keywordIds.includes(kw.id)}
-                  onChange={() => handleToggleKeyword(kw.id)}
-                />
-                <span>#{kw.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      
 
       {/* 썸네일: 파일 업로드 + URL 직접 입력 */}
       <div className="space-y-2">
@@ -236,6 +218,26 @@ export default function BlogCreateForm() {
 
       {/* Tiptap 에디터 */}
       <TiptapEditor content={content} onChange={setContent} />
+
+      {/* 키워드 선택 (체크박스) */}
+      {keywords.length > 0 && (
+        <div className="border p-3 rounded">
+          <div className="mb-2 text-sm text-gray-600">키워드 선택</div>
+          <div className="flex flex-wrap gap-3">
+            {keywords.map(kw => (
+              <label key={kw.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name={`keyword_${kw.id}`}
+                  checked={keywordIds.includes(kw.id)}
+                  onChange={() => handleToggleKeyword(kw.id)}
+                />
+                <span>#{kw.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button

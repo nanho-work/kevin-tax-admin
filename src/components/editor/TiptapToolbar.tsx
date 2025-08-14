@@ -24,7 +24,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
 
     return (
         <div className="flex flex-wrap items-center gap-2 border-b border-gray-300 bg-white p-2">
-            {/* Heading */}
+            {/* 제목 */}
             <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
@@ -47,7 +47,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
                 <Heading3 size={18} />
             </button>
 
-            {/* Bold / Italic */}
+            {/* 굵게 / 기울임꼴 */}
             <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBold().run()}
@@ -62,8 +62,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
             >
                 <Italic size={18} />
             </button>
+            
 
-            {/* Lists */}
+            {/* 목록 */}
             <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -79,7 +80,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
                 <ListOrdered size={18} />
             </button>
 
-            {/* Quote */}
+            {/* 인용문 */}
             <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBlockquote().run()}
@@ -88,7 +89,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
                 <Quote size={18} />
             </button>
 
-            {/* Code */}
+            {/* 코드 */}
             <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleCodeBlock().run()}
@@ -97,7 +98,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
                 <Code size={18} />
             </button>
 
-            {/* Link */}
+            {/* 링크 */}
             <button
                 type="button"
                 onClick={() => {
@@ -111,7 +112,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload }) => {
                 <LinkIcon size={18} />
             </button>
 
-            {/* Image Upload */}
+            {/* 이미지 업로드 */}
             <button
                 type="button"
                 onClick={onImageUpload}
