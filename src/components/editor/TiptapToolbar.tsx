@@ -8,7 +8,16 @@ import {
   Link as LinkIcon, Image as ImageIcon,
   Undo2, Redo2
 } from 'lucide-react';
+
+import { IconTable, IconTableOff, IconRowInsertBottom, IconRowInsertTop, IconRowRemove, IconColumnInsertRight, IconColumnRemove } from "@tabler/icons-react";
 import '@tiptap/extension-text-align'; // 정렬 커맨드 타입 보강
+// ⬇️ 타입 보강을 위한 사이드이펙트 임포트 (커맨드 시그니처 추가)
+import '@tiptap/extension-link';
+import '@tiptap/extension-image';
+import '@tiptap/extension-table';
+import '@tiptap/extension-table-row';
+import '@tiptap/extension-table-header';
+import '@tiptap/extension-table-cell';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -34,6 +43,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, sticky 
     active
       ? 'btn-active bg-gray-200 border border-gray-300'
       : 'btn hover:bg-gray-100';
+
+  const canWorkOnTable = () => editor.isActive('table')
+  const insertDefaultTable = () =>
+    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 
   return (
     <div
@@ -211,6 +224,74 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, sticky 
         aria-label="코드 블록"
       >
         <Code size={18} />
+      </button>
+
+      <Separator />
+
+      {/* 표(Table) */}
+      <button
+        type="button"
+        onClick={insertDefaultTable}
+        className="btn hover:bg-gray-100"
+        title="표 삽입 (3x3)"
+        aria-label="표 삽입"
+      >
+        <IconTable size={18} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().addRowAfter().run()}
+        className="btn hover:bg-gray-100"
+        disabled={!canWorkOnTable()}
+        title="아래에 행 추가"
+        aria-label="행 추가"
+      >
+        <IconRowInsertBottom size={18} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().addColumnAfter().run()}
+        className="btn hover:bg-gray-100"
+        disabled={!canWorkOnTable()}
+        title="오른쪽에 열 추가"
+        aria-label="열 추가"
+      >
+        <IconColumnInsertRight size={18} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().deleteRow().run()}
+        className="btn hover:bg-gray-100"
+        disabled={!canWorkOnTable()}
+        title="현재 행 삭제"
+        aria-label="행 삭제"
+      >
+        <IconRowRemove size={18} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().deleteColumn().run()}
+        className="btn hover:bg-gray-100"
+        disabled={!canWorkOnTable()}
+        title="현재 열 삭제"
+        aria-label="열 삭제"
+      >
+        <IconColumnRemove size={18} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().deleteTable().run()}
+        className="btn hover:bg-gray-100"
+        disabled={!canWorkOnTable()}
+        title="표 삭제"
+        aria-label="표 삭제"
+      >
+        <IconTableOff size={18} />
       </button>
 
       <Separator />
