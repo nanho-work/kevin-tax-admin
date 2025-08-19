@@ -217,7 +217,7 @@ export default function BlogCreateForm() {
       </div>
 
       {/* Tiptap 에디터 */}
-      <TiptapEditor content={content} onChange={setContent} />
+      <TiptapEditor value={content} onChange={setContent} />
 
       {/* 키워드 선택 (체크박스) */}
       {keywords.length > 0 && (

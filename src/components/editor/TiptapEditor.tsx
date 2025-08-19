@@ -1,6 +1,6 @@
-// src/components/editor/TiptapEditor.tsx
 'use client';
 
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -82,11 +82,17 @@ async function rewriteImageSrcsToS3(html: string): Promise<string> {
 }
 
 interface TiptapEditorProps {
-  content: string;
-  onChange: (value: string) => void;
+  /** ✅ 새 권장 prop: 외부에서 제어하는 값 */
+  value?: string;
+  /** ⛳️ 하위호환: 기존 content prop도 허용 (value가 우선) */
+  content?: string;
+  onChange?: (value: string) => void;
 }
 
-export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
+export default function TiptapEditor({ value, content, onChange }: TiptapEditorProps) {
+  // value가 있으면 우선 사용, 없으면 content, 둘 다 없으면 빈 문자열
+  const inputValue = value ?? content ?? '';
+
   const editor = useEditor({
     immediatelyRender: false, // SSR mismatch 방지
     extensions: [
@@ -102,9 +108,9 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
         types: ['heading', 'paragraph'],
       }),
     ],
-    content,
+    content: inputValue,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      onChange?.(editor.getHTML());
     },
     editorProps: {
       /** TipTap은 동기 반환을 기대 → async 직접 사용 금지
@@ -136,6 +142,16 @@ export default function TiptapEditor({ content, onChange }: TiptapEditorProps) {
       },
     },
   });
+
+  // ✅ 외부 값(value/content) 변경 시 에디터 내용을 동기화
+  useEffect(() => {
+    if (!editor) return;
+    const next = inputValue;
+    const current = editor.getHTML();
+    if (current !== next) {
+      editor.commands.setContent(next, { emitUpdate: false }); // emitUpdate: false → 히스토리에 남기지 않고 onUpdate 트리거 안 함(초기화 용)
+    }
+  }, [editor, inputValue]);
 
   if (!editor) return null;
 
