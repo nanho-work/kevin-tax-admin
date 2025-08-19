@@ -1,19 +1,26 @@
 // app/blog/components/BlogDetail.tsx
+
 'use client';
 
+import { useMemo } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
+
 import type { BlogPostResponse } from '@/types/blog';
-import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Link from 'next/link';
-
-// 마크다운 렌더링 컴포넌트 (예: react-markdown)
-const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 
 interface BlogDetailProps {
   post: BlogPostResponse;
 }
 
 export default function BlogDetail({ post }: BlogDetailProps) {
+  const safeHtml = useMemo(() => {
+    const raw = post.content_md ?? '';
+    // allow style/target/rel since your saved HTML includes inline styles and external links
+    return DOMPurify.sanitize(raw, {
+      ADD_ATTR: ['style', 'target', 'rel'],
+    });
+  }, [post.content_md]);
   return (
     <article className="max-w-4xl mx-auto">
       {/* 카테고리 */}
@@ -54,10 +61,11 @@ export default function BlogDetail({ post }: BlogDetailProps) {
         </div>
       )}
 
-      {/* 본문 (마크다운) */}
-      <div className="prose max-w-none">
-        <ReactMarkdown>{post.content_md}</ReactMarkdown>
-      </div>
+      {/* 본문 (HTML) */}
+      <div
+        className="prose max-w-none prose-img:rounded-md prose-a:text-blue-600 hover:prose-a:underline"
+        dangerouslySetInnerHTML={{ __html: safeHtml }}
+      />
 
       {/* 키워드 */}
       {post.keywords && post.keywords.length > 0 && (

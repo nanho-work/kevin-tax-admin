@@ -1,7 +1,7 @@
 // src/services/blogService.ts
 import axios from "axios";
 import type {
-  BlogPostCreate, BlogPostResponse, BlogPostUpdate,
+  BlogPostCreate, BlogPostResponse,
   BlogCategoryCreate, BlogCategoryResponse,
   KeywordCreate, KeywordResponse,
 } from "../types/blog";
@@ -35,7 +35,6 @@ export async function listPosts(params: {
   q?: string;
 } = {}): Promise<Paginated<BlogPostResponse>> {
   const res = await axios.get(`${BASE}/posts`, { params });
-  // 서버 응답이 {items,total,page,page_size} 형태라고 가정
   return res.data as Paginated<BlogPostResponse>;
 }
 
@@ -57,17 +56,9 @@ export async function createPost(data: BlogPostCreate): Promise<BlogPostResponse
   const headers = {
     ...(auth.headers || {}),
     "Content-Type": "application/json",
+    Accept: "application/json",
   };
   const res = await axios.post(`${BASE}/posts`, data, { ...auth, headers });
-  return res.data as BlogPostResponse;
-}
-
-/** 수정 (부분 업데이트) */
-export async function updatePost(
-  postId: number,
-  data: BlogPostUpdate
-): Promise<BlogPostResponse> {
-  const res = await axios.put(`${BASE}/posts/${postId}`, data, { ...authHeader() });
   return res.data as BlogPostResponse;
 }
 
@@ -129,12 +120,33 @@ export async function deleteBodyImages(
   return res.data as { message: string };
 }
 
+/** ✅ 본문 이미지 업로드(외부 URL → 서버 다운로드 → S3) */
+export interface UploadByUrlResponse {
+  url: string; // S3에 업로드된 최종 URL
+}
+
+export async function uploadContentImageByUrl(
+  imageUrl: string
+): Promise<UploadByUrlResponse> {
+  const auth = authHeader();
+  const headers = {
+    ...(auth.headers || {}),
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const res = await axios.post(
+    `${BASE}/posts/content-image-upload-by-url`,
+    { url: imageUrl },
+    { ...auth, headers, withCredentials: true } // 쿠키 세션이면 유지, 아니면 제거 가능
+  );
+  return res.data as UploadByUrlResponse;
+}
+
 export const blogService = {
   listPosts,
   getPostBySlug,
   getPostById,
   createPost,
-  updatePost,
   deletePost,
   listCategories,
   createCategory,
@@ -144,4 +156,5 @@ export const blogService = {
   deleteKeyword,
   uploadThumbnail,
   deleteBodyImages,
+  uploadContentImageByUrl, // ← 추가
 };

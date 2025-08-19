@@ -1,4 +1,4 @@
-// app/blog/[slug]/page.tsx
+// app/(protected)/blog/[slug]/page.tsx
 import BlogDetail from '@/components/blog/BlogDetail';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
@@ -6,9 +6,9 @@ import type { BlogPostResponse } from '@/types/blog';
 export default async function BlogDetailPage({
   params,
 }: {
-  params: Promise<{ slug: string }>
+  params: { slug: string }
 }) {
-  const { slug } = await params;
+  const { slug } = params;
 
   let post: BlogPostResponse | null = null;
   try {
