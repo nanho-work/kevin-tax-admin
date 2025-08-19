@@ -16,6 +16,28 @@ export default function BlogList() {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDelete = async (postId: number, title?: string) => {
+    if (!window.confirm(`정말 삭제하시겠습니까?\n\n제목: ${title ?? ''}`)) return;
+    try {
+      setDeletingId(postId);
+      await blogService.deletePost(postId);
+      // 낙관적 업데이트: 목록에서 제거하고 total 감소
+      setRows((prev) => prev.filter((p) => p.id !== postId));
+      setTotal((t) => Math.max(0, t - 1));
+      // 현재 페이지에서 모두 사라졌다면 이전 페이지로 이동
+      setPage((prevPage) => {
+        const remaining = rows.length - 1; // 삭제 후 현재 페이지에 남을 개수(대략치)
+        if (remaining <= 0 && prevPage > 1) return prevPage - 1;
+        return prevPage;
+      });
+    } catch (e: any) {
+      alert(e?.message || '삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -94,21 +116,22 @@ export default function BlogList() {
               <th className="text-left font-medium px-4 py-3">상태</th>
               <th className="text-left font-medium px-4 py-3">게시일</th>
               <th className="text-left font-medium px-4 py-3">작성자</th>
+              <th className="text-left font-medium px-4 py-3 w-24">관리</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">불러오는 중…</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">불러오는 중…</td>
               </tr>
             ) : err ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-red-600">{err}</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-red-600">{err}</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">데이터가 없습니다.</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">데이터가 없습니다.</td>
               </tr>
             ) : (
               rows.map((r) => (
@@ -138,6 +161,16 @@ export default function BlogList() {
                     {r.published_at ? new Date(r.published_at).toLocaleString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{r.author_name || '-'}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      className="px-2.5 py-1 border rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      onClick={() => handleDelete(r.id, r.title)}
+                      disabled={deletingId === r.id || loading}
+                      title="삭제"
+                    >
+                      {deletingId === r.id ? '삭제중…' : '삭제'}
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
