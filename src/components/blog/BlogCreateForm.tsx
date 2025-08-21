@@ -176,26 +176,6 @@ export default function BlogCreateForm() {
         className="border p-2 w-full"
       />
 
-      <input
-        type="text"
-        name="subtitle"
-        placeholder="서브 타이틀을 입력하세요"
-        value={subtitle}
-        onChange={(e) => setSubtitle(e.target.value)}
-        className="border p-2 w-full"
-      />
-
-      <textarea
-        name="summary"
-        placeholder="요약(summary)을 입력하세요"
-        value={summary}
-        onChange={(e) => setSummary(e.target.value)}
-        className="border p-2 w-full"
-        rows={3}
-      />
-
-      
-
       {/* 썸네일: 파일 업로드 + URL 직접 입력 */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">

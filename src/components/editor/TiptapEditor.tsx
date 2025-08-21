@@ -170,7 +170,12 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
 
   return (
     <div className="border rounded-md">
-      <Toolbar editor={editor} />
+      {/* Sticky toolbar: stays at the top while the page scrolls */}
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
+        <Toolbar editor={editor} />
+      </div>
+
+      {/* Editor content */}
       <EditorContent editor={editor} className="min-h-[200px] p-3" />
     </div>
   );
