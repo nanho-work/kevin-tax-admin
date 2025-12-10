@@ -1,5 +1,4 @@
 // app/(protected)/gpt/page.tsx
-'use client';
 
 import { useState, useEffect } from "react";
 import ChatRoomList from "@/components/gpt/ChatRoomList";
