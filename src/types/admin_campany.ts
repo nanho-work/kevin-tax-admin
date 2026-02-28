@@ -13,6 +13,7 @@ export interface PaginatedResponse<T> {
 export interface CompanyTaxDetail {
   // 회사 기본 정보
   id: number;                        // 회사 ID
+  client_id?: number;                // 소속 클라이언트(테넌트) ID
   category?: string;                // 구분 (개인/법인 등)
   company_name: string;            // 사업자명
   owner_name: string;              // 대표자
@@ -47,6 +48,8 @@ export interface CompanyTaxDetail {
   has_foreign_currency?: boolean;  // 외화 여부
   ct_note?: string;                // 법인세 특이사항
   ct_remark?: string;              // 법인세 비고
+
+  is_active: boolean;                // 활성 상태
 }
 
 // ------------------------------
@@ -55,6 +58,7 @@ export interface CompanyTaxDetail {
 export interface CompanyDetailResponse {
   // companies 테이블
   id: number
+  client_id?: number
   category?: string
   company_name: string
   owner_name: string
@@ -146,6 +150,65 @@ export interface CompanyUpdateRequest {
   has_foreign_currency?: boolean;
   ct_note?: string;
   ct_remark?: string;
+}
+
+// ------------------------------
+// 회사 등록 요청 타입
+// ------------------------------
+export interface CompanyCreateRequest {
+  company_name: string;
+  owner_name: string;
+  registration_number: string;
+
+  category?: string;
+  manager_name?: string;
+  manager_phone?: string;
+  manager_email?: string;
+  contact_method?: string;
+  memo?: string;
+  monthly_fee?: number;
+  encrypted_hometax_id?: string;
+  encrypted_hometax_pw?: string;
+  contract_date?: string;
+  industry_type?: string;
+  business_type?: string;
+  cms_bank_account?: string;
+  cms_account_number?: string;
+  cms_transfer_day?: string;
+  phone?: string;
+  postal_code?: string;
+  address1?: string;
+  address2?: string;
+  founded_date?: string;
+  homepage_url?: string;
+  info_agreed?: boolean;
+  is_active?: boolean;
+  manager_customer_id?: number;
+
+  // 세금 필드
+  is_half_term?: boolean;
+  salary_date?: string;
+  salary_type?: string;
+  w_memo?: string;
+
+  is_export?: boolean;
+  is_online?: boolean;
+  v_note?: string;
+  v_remark?: string;
+
+  has_foreign_currency?: boolean;
+  ct_note?: string;
+  ct_remark?: string;
+}
+
+// ------------------------------
+// 회사 등록 응답 타입 (Simple)
+// ------------------------------
+export interface CompanySimpleResponse {
+  id: number;
+  company_name: string;
+  registration_number: string;
+  created_at: string; // ISO datetime
 }
 
 
