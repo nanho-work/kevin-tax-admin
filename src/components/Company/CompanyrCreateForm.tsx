@@ -157,7 +157,7 @@ export default function CompanyCreateForm() {
 
             await createCompany(payload);
             setSuccess('등록 완료되었습니다.');
-            router.push('/admin/companies'); // 필요 시 목록 페이지로 이동
+            router.push('/companies'); // 등록 후 회사 목록으로 이동
         } catch (err: any) {
             const detail = err?.response?.data?.detail;
             const errorMsg = Array.isArray(detail)
