@@ -17,6 +17,8 @@ interface Props {
 export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
     const [data, setData] = useState<CorporateTaxDetailResponse[]>([]);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [editableRows, setEditableRows] = useState<
         Record<number, Partial<CorporateTaxDetailResponse>>
     >({});
@@ -24,10 +26,15 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
 
     const loadData = async () => {
         try {
+            setLoading(true);
+            setErrorMessage(null);
             const list = await fetchCorporateTaxDetails(selectedCompanyId || undefined);
             setData(list);
         } catch (error) {
             console.error("법인세 목록 조회 실패", error);
+            setErrorMessage("법인세 목록을 불러오지 못했습니다.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -133,10 +140,16 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
         }
     };
     return (
-        <div className="overflow-x-auto">
+        <div className="space-y-4 overflow-x-auto">
+            {errorMessage ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {errorMessage}
+                </div>
+            ) : null}
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
             <div className="mb-4 flex justify-between items-center">
                 <button
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800"
                     onClick={handleAdd}
                 >
                     항목 추가
@@ -148,7 +161,7 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
                         선택된 항목: {selectedIds.length}개
                     </span>
                     <button
-                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                        className="rounded-md bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700"
                         onClick={async () => {
                             if (!confirm(`${selectedIds.length}개 항목을 삭제하시겠습니까?`)) return;
                             try {
@@ -166,9 +179,9 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
                     </button>
                 </div>
             )}
-            <table className="table-auto border border-gray-200 text-sm min-w-[7000px]">
+            <table className="table-auto min-w-[7000px] border border-zinc-200 text-sm">
                 <thead>
-                    <tr className="bg-gray-100 text-center">
+                    <tr className="bg-zinc-50 text-center text-xs text-zinc-600">
                         <th className="p-2">
                             <input
                                 type="checkbox"
@@ -227,8 +240,15 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
                         <th className="p-2 border">생성일</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {data.map((row) => (
+                <tbody className="divide-y divide-zinc-200">
+                    {loading && (
+                        <tr>
+                            <td colSpan={47} className="px-4 py-10 text-center text-sm text-zinc-500">
+                                데이터를 불러오는 중입니다...
+                            </td>
+                        </tr>
+                    )}
+                    {!loading && data.map((row) => (
                         <tr
                             key={row.id}
                             className={`border-t text-center ${row.id === newlyAddedId ? "bg-yellow-100" : ""}`}
@@ -350,8 +370,16 @@ export default function CorporateTaxDetailTab({ selectedCompanyId }: Props) {
                             </td>
                         </tr>
                     ))}
+                    {!loading && data.length === 0 && (
+                        <tr>
+                            <td colSpan={47} className="px-4 py-10 text-center text-sm text-zinc-500">
+                                데이터가 없습니다.
+                            </td>
+                        </tr>
+                    )}
                 </tbody>
             </table>
+            </div>
         </div>
     );
 };

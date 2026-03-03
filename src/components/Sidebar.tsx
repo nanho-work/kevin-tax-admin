@@ -9,31 +9,14 @@ import { format } from 'date-fns'
 import { RoleOut } from '@/types/role'
 
 
-const hrdMenuItems = [
-    { label: '휴가관리', href: '/annualleave', icon: '/vacation.png' },
-    { label: '근태관리', href: '/attendance', icon: '/attendance.png' },
-]
-
-const companyMenuItems = [
-    { label: '업체 리스트', href: '/companies', icon: '/company.png' },
-    { label: '업체 등록', href: '/companies/new', icon: '/add_company.png' },
-    { label: '회사 귀속 보고서', href: '/companies/tax', icon: '/tax_report.png' },
-]
-
-const scheduleMenuItems = [
-    { label: '단발성 일정', href: '/single-schedule', icon: '/onetax.png' },
-    { label: '거래처 일정', href: '/tax-schedule', icon: '/looptax.png' },
-]
-
-const settingMenuItems = [
-    { label: '부서 관리', href: '/setting/department', icon: '/onetax.png' },
-    { label: '팀 관리', href: '/setting/team', icon: '/looptax.png' },
-    { label: '직급 관리', href: '/setting/role', icon: '/looptax.png' },
-]
-
-const blogMenuItems = [
-    { label: '블로그 목록', href: '/blog/list', icon: '/blog_list.png' },
-    { label: '블로그 작성', href: '/blog/create', icon: '/blog_write.png' },
+const primaryMenus = [
+    { key: 'dashboard', label: '대시보드', href: '/dashboard' },
+    { key: 'companies', label: '업체 관리', href: '/companies' },
+    { key: 'staff', label: '인사 관리', href: '/staff' },
+    { key: 'schedule', label: '일정 관리', href: '/single-schedule' },
+    { key: 'blog', label: '블로그', href: '/blog/list' },
+    { key: 'gpt', label: 'GPT', href: '/gpt' },
+    { key: 'setting', label: '설정', href: '/setting' },
 ]
 
 export default function Sidebar() {
@@ -46,6 +29,8 @@ export default function Sidebar() {
         checkIn?: string
         role?: RoleOut | null
     } | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [currentTime, setCurrentTime] = useState<string>(() =>
         new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     )
@@ -53,9 +38,9 @@ export default function Sidebar() {
     useEffect(() => {
         async function fetchUser() {
             try {
+                setLoading(true)
+                setErrorMessage(null)
                 const admin = await checkAdminSession()
-                console.log('[Sidebar] fetchAdminSession admin:', admin)
-                console.log('불러온 관리자 정보:', admin)
                 const today = format(new Date(), 'yyyy-MM-dd')
                 const attendanceRes = await getAttendanceLogs({ admin_id: admin.id, date_to: today })
                 const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
@@ -76,6 +61,9 @@ export default function Sidebar() {
                 })
             } catch (error) {
                 console.error('세션 불러오기 실패', error)
+                setErrorMessage('사용자 정보를 불러오지 못했습니다.')
+            } finally {
+                setLoading(false)
             }
         }
         fetchUser()
@@ -88,65 +76,69 @@ export default function Sidebar() {
 
         return () => clearInterval(timeInterval)
     }, [])
+
+    const currentKey = (() => {
+        if (pathname.startsWith('/companies')) return 'companies'
+        if (pathname.startsWith('/staff') || pathname.startsWith('/annualleave') || pathname.startsWith('/attendance')) return 'staff'
+        if (pathname.startsWith('/single-schedule') || pathname.startsWith('/tax-schedule')) return 'schedule'
+        if (pathname.startsWith('/blog')) return 'blog'
+        if (pathname.startsWith('/gpt')) return 'gpt'
+        if (pathname.startsWith('/setting')) return 'setting'
+        if (pathname.startsWith('/dashboard')) return 'dashboard'
+        return ''
+    })()
+
     return (
-        <aside className="py-10 bg-sky-600 text-white w-[240px] min-w-[240px] flex-shrink-0">
-            {/* 상단 사용자 정보 */}
-            <div className="flex flex-col items-center space-y-2">
-                {user && (
+        <aside className="w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
+            <div className="border-b border-neutral-200 px-5 py-4">
+                <p className="text-xs text-neutral-500">관리자</p>
+                {loading ? (
                     <>
-                        <img
-                            src={user.profile_image_url || '/default-profile.png'}
-                            alt="사용자 이미지"
-                            className="w-24 h-24 rounded-full object-cover border-2 border-white"
-                        />
-                        <div className="text-base font-semibold">
-                            {user.name} {user.role?.name || ''}님 환영합니다.
-                        </div>
-                        <div className="text-sm text-gray-300">출근시간: {user.checkIn}</div>
-                        <div className="text-sm text-gray-300">현재시간: {currentTime}</div>
+                        <div className="mt-2 h-4 w-36 animate-pulse rounded bg-neutral-100" />
+                        <div className="mt-2 h-3 w-40 animate-pulse rounded bg-neutral-100" />
                     </>
+                ) : user ? (
+                    <div className="mt-2">
+                        <div className="flex items-center gap-3">
+                            <img
+                                src={user.profile_image_url || '/default-profile.png'}
+                                alt="사용자 이미지"
+                                className="h-12 w-12 rounded-full border border-neutral-200 object-cover"
+                            />
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-neutral-900">
+                                    {user.name} {user.role?.name || ''}
+                                </p>
+                                <p className="mt-0.5 text-xs text-neutral-500">출근시간: {user.checkIn ?? '-'}</p>
+                            </div>
+                        </div>
+                        <p className="mt-2 text-xs text-neutral-500">현재시간: {currentTime}</p>
+                    </div>
+                ) : (
+                    <p className="mt-2 text-sm text-rose-600">{errorMessage ?? '사용자 정보가 없습니다.'}</p>
                 )}
             </div>
 
-            <hr className="border-blue-400 border-2 my-4" />
-
-            {/* 메뉴 */}
-            <nav className="space-y-2">
-                {(() => {
-                    let menuItems = hrdMenuItems
-                    if (pathname.startsWith('/companies')) {
-                        menuItems = companyMenuItems
-                    } else if (pathname.startsWith('/single-schedule') || pathname.startsWith('/tax-schedule')) {
-                        menuItems = scheduleMenuItems
-                    } else if (pathname.startsWith('/vacation') || pathname.startsWith('/attendance')) {
-                        menuItems = hrdMenuItems
-                    } else if (pathname.startsWith('/setting')) {
-                        menuItems = settingMenuItems
-                    } else if (pathname.startsWith('/blog')) {
-                        menuItems = blogMenuItems
-                    }
-                    return (
-                        <div className="grid grid-cols-2 gap-2 px-4">
-                            {menuItems.map((item) => (
-                                <Link key={item.href} href={item.href}>
-                                    <div
-                                        className={`flex flex-col items-center justify-center p-4 rounded cursor-pointer hover:bg-gray-100 ${pathname === item.href ? 'bg-blue-600' : 'bg-gray-100/20'
-                                            }`}
-                                    >
-                                        {item.icon && (
-                                            <img
-                                                src={item.icon}
-                                                alt={`${item.label} 아이콘`}
-                                                className="w-14 h-14"
-                                            />
-                                        )}
-                                        <div className="mt-2 text-sm text-white text-center">{item.label}</div>
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-                    )
-                })()}
+            <nav className="px-4 py-4">
+                <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
+                <div className="space-y-1">
+                    {primaryMenus.map((item) => {
+                        const isActive = currentKey === item.key
+                        return (
+                            <Link key={item.href} href={item.href}>
+                                <div
+                                    className={`rounded-lg px-3 py-2 text-sm transition ${
+                                        isActive
+                                            ? 'bg-neutral-900 text-white'
+                                            : 'text-neutral-700 hover:bg-neutral-100'
+                                    }`}
+                                >
+                                    {item.label}
+                                </div>
+                            </Link>
+                        )
+                    })}
+                </div>
             </nav>
         </aside>
     )

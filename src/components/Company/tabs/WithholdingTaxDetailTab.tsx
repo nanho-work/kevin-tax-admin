@@ -17,6 +17,8 @@ interface Props {
 export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
   const [data, setData] = useState<WithholdingTaxDetailResponse[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // editable row state: id -> editableRow
   const [editableRows, setEditableRows] = useState<Record<number, Partial<WithholdingTaxDetailResponse>>>({});
   const [newlyAddedId, setNewlyAddedId] = useState<number | null>(null);
@@ -24,10 +26,15 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
 
   const loadData = async () => {
     try {
+      setLoading(true);
+      setErrorMessage(null);
       const list = await fetchWithholdingTaxList(selectedCompanyId || undefined);
       setData(list);
     } catch (error) {
       console.error("원천세 목록 조회 실패", error);
+      setErrorMessage("원천세 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -138,15 +145,20 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
   };
 
   return (
-    <div className="w-full overflow-auto max-h-[calc(100vh-220px)]">
-      <div className="min-w-[7000px]">
+    <div className="w-full space-y-4 overflow-auto">
+      {errorMessage ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      ) : null}
+      <div className="min-w-[7000px] rounded-lg border border-zinc-200 bg-white p-4">
       {selectedIds.length > 0 && (
-        <div className="mb-4 flex justify-between items-center">
-          <span className="text-sm text-gray-600">
+        <div className="mb-4 flex items-center justify-between">
+          <span className="text-sm text-zinc-600">
             선택된 항목: {selectedIds.length}개
           </span>
           <button
-            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            className="rounded-md bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700"
             onClick={async () => {
               if (!confirm(`${selectedIds.length}개 항목을 삭제하시겠습니까?`)) return;
               try {
@@ -164,17 +176,17 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
           </button>
         </div>
       )}
-      <div className="mb-4 flex justify-between items-center">
+      <div className="mb-4 flex items-center justify-between">
         <button
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800"
           onClick={handleAdd}
         >
           + 원천세 항목 추가
         </button>
       </div>
-      <table className="table-auto border border-gray-200 text-sm w-full">
+      <table className="table-auto w-full border border-zinc-200 text-sm">
         <thead>
-          <tr className="bg-gray-100 text-center">
+          <tr className="bg-zinc-50 text-center text-xs text-zinc-600">
             <th className="p-2">
               <input
                 type="checkbox"
@@ -208,11 +220,18 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
             <th className="p-2">생성일</th>
           </tr>
         </thead>
-        <tbody>
-          {data.map((row) => (
+        <tbody className="divide-y divide-zinc-200">
+          {loading && (
+            <tr>
+              <td colSpan={22} className="py-10 text-center text-sm text-zinc-500">
+                데이터를 불러오는 중입니다...
+              </td>
+            </tr>
+          )}
+          {!loading && data.map((row) => (
             <tr
                             key={row.id}
-                            className={`border-t text-center ${row.id === newlyAddedId ? "bg-yellow-100" : ""}`}
+                            className={`text-center ${row.id === newlyAddedId ? "bg-yellow-50" : "bg-white"}`}
                         >
               <td className="p-2">
                 <input
@@ -337,9 +356,9 @@ export default function WithholdingTaxDetailTab({ selectedCompanyId }: Props) {
               <td className="p-2">{row.created_at?.split("T")[0]}</td>
             </tr>
           ))}
-          {data.length === 0 && (
+          {!loading && data.length === 0 && (
             <tr>
-              <td colSpan={22} className="text-center text-gray-400 py-6">
+              <td colSpan={22} className="py-10 text-center text-sm text-zinc-500">
                 데이터가 없습니다.
               </td>
             </tr>

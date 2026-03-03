@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { createDepartment } from '@/services/departmentService';
 
+const inputClass =
+  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200';
+
 export default function DepartmentCreateForm({ onSuccess }: { onSuccess: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -16,21 +19,14 @@ export default function DepartmentCreateForm({ onSuccess }: { onSuccess: () => v
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 mb-6">
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="부서 이름"
-        className="border px-2 py-1 w-full"
-        required
-      />
-      <textarea
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="설명"
-        className="border px-2 py-1 w-full"
-      />
-      <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded">등록</button>
+    <form onSubmit={handleSubmit} className="rounded-lg border border-zinc-200 bg-white p-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="부서 이름" className={inputClass} required />
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="설명" className={inputClass} />
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button type="submit" className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800">등록</button>
+      </div>
     </form>
   );
 }

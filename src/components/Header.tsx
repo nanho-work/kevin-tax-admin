@@ -5,30 +5,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { logoutAdmin } from '@/services/adminService'
 import NotificationBell from './single-schedule/NotificationBell'
 import { checkOutAdmin } from '@/services/attendanceLogService'
-import { gsap } from 'gsap'
-import { useEffect, useRef } from 'react'
+import { useMemo } from 'react'
 
 const Header = () => {
   const router = useRouter()
   const pathname = usePathname()
-
-  const navRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (navRef.current) {
-      gsap.fromTo(
-        navRef.current.querySelectorAll('.nav-item'),
-        { opacity: 0, y: -10 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.6,
-          stagger: 0.1,
-          ease: 'power3.out',
-        }
-      )
-    }
-  }, [])
 
   const handleLogout = async () => {
     try {
@@ -42,42 +23,41 @@ const Header = () => {
     router.push('/')
   }
 
-  // 메뉴 정의
-  const menus = [
-    { label: '대시 보드', href: '/dashboard' },
-    { label: '업체 관리', href: '/companies' },
-    { label: '직원 관리', href: '/staff' },
-    { label: '일정 관리', href: '/single-schedule' },
-    { label: '블로그', href: '/blog' },
-    { label: 'GPT', href: '/gpt' },
-    { label: '설정', href: '/setting' },
-  ]
+  const currentLabel = useMemo(() => {
+    if (pathname.startsWith('/companies')) return '업체 관리'
+    if (pathname.startsWith('/staff') || pathname.startsWith('/annualleave') || pathname.startsWith('/attendance')) return '인사 관리'
+    if (pathname.startsWith('/single-schedule') || pathname.startsWith('/tax-schedule')) return '일정 관리'
+    if (pathname.startsWith('/blog')) return '블로그'
+    if (pathname.startsWith('/gpt')) return 'GPT'
+    if (pathname.startsWith('/setting')) return '설정'
+    if (pathname.startsWith('/dashboard')) return '대시보드'
+    return '어드민'
+  }, [pathname])
 
   return (
-    <header className="flex justify-between items-center px-6 py-3 border-b bg-white text-base">
-      {/* 좌측: 메뉴 */}
-      <nav ref={navRef} className="flex gap-2">
-        {menus.map(({ label, href }) => {
-          const isActive = pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`nav-item px-3 py-1 rounded ${isActive
-                ? 'font-bold bg-blue-600 text-white'
-                : 'text-gray-700 hover:bg-gray-100'
-                }`}
+    <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur">
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-neutral-900">KEVIN TAX ADMIN</div>
+            <div className="mt-0.5 text-xs text-neutral-500">{currentLabel}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="h-9 rounded-lg bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800"
             >
-              {label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* 우측: 알림 + 로그아웃 */}
-      <div className="flex items-center gap-4">
-        <NotificationBell />
-        <button onClick={handleLogout} className="text-red-500 hover:underline">로그아웃</button>
+              로그아웃
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-neutral-500">
+          <Link href="/dashboard" className="hover:underline">대시보드</Link>
+          <span className="mx-2 text-neutral-300">/</span>
+          <span>{currentLabel}</span>
+        </div>
       </div>
     </header>
   )

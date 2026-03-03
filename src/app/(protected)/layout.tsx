@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Header from '@/components/Header'
 import { checkAdminSession } from '@/services/adminService'
 import Sidebar from '@/components/Sidebar'
+import SectionTabs from '@/components/SectionTabs'
 
 
 export default function ProtectedLayout({
@@ -35,11 +36,14 @@ export default function ProtectedLayout({
   }
 
   return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header />
-        <main className="p-6 flex-1 overflow-y-auto">{children}</main>
+    <div className="flex h-screen flex-col">
+      <Header />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto p-6">
+          <SectionTabs />
+          {children}
+        </main>
       </div>
     </div>
   )
