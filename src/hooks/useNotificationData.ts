@@ -1,6 +1,6 @@
 // hooks/useNotificationData.ts
 import { useEffect, useState } from 'react';
-import { fetchSingleTaxes } from '@/services/single_scheduleService';
+import { fetchSingleTaxes } from '@/services/admin/single_scheduleService';
 import { NotificationItem } from '@/types/notification';
 
 export function useNotificationData() {

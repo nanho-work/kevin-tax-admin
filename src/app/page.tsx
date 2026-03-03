@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { checkAdminSession } from '@/services/adminService'
+import { checkAdminSession } from '@/services/admin/adminService'
+import { checkClientSession } from '@/services/client/clientAuthService'
+import { clearAllAccessTokens } from '@/services/http'
 
 export default function Home() {
   const router = useRouter()
@@ -12,10 +14,16 @@ export default function Home() {
     const verify = async () => {
       try {
         await checkAdminSession()
-        router.replace('/dashboard') // 세션 존재 시 이동
+        router.replace('/admin/dashboard')
+        return
+      } catch {}
+
+      try {
+        await checkClientSession()
+        router.replace('/client/dashboard')
       } catch {
-        localStorage.removeItem('admin_access_token')
-        router.replace('/login') // 세션 없을 시 이동
+        clearAllAccessTokens()
+        router.replace('/login')
       } finally {
         setChecking(false)
       }

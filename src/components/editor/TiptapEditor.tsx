@@ -11,6 +11,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Toolbar } from './TiptapToolbar';
+import { getAccessToken } from '@/services/http';
 
 
 /** ⬇️ 관리자 서비스: upload-by-url 호출 */
@@ -21,7 +22,7 @@ const UPLOAD_BY_URL_ENDPOINT = `${BASE_URL}/blog/posts/content-image-upload-by-u
 async function uploadContentImageByUrl(imageUrl: string): Promise<string | null> {
   try {
     // 토큰을 베어러로 보내야 한다면 여기에서 추가
-    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_access_token') : null;
+    const token = getAccessToken();
 
     const res = await fetch(UPLOAD_BY_URL_ENDPOINT, {
       method: 'POST',
