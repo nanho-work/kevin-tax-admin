@@ -84,7 +84,6 @@ export interface CompanyDetailResponse {
   founded_date?: string // ISO date string
   homepage_url?: string
   info_agreed?: boolean
-  manager_customer_id?: number
   is_active: boolean
   created_at?: string
   updated_at?: string
@@ -134,7 +133,6 @@ export interface CompanyUpdateRequest {
   homepage_url?: string;
   info_agreed?: boolean;
   is_active?: boolean;
-  manager_customer_id?: number;
 
   // 세금 관련
   is_half_term?: boolean;
@@ -183,7 +181,6 @@ export interface CompanyCreateRequest {
   homepage_url?: string;
   info_agreed?: boolean;
   is_active?: boolean;
-  manager_customer_id?: number;
 
   // 세금 필드
   is_half_term?: boolean;

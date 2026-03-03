@@ -97,7 +97,6 @@ export default function CompanyCreateForm() {
         homepage_url: '',
         info_agreed: false,
         is_active: true,
-        manager_customer_id: undefined,
         is_half_term: false,
         salary_date: '',
         salary_type: '',
@@ -272,16 +271,6 @@ export default function CompanyCreateForm() {
                 name="monthly_fee"
                 type="number"
                 value={form.monthly_fee === 0 ? '' : String(form.monthly_fee)}
-                onChange={handleNumberChange}
-                className={inputClass}
-              />
-            </Field>
-
-            <Field label="담당 고객 ID">
-              <input
-                name="manager_customer_id"
-                type="number"
-                value={form.manager_customer_id ?? ''}
                 onChange={handleNumberChange}
                 className={inputClass}
               />

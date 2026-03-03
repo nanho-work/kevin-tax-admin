@@ -142,14 +142,6 @@ export default function CompanyDetailForm({ company }: Props) {
             />
           </div>
           <div>
-            <label className="block mb-1 text-gray-700 text-sm font-semibold">담당자 ID</label>
-            <input
-              className="border border-gray-300 px-3 py-2 rounded w-full bg-gray-100"
-              value={form.manager_customer_id ?? ''}
-              readOnly
-            />
-          </div>
-          <div>
             <label className="block mb-1 text-gray-700 text-sm font-semibold">이메일</label>
             <input
               className="border border-gray-300 px-3 py-2 rounded w-full"
