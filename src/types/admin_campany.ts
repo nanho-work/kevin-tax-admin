@@ -24,8 +24,6 @@ export interface CompanyTaxDetail {
   memo?: string;                   // 업체 특이사항
   registration_number: string;     // 사업자등록번호
   monthly_fee?: number;            // 기장료 (VAT 별도)
-  encrypted_hometax_id?: string;   // 홈택스 ID
-  encrypted_hometax_pw?: string;   // 홈택스 PW
   contract_date?: string;          // 수임일 (ISO 문자열)
   business_type?: string;          // 업종
   cms_bank_account?: string;       // CMS 이체 통장
@@ -69,8 +67,6 @@ export interface CompanyDetailResponse {
   memo?: string
   registration_number?: string
   monthly_fee?: number
-  encrypted_hometax_id?: string
-  encrypted_hometax_pw?: string
   contract_date?: string // ISO date string
   industry_type?: string
   business_type?: string
@@ -117,8 +113,6 @@ export interface CompanyUpdateRequest {
   memo?: string;
   registration_number?: string;
   monthly_fee?: number;
-  encrypted_hometax_id?: string;
-  encrypted_hometax_pw?: string;
   contract_date?: string; // ISO string (YYYY-MM-DD)
   industry_type?: string;
   business_type?: string;
@@ -165,8 +159,6 @@ export interface CompanyCreateRequest {
   contact_method?: string;
   memo?: string;
   monthly_fee?: number;
-  encrypted_hometax_id?: string;
-  encrypted_hometax_pw?: string;
   contract_date?: string;
   industry_type?: string;
   business_type?: string;

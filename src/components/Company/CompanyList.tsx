@@ -142,7 +142,7 @@ export default function CompanyList() {
                         checked={selectedIds.length === companies.length && companies.length > 0}
                       />
                     </th>
-                    <th colSpan={17} className="h-10 border border-zinc-200 px-2 py-1 text-center text-xs">기본사항</th>
+                    <th colSpan={15} className="h-10 border border-zinc-200 px-2 py-1 text-center text-xs">기본사항</th>
                     <th colSpan={4} className="h-10 border border-zinc-200 px-2 py-1 text-center text-xs">원천세</th>
                     <th colSpan={4} className="h-10 border border-zinc-200 px-2 py-1 text-center text-xs">부가세</th>
                     <th colSpan={3} className="h-10 border border-zinc-200 px-2 py-1 text-center text-xs">법인세/종소세</th>
@@ -150,7 +150,7 @@ export default function CompanyList() {
                   <tr>
                     {[
                       '구분', '회사명', '대표자', '담당자', '연락처', '이메일', '연락방법', '메모', '사업자등록번호', '기장료',
-                      '홈택스 ID', '홈택스 PW', '수임일', '종목', 'CMS 통장', 'CMS 계좌', 'CMS 이체일',
+                      '수임일', '종목', 'CMS 통장', 'CMS 계좌', 'CMS 이체일',
                       '반기', '급여일', '급여작성', '원천세 메모', '온라인', '수출', '부가세 메모', '부가세 비고',
                       '외화', '법인세 메모', '법인세 비고',
                     ].map((title) => (
@@ -163,13 +163,13 @@ export default function CompanyList() {
                 <tbody className="divide-y divide-zinc-200">
                   {loading ? (
                     <tr>
-                      <td colSpan={29} className="px-4 py-10 text-center text-sm text-zinc-500">
+                      <td colSpan={27} className="px-4 py-10 text-center text-sm text-zinc-500">
                         회사 목록을 불러오는 중입니다...
                       </td>
                     </tr>
                   ) : companies.length === 0 ? (
                     <tr>
-                      <td colSpan={29} className="px-4 py-10 text-center text-sm text-zinc-500">
+                      <td colSpan={27} className="px-4 py-10 text-center text-sm text-zinc-500">
                         조회된 회사가 없습니다.
                       </td>
                     </tr>
@@ -205,8 +205,6 @@ export default function CompanyList() {
                         </td>
                         <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.registration_number}</td>
                         <td className="h-10 border border-zinc-200 px-2 text-right whitespace-nowrap">{c.monthly_fee?.toLocaleString()}</td>
-                        <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.encrypted_hometax_id}</td>
-                        <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.encrypted_hometax_pw}</td>
                         <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.contract_date?.slice(0, 10)}</td>
                         <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.business_type}</td>
                         <td className="h-10 border border-zinc-200 px-2 text-center whitespace-nowrap">{c.cms_bank_account}</td>

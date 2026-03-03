@@ -81,8 +81,6 @@ export default function CompanyCreateForm() {
         memo: '',
         registration_number: '',
         monthly_fee: 0,
-        encrypted_hometax_id: '',
-        encrypted_hometax_pw: '',
         contract_date: '',
         industry_type: '',
         business_type: '',
@@ -328,14 +326,8 @@ export default function CompanyCreateForm() {
           </div>
         </Section>
 
-        <Section title="홈택스 / CMS" description="필요 시 입력(암호화 저장/조회용).">
+        <Section title="계약 / CMS" description="필요 시 계약 및 CMS 정보를 입력합니다.">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="홈택스 아이디(암호화)">
-              <input name="encrypted_hometax_id" value={form.encrypted_hometax_id} onChange={handleChange} className={inputClass} />
-            </Field>
-            <Field label="홈택스 비밀번호(암호화)">
-              <input name="encrypted_hometax_pw" value={form.encrypted_hometax_pw} onChange={handleChange} className={inputClass} />
-            </Field>
             <Field label="계약일">
               <input name="contract_date" type="date" value={form.contract_date || ''} onChange={handleChange} className={inputClass} />
             </Field>
