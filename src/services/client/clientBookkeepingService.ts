@@ -15,6 +15,11 @@ import type {
   ClientBookkeepingContractOut,
   ClientBookkeepingContractUpdateRequest,
   ClientBookkeepingSummaryResponse,
+  ClientBillingSyncReceiptsResponse,
+  ClientDebitReceiptListFilters,
+  ClientDebitReceiptListResponse,
+  ClientDebitReceiptSummaryResponse,
+  MessageOut,
   ClientDebitUploadBatchListFilters,
   ClientDebitUploadBatchListResponse,
   ClientDebitUploadBatchOut,
@@ -131,8 +136,34 @@ export async function patchBookkeepingBillingStatus(
   return res.data
 }
 
+export async function deleteBookkeepingBilling(billingId: number): Promise<MessageOut> {
+  const res = await clientHttp.delete<MessageOut>(`${BASE}/billings/${billingId}`)
+  return res.data
+}
+
+export async function syncBookkeepingBillingReceipts(
+  billingId: number
+): Promise<ClientBillingSyncReceiptsResponse> {
+  const res = await clientHttp.post<ClientBillingSyncReceiptsResponse>(`${BASE}/billings/${billingId}/sync-receipts`)
+  return res.data
+}
+
 export async function getBookkeepingSummary(year: number): Promise<ClientBookkeepingSummaryResponse> {
   const res = await clientHttp.get<ClientBookkeepingSummaryResponse>(`${BASE}/summary`, {
+    params: { year },
+  })
+  return res.data
+}
+
+export async function listBookkeepingDebitReceipts(
+  filters: ClientDebitReceiptListFilters = {}
+): Promise<ClientDebitReceiptListResponse> {
+  const res = await clientHttp.get<ClientDebitReceiptListResponse>(`${BASE}/debits/receipts`, { params: filters })
+  return res.data
+}
+
+export async function getBookkeepingDebitSummary(year: number): Promise<ClientDebitReceiptSummaryResponse> {
+  const res = await clientHttp.get<ClientDebitReceiptSummaryResponse>(`${BASE}/debits/summary`, {
     params: { year },
   })
   return res.data
@@ -199,5 +230,9 @@ export const generateContractBillings = generateBookkeepingContractBillings
 export const listBillings = listBookkeepingBillings
 export const createBilling = createBookkeepingBilling
 export const updateBilling = updateBookkeepingBilling
+export const deleteBilling = deleteBookkeepingBilling
+export const syncBillingReceipts = syncBookkeepingBillingReceipts
 export const patchBillingStatus = patchBookkeepingBillingStatus
 export const updateBillingStatus = patchBookkeepingBillingStatus
+export const listDebitReceipts = listBookkeepingDebitReceipts
+export const getDebitSummary = getBookkeepingDebitSummary

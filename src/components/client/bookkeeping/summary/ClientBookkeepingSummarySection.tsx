@@ -3,7 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { getBookkeepingSummary, getClientBookkeepingErrorMessage } from '@/services/client/clientBookkeepingService'
+import {
+  getBookkeepingSummary,
+  getClientBookkeepingErrorMessage,
+  listContracts,
+} from '@/services/client/clientBookkeepingService'
 import type { ClientBookkeepingMonthlySummaryOut } from '@/types/clientBookkeeping'
 
 function formatNumber(value?: number) {
@@ -14,12 +18,40 @@ function formatNumber(value?: number) {
 export default function ClientBookkeepingSummarySection() {
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState<number>(currentYear)
+  const [startYear, setStartYear] = useState<number>(currentYear - 3)
   const [rows, setRows] = useState<ClientBookkeepingMonthlySummaryOut[]>([])
   const [loading, setLoading] = useState(false)
 
   const yearOptions = useMemo(() => {
-    return Array.from({ length: 7 }, (_, idx) => currentYear - 3 + idx)
-  }, [currentYear])
+    const from = Math.min(startYear, currentYear)
+    const to = Math.max(startYear, currentYear)
+    return Array.from({ length: to - from + 1 }, (_, idx) => from + idx)
+  }, [currentYear, startYear])
+
+  const loadYearRange = async () => {
+    try {
+      const res = await listContracts({})
+      const years = (res.items || [])
+        .map((item) => {
+          const source = item.start_date || item.start_month
+          if (!source) return null
+          const match = String(source).match(/^(\d{4})/)
+          return match ? Number(match[1]) : null
+        })
+        .filter((v): v is number => Number.isFinite(v))
+
+      if (years.length === 0) {
+        setStartYear(currentYear - 1)
+        return
+      }
+
+      const minYear = Math.min(...years)
+      setStartYear(minYear - 1)
+    } catch {
+      // Fallback to a safe recent range if contract years cannot be loaded.
+      setStartYear(currentYear - 3)
+    }
+  }
 
   const loadSummary = async (targetYear: number) => {
     try {
@@ -33,6 +65,10 @@ export default function ClientBookkeepingSummarySection() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadYearRange()
+  }, [])
 
   useEffect(() => {
     loadSummary(year)
@@ -110,4 +146,3 @@ export default function ClientBookkeepingSummarySection() {
     </section>
   )
 }
-

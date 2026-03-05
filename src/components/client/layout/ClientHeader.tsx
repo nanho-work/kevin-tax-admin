@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import BackButton from '@/components/common/BackButton'
 
 type HeaderInfo = {
   parent: string
@@ -38,22 +39,37 @@ export default function ClientHeader() {
   const pathname = usePathname()
   const { parent, child } = currentHeader(pathname)
   const title = child ? `${parent} > ${child}` : parent
+  const backPath = (() => {
+    if (pathname.startsWith('/client/companies/')) return '/client/companies'
+    if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return '/client/bookkeeping/debits/batches'
+    return null
+  })()
 
   return (
     <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur">
       <div className="px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-neutral-900">{title}</div>
-        </div>
-        <div className="mt-1 text-xs text-neutral-500">
-          <Link href="/client/dashboard" className="hover:underline">대시보드</Link>
-          <span className="mx-2 text-neutral-300">/</span>
-          <span>{parent}</span>
-          {child ? (
-            <>
+        <div className="grid grid-cols-[1fr_auto] items-stretch gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-neutral-900">{title}</div>
+            <div className="mt-1 text-xs text-neutral-500">
+              <Link href="/client/dashboard" className="hover:underline">대시보드</Link>
               <span className="mx-2 text-neutral-300">/</span>
-              <span>{child}</span>
-            </>
+              <span>{parent}</span>
+              {child ? (
+                <>
+                  <span className="mx-2 text-neutral-300">/</span>
+                  <span>{child}</span>
+                </>
+              ) : null}
+            </div>
+          </div>
+          {backPath ? (
+            <div className="flex items-center">
+              <BackButton
+                fallbackPath={backPath}
+                className="inline-flex h-10 items-center rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+              />
+            </div>
           ) : null}
         </div>
       </div>

@@ -6,8 +6,10 @@ import { toast } from 'react-hot-toast'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   createBilling,
+  deleteBilling,
   getClientBookkeepingErrorMessage,
   listBillings,
+  syncBillingReceipts,
   updateBilling,
   updateBillingStatus,
 } from '@/services/client/clientBookkeepingService'
@@ -49,6 +51,8 @@ type BillingModalState = {
   mode: 'create' | 'edit'
   target?: ClientBookkeepingBillingOut
 }
+
+type BillingViewMode = 'month' | 'unpaid_all'
 
 type BillingFormState = {
   company_id: number
@@ -119,15 +123,44 @@ function formatNumber(value?: number | null) {
   return value.toLocaleString('ko-KR')
 }
 
+function getCurrentYearMonth() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+function shiftYearMonth(value: string, diff: number) {
+  const [y, m] = value.split('-').map(Number)
+  if (!y || !m) return value
+  const next = new Date(y, m - 1 + diff, 1)
+  const year = next.getFullYear()
+  const month = String(next.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+function formatYearMonthLabel(value: string) {
+  if (!/^\d{4}-\d{2}$/.test(value)) return value
+  const [year, month] = value.split('-')
+  return `${year}. ${month}.`
+}
+
 export default function ClientBookkeepingBillingsSection() {
   const searchParams = useSearchParams()
   const [rows, setRows] = useState<ClientBookkeepingBillingOut[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [statusWorkingId, setStatusWorkingId] = useState<number | null>(null)
+  const [deleteWorkingId, setDeleteWorkingId] = useState<number | null>(null)
+  const [syncWorkingId, setSyncWorkingId] = useState<number | null>(null)
+  const [invoiceEditingId, setInvoiceEditingId] = useState<number | null>(null)
+  const [invoiceDraft, setInvoiceDraft] = useState('')
+  const [invoiceSavingId, setInvoiceSavingId] = useState<number | null>(null)
 
   const [targetMonthFrom, setTargetMonthFrom] = useState('')
   const [targetMonthTo, setTargetMonthTo] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentYearMonth())
+  const [viewMode, setViewMode] = useState<BillingViewMode>('month')
   const [companyId, setCompanyId] = useState<number | ''>('')
   const [status, setStatus] = useState<ClientBookkeepingBillingStatus | ''>('')
   const [unpaidOnly, setUnpaidOnly] = useState(false)
@@ -210,18 +243,25 @@ export default function ClientBookkeepingBillingsSection() {
     const parsedStatus = nextStatus ? (nextStatus as ClientBookkeepingBillingStatus) : ''
     const parsedUnpaidOnly = nextUnpaidOnly === 'true'
 
-    setTargetMonthFrom(monthFrom)
-    setTargetMonthTo(monthTo)
+    const defaultMonth = getCurrentYearMonth()
+    const nextMonthFrom = monthFrom || defaultMonth
+    const nextMonthTo = monthTo || defaultMonth
+    const nextViewMode: BillingViewMode = parsedUnpaidOnly && !monthFrom && !monthTo ? 'unpaid_all' : 'month'
+
+    setViewMode(nextViewMode)
+    setSelectedMonth(monthFrom && monthFrom === monthTo ? monthFrom : defaultMonth)
+    setTargetMonthFrom(nextViewMode === 'month' ? nextMonthFrom : '')
+    setTargetMonthTo(nextViewMode === 'month' ? nextMonthTo : '')
     setCompanyId(parsedCompanyId)
     setStatus(parsedStatus)
-    setUnpaidOnly(parsedUnpaidOnly)
+    setUnpaidOnly(nextViewMode === 'unpaid_all')
 
     loadBillings(1, {
-      targetMonthFrom: monthFrom,
-      targetMonthTo: monthTo,
+      targetMonthFrom: nextViewMode === 'month' ? nextMonthFrom : '',
+      targetMonthTo: nextViewMode === 'month' ? nextMonthTo : '',
       companyId: parsedCompanyId,
       status: parsedStatus,
-      unpaidOnly: parsedUnpaidOnly,
+      unpaidOnly: nextViewMode === 'unpaid_all',
     })
   }, [searchParams])
 
@@ -271,6 +311,7 @@ export default function ClientBookkeepingBillingsSection() {
       if (modal.mode === 'create') {
         await createBilling(payload)
         toast.success('월 청구가 생성되었습니다.')
+        toast.success('자동 매칭 반영됨')
       } else if (modal.target) {
         await updateBilling(modal.target.id, payload)
         toast.success('월 청구가 수정되었습니다.')
@@ -298,20 +339,157 @@ export default function ClientBookkeepingBillingsSection() {
     }
   }
 
+  const handleDelete = async (row: ClientBookkeepingBillingOut) => {
+    if (!confirm(`${row.company_name || '해당 회사'}의 ${row.target_month} 청구 내역을 삭제하시겠습니까?`)) return
+    try {
+      setDeleteWorkingId(row.id)
+      const result = await deleteBilling(row.id)
+      toast.success(result.message || '월별 청구 내역이 삭제되었습니다.')
+      setRows((prev) => prev.filter((item) => item.id !== row.id))
+      setTotal((prev) => Math.max(0, prev - 1))
+      const nextTotal = Math.max(0, total - 1)
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / size))
+      const nextPage = Math.min(page, nextTotalPages)
+      await loadBillings(nextPage)
+    } catch (error) {
+      toast.error(getClientBookkeepingErrorMessage(error))
+    } finally {
+      setDeleteWorkingId(null)
+    }
+  }
+
+  const applyMonthView = async (month: string) => {
+    setViewMode('month')
+    setSelectedMonth(month)
+    setTargetMonthFrom(month)
+    setTargetMonthTo(month)
+    setUnpaidOnly(false)
+    await loadBillings(1, {
+      targetMonthFrom: month,
+      targetMonthTo: month,
+      unpaidOnly: false,
+    })
+  }
+
+  const applyUnpaidAllView = async () => {
+    setViewMode('unpaid_all')
+    setTargetMonthFrom('')
+    setTargetMonthTo('')
+    setUnpaidOnly(true)
+    await loadBillings(1, {
+      targetMonthFrom: '',
+      targetMonthTo: '',
+      unpaidOnly: true,
+    })
+  }
+
+  const handleSyncReceipts = async (row: ClientBookkeepingBillingOut) => {
+    try {
+      setSyncWorkingId(row.id)
+      const result = await syncBillingReceipts(row.id)
+      toast.success(`${result.message} (연결 ${result.attached_count}건)`)
+      await loadBillings(page)
+    } catch (error) {
+      toast.error(getClientBookkeepingErrorMessage(error))
+    } finally {
+      setSyncWorkingId(null)
+    }
+  }
+
+  const startInvoiceEdit = (row: ClientBookkeepingBillingOut) => {
+    setInvoiceEditingId(row.id)
+    setInvoiceDraft(row.invoice_issued_at || '')
+  }
+
+  const cancelInvoiceEdit = () => {
+    if (invoiceSavingId != null) return
+    setInvoiceEditingId(null)
+    setInvoiceDraft('')
+  }
+
+  const saveInvoiceIssuedAt = async (row: ClientBookkeepingBillingOut) => {
+    try {
+      setInvoiceSavingId(row.id)
+      await updateBilling(row.id, {
+        invoice_issued_at: invoiceDraft.trim() || null,
+      })
+      toast.success('계산서 발행일이 저장되었습니다.')
+      setInvoiceEditingId(null)
+      setInvoiceDraft('')
+      await loadBillings(page)
+    } catch (error) {
+      toast.error(getClientBookkeepingErrorMessage(error))
+    } finally {
+      setInvoiceSavingId(null)
+    }
+  }
+
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-base font-semibold text-zinc-900">월별 청구/수납 관리</h1>
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
-              <input
-                type="checkbox"
-                checked={unpaidOnly}
-                onChange={(e) => setUnpaidOnly(e.target.checked)}
-              />
-              미수만 보기
-            </label>
+      <div className="rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_1fr_auto_auto]">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void applyMonthView(shiftYearMonth(selectedMonth, -1))}
+              disabled={viewMode !== 'month'}
+              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              disabled={viewMode !== 'month'}
+              onClick={() => {
+                const el = document.getElementById('billing-month-picker') as HTMLInputElement | null
+                el?.showPicker?.()
+                el?.focus()
+              }}
+              className="h-10 min-w-[130px] rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {formatYearMonthLabel(selectedMonth)}
+            </button>
+            <button
+              type="button"
+              onClick={() => void applyMonthView(shiftYearMonth(selectedMonth, 1))}
+              disabled={viewMode !== 'month'}
+              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              ▶
+            </button>
+            <input
+              id="billing-month-picker"
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                const next = e.target.value
+                if (!next) return
+                void applyMonthView(next)
+              }}
+              className="sr-only"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void applyMonthView(selectedMonth)}
+              className={`rounded-md px-3 py-2 text-sm ${
+                viewMode === 'month' ? 'bg-zinc-900 text-white' : 'border border-zinc-300 bg-white text-zinc-700'
+              }`}
+            >
+              월별보기
+            </button>
+            <button
+              type="button"
+              onClick={() => void applyUnpaidAllView()}
+              className={`rounded-md px-3 py-2 text-sm ${
+                viewMode === 'unpaid_all'
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 bg-white text-zinc-700'
+              }`}
+            >
+              미수금 전체보기
+            </button>
             <button
               type="button"
               onClick={openCreate}
@@ -328,23 +506,6 @@ export default function ClientBookkeepingBillingsSection() {
               엑셀 다운로드
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <input
-            className={inputClass}
-            placeholder="대상월 시작 (YYYY-MM)"
-            value={targetMonthFrom}
-            onChange={(e) => setTargetMonthFrom(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="대상월 종료 (YYYY-MM)"
-            value={targetMonthTo}
-            onChange={(e) => setTargetMonthTo(e.target.value)}
-          />
           <select
             className={inputClass}
             value={companyId}
@@ -371,7 +532,13 @@ export default function ClientBookkeepingBillingsSection() {
           </select>
           <button
             type="button"
-            onClick={() => loadBillings(1)}
+            onClick={() =>
+              loadBillings(1, {
+                targetMonthFrom: viewMode === 'month' ? selectedMonth : '',
+                targetMonthTo: viewMode === 'month' ? selectedMonth : '',
+                unpaidOnly: viewMode === 'unpaid_all',
+              })
+            }
             className="h-10 rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-50"
           >
             조회
@@ -384,17 +551,17 @@ export default function ClientBookkeepingBillingsSection() {
           <thead className="bg-zinc-50 text-xs text-zinc-600">
             <tr>
               <th className="px-3 py-3 text-center">대상월</th>
-              <th className="px-3 py-3 text-left">회사명</th>
-              <th className="px-3 py-3 text-right">공급가</th>
-              <th className="px-3 py-3 text-right">VAT</th>
-              <th className="px-3 py-3 text-right">총액</th>
+              <th className="px-3 py-3 text-center">회사명</th>
+              <th className="px-3 py-3 text-center">공급가</th>
+              <th className="px-3 py-3 text-center">VAT</th>
+              <th className="px-3 py-3 text-center">총액</th>
               <th className="px-3 py-3 text-center">계산서 발행일(TI)</th>
               <th className="px-3 py-3 text-center">현금수취일</th>
-              <th className="px-3 py-3 text-right">조정금액</th>
-              <th className="px-3 py-3 text-right">미수금액</th>
+              <th className="px-3 py-3 text-center">조정금액</th>
+              <th className="px-3 py-3 text-center">미수금액</th>
               <th className="px-3 py-3 text-center">상태</th>
               <th className="px-3 py-3 text-center">생성구분</th>
-              <th className="px-3 py-3 text-left">월 메모</th>
+              <th className="px-3 py-3 text-center">월 메모</th>
               <th className="px-3 py-3 text-center">액션</th>
             </tr>
           </thead>
@@ -415,14 +582,52 @@ export default function ClientBookkeepingBillingsSection() {
               rows.map((row) => (
                 <tr key={row.id}>
                   <td className="px-3 py-3 text-center">{row.target_month}</td>
-                  <td className="px-3 py-3 text-left">{row.company_name || '-'}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(row.supply_amount)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(row.vat_amount)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(row.total_amount)}</td>
-                  <td className="px-3 py-3 text-center">{row.invoice_issued_at || '-'}</td>
+                  <td className="px-3 py-3 text-center">{row.company_name || '-'}</td>
+                  <td className="px-3 py-3 text-center">{formatNumber(row.supply_amount)}</td>
+                  <td className="px-3 py-3 text-center">{formatNumber(row.vat_amount)}</td>
+                  <td className="px-3 py-3 text-center">{formatNumber(row.total_amount)}</td>
+                  <td className="px-3 py-3 text-center">
+                    {invoiceEditingId === row.id ? (
+                      <div className="inline-flex items-center gap-1">
+                        <input
+                          type="date"
+                          value={invoiceDraft}
+                          onChange={(e) => setInvoiceDraft(e.target.value)}
+                          className="h-8 rounded border border-zinc-300 px-2 text-xs"
+                        />
+                        <button
+                          type="button"
+                          disabled={invoiceSavingId === row.id}
+                          onClick={() => void saveInvoiceIssuedAt(row)}
+                          className="rounded border border-blue-300 px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+                        >
+                          저장
+                        </button>
+                        <button
+                          type="button"
+                          disabled={invoiceSavingId === row.id}
+                          onClick={cancelInvoiceEdit}
+                          className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-2">
+                        <span>{row.invoice_issued_at || '-'}</span>
+                        <button
+                          type="button"
+                          onClick={() => startInvoiceEdit(row)}
+                          className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                        >
+                          {row.invoice_issued_at ? '수정' : '등록'}
+                        </button>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-center">{row.cash_received_at || '-'}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(row.adjustment_amount)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(row.receivable_amount)}</td>
+                  <td className="px-3 py-3 text-center">{formatNumber(row.adjustment_amount)}</td>
+                  <td className="px-3 py-3 text-center">{formatNumber(row.receivable_amount)}</td>
                   <td className="px-3 py-3 text-center">
                     <select
                       className="h-8 rounded border border-zinc-300 px-2 text-xs"
@@ -438,17 +643,35 @@ export default function ClientBookkeepingBillingsSection() {
                     </select>
                   </td>
                   <td className="px-3 py-3 text-center">{generatedByLabel[row.generated_by] ?? row.generated_by}</td>
-                  <td className="px-3 py-3 text-left">
+                  <td className="px-3 py-3 text-center">
                     {row.memo ? <span className="block max-w-[240px] truncate" title={row.memo}>{row.memo}</span> : '-'}
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(row)}
-                      className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                    >
-                      수정
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        disabled={syncWorkingId === row.id}
+                        onClick={() => handleSyncReceipts(row)}
+                        className="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+                      >
+                        {syncWorkingId === row.id ? '동기화 중...' : '수금 재동기화'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(row)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                      >
+                        수정
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleteWorkingId === row.id}
+                        onClick={() => handleDelete(row)}
+                        className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        {deleteWorkingId === row.id ? '삭제 중...' : '삭제'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

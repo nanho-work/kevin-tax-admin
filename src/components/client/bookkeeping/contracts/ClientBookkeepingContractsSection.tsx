@@ -49,6 +49,31 @@ function normalizeMonth(value: string): string | undefined {
   return undefined
 }
 
+function formatFlexibleDateInput(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8)
+  if (!digits) return ''
+  if (digits.length <= 4) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 4)}.${digits.slice(4, 6)}`
+  return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`
+}
+
+function parseFlexibleDateToIso(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(trimmed)) return trimmed.replace(/\./g, '-')
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return `${trimmed}-01`
+  if (/^\d{4}\.\d{2}$/.test(trimmed)) return `${trimmed.replace('.', '-')}-01`
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 8) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+  if (digits.length === 6) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-01`
+  return undefined
+}
+
+function toFullDateForSave(value: string): string | undefined {
+  return parseFlexibleDateToIso(value)
+}
+
 function formatCurrency(value?: number | null) {
   if (typeof value !== 'number') return '-'
   return value.toLocaleString('ko-KR')
@@ -88,8 +113,8 @@ function mapContractToForm(target: ClientBookkeepingContractOut): ContractFormSt
     company_id: target.company_id,
     company_text: target.company_name || '',
     indefinite: !target.end_date && !target.end_month,
-    start_date: target.start_date || '',
-    end_date: target.end_date || '',
+    start_date: target.start_date ? target.start_date.replace(/-/g, '.') : '',
+    end_date: target.end_date ? target.end_date.replace(/-/g, '.') : '',
     start_month: derivedStartMonth,
     end_month: derivedEndMonth,
     monthly_fee_supply: target.monthly_fee_supply != null ? String(target.monthly_fee_supply) : '',
@@ -230,8 +255,8 @@ export default function ClientBookkeepingContractsSection() {
   }
 
   const handleSave = async () => {
-    const startDate = form.start_date.trim() || undefined
-    const endDate = form.indefinite ? undefined : form.end_date.trim() || undefined
+    const startDate = toFullDateForSave(form.start_date)
+    const endDate = form.indefinite ? undefined : toFullDateForSave(form.end_date)
     const startMonth = normalizeMonth(form.start_month)
     const endMonth = form.indefinite ? undefined : normalizeMonth(form.end_month)
     const monthlyFeeSupply =
@@ -243,6 +268,14 @@ export default function ClientBookkeepingContractsSection() {
     }
     if (!startDate && !startMonth) {
       toast.error('시작 기준(start_date 또는 start_month) 중 하나는 입력해 주세요.')
+      return
+    }
+    if (form.start_date.trim() && !startDate) {
+      toast.error('계약 시작일 형식이 올바르지 않습니다. (YYYYMM 또는 YYYYMMDD)')
+      return
+    }
+    if (!form.indefinite && form.end_date.trim() && !endDate) {
+      toast.error('계약 종료일 형식이 올바르지 않습니다. (YYYYMM 또는 YYYYMMDD)')
       return
     }
     if (startDate && endDate && endDate < startDate) {
@@ -324,31 +357,15 @@ export default function ClientBookkeepingContractsSection() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-base font-semibold text-zinc-900">기장 거래처 관리</h1>
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
-              <input
-                type="checkbox"
-                checked={includeInactive}
-                onChange={(e) => setIncludeInactive(e.target.checked)}
-              />
-              비활성 포함
-            </label>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800"
-            >
-              거래처 추가
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto_auto]">
+          <button
+            type="button"
+            onClick={openCreate}
+            className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
+          >
+            거래처 추가
+          </button>
           <input
             className={inputClass}
             placeholder="회사명/사업자번호 검색"
@@ -570,15 +587,20 @@ export default function ClientBookkeepingContractsSection() {
                 <p className="mb-1 text-xs font-medium text-zinc-600">계약 시작일</p>
                 <input
                   className={inputClass}
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="YYYY.MM.DD"
                   value={form.start_date}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextStartDate = formatFlexibleDateInput(e.target.value)
+                    const parsedStartDate = parseFlexibleDateToIso(nextStartDate)
                     setForm((prev) => ({
                       ...prev,
-                      start_date: e.target.value,
-                      start_month: e.target.value ? e.target.value.slice(0, 7) : '',
+                      start_date: nextStartDate,
+                      start_month: parsedStartDate ? parsedStartDate.slice(0, 7) : '',
                     }))
-                  }
+                  }}
                 />
               </div>
               <div>
@@ -592,16 +614,21 @@ export default function ClientBookkeepingContractsSection() {
                 <p className="mb-1 text-xs font-medium text-zinc-600">계약 종료일</p>
                 <input
                   className={`${inputClass} ${form.indefinite ? 'border-zinc-200 bg-zinc-100 text-zinc-400' : ''}`}
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="YYYY.MM.DD"
                   disabled={form.indefinite}
                   value={form.end_date}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextEndDate = formatFlexibleDateInput(e.target.value)
+                    const parsedEndDate = parseFlexibleDateToIso(nextEndDate)
                     setForm((prev) => ({
                       ...prev,
-                      end_date: e.target.value,
-                      end_month: e.target.value ? e.target.value.slice(0, 7) : '',
+                      end_date: nextEndDate,
+                      end_month: parsedEndDate ? parsedEndDate.slice(0, 7) : '',
                     }))
-                  }
+                  }}
                 />
               </div>
               <div>

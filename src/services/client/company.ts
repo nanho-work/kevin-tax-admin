@@ -18,15 +18,17 @@ interface FetchCompanyParams {
   page: number
   limit: number
   keyword?: string
+  business_type?: 'individual' | 'corporate'
 }
 
 export async function fetchClientCompanyTaxList({
   page,
   limit,
   keyword,
+  business_type,
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
   const response = await clientHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
-    params: { page, limit, keyword },
+    params: { page, limit, keyword, business_type },
   })
   return response.data
 }

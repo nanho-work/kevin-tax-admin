@@ -5,11 +5,17 @@ import { fetchCompanyTaxList } from '@/services/admin/company';
 import type { CompanyTaxDetail } from '@/types/admin_campany';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PaginatedResponse } from '@/types/admin_campany';
 
 interface Props {
   detailBasePath?: string;
-  fetchList?: (params: { page: number; limit: number; keyword?: string }) => Promise<PaginatedResponse<CompanyTaxDetail>>;
+  fetchList?: (params: {
+    page: number
+    limit: number
+    keyword?: string
+    business_type?: 'individual' | 'corporate'
+  }) => Promise<PaginatedResponse<CompanyTaxDetail>>;
   deactivate?: (companyId: number) => Promise<{ message?: string }>;
   disableDelete?: boolean;
   pageSize?: number;
@@ -22,34 +28,80 @@ export default function CompanyList({
   disableDelete = true,
   pageSize = 9,
 }: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [allCompanies, setAllCompanies] = useState<CompanyTaxDetail[]>([]);
   const [companies, setCompanies] = useState<CompanyTaxDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [keyword, setKeyword] = useState('');
-  const [page, setPage] = useState(1);
+  const [keyword, setKeyword] = useState(() => searchParams.get('keyword') || '');
+  const [businessType, setBusinessType] = useState<'' | 'individual' | 'corporate'>(() => {
+    const type = searchParams.get('business_type')
+    return type === 'individual' || type === 'corporate' ? type : ''
+  });
+  const [page, setPage] = useState(() => {
+    const parsed = Number(searchParams.get('page') || 1)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+  });
   const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     setPage(1);
-  }, [keyword]);
+  }, [keyword, businessType]);
+
+  useEffect(() => {
+    const nextKeyword = searchParams.get('keyword') || ''
+    const nextTypeRaw = searchParams.get('business_type')
+    const nextType = nextTypeRaw === 'individual' || nextTypeRaw === 'corporate' ? nextTypeRaw : ''
+    const parsedPage = Number(searchParams.get('page') || 1)
+    const nextPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+
+    setKeyword(nextKeyword)
+    setBusinessType(nextType)
+    setPage(nextPage)
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (page > 1) params.set('page', String(page))
+    if (keyword.trim()) params.set('keyword', keyword.trim())
+    if (businessType) params.set('business_type', businessType)
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }, [page, keyword, businessType, pathname, router]);
 
   useEffect(() => {
     const loadCompanies = async () => {
       setLoading(true);
       try {
         setErrorMessage(null);
-        const { items, total } = await fetchList({
-          page,
-          limit: pageSize,
-          keyword: keyword.trim(),
-        });
-        const sorted = [...items].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
-        setCompanies(sorted);
-        setTotalCount(total);
+        const batchSize = Math.max(pageSize, 100)
+        let cursor = 1
+        let total = 0
+        const merged: CompanyTaxDetail[] = []
+
+        do {
+          const { items, total: totalCountFromApi } = await fetchList({
+            page: cursor,
+            limit: batchSize,
+            keyword: keyword.trim(),
+            business_type: businessType || undefined,
+          })
+          merged.push(...(items || []))
+          total = totalCountFromApi || merged.length
+          cursor += 1
+          if (!items || items.length === 0) break
+        } while (merged.length < total)
+
+        const sorted = [...merged].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
+        setAllCompanies(sorted)
+        setTotalCount(sorted.length)
       } catch (err) {
         const status = (err as any)?.response?.status;
         if (status === 404) {
           setErrorMessage(null);
+          setAllCompanies([]);
           setCompanies([]);
           setTotalCount(0);
           return;
@@ -61,7 +113,13 @@ export default function CompanyList({
       }
     };
     loadCompanies();
-  }, [page, keyword]);
+  }, [keyword, businessType, pageSize, fetchList]);
+
+  useEffect(() => {
+    const start = (page - 1) * pageSize
+    const end = start + pageSize
+    setCompanies(allCompanies.slice(start, end))
+  }, [allCompanies, page, pageSize]);
 
   const handleDelete = async (companyId: number) => {
     if (!deactivate) {
@@ -73,7 +131,7 @@ export default function CompanyList({
     try {
       await deactivate(companyId)
       toast.success('삭제 완료')
-      setCompanies((prev) => prev.filter((c) => c.id !== companyId))
+      setAllCompanies((prev) => prev.filter((c) => c.id !== companyId))
       setTotalCount((prev) => Math.max(0, prev - 1))
     } catch (err) {
       console.error('삭제 실패:', err)
@@ -101,6 +159,35 @@ export default function CompanyList({
                 placeholder="회사명 또는 사업자번호"
                 className="h-10 rounded-md border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
               />
+              <div className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setBusinessType('')}
+                  className={`rounded px-3 py-1.5 text-sm transition ${
+                    businessType === '' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  전체
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBusinessType('corporate')}
+                  className={`rounded px-3 py-1.5 text-sm transition ${
+                    businessType === 'corporate' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  법인
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBusinessType('individual')}
+                  className={`rounded px-3 py-1.5 text-sm transition ${
+                    businessType === 'individual' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  개인
+                </button>
+              </div>
             </div>
           </div>
 
@@ -135,12 +222,22 @@ export default function CompanyList({
                       <td className="h-10 px-2 text-center">{c.category || '-'}</td>
                       <td className="h-10 px-2 text-center text-zinc-900">{c.company_name}</td>
                       <td className="h-10 px-2 text-center">
+                        {(() => {
+                          const params = new URLSearchParams()
+                          if (page > 1) params.set('page', String(page))
+                          if (keyword.trim()) params.set('keyword', keyword.trim())
+                          if (businessType) params.set('business_type', businessType)
+                          const query = params.toString()
+                          const href = query ? `${detailBasePath}/${c.id}?${query}` : `${detailBasePath}/${c.id}`
+                          return (
                         <Link
-                          href={`${detailBasePath}/${c.id}`}
+                          href={href}
                           className="inline-flex h-7 items-center rounded-md border border-zinc-300 px-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
                         >
                           상세보기
                         </Link>
+                          )
+                        })()}
                       </td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.owner_name}</td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.registration_number}</td>

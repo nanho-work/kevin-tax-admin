@@ -169,6 +169,59 @@ export interface ClientBookkeepingSummaryResponse {
   items: ClientBookkeepingMonthlySummaryOut[]
 }
 
+export interface ClientDebitReceiptOut {
+  id: number
+  batch_id: number
+  company_id?: number | null
+  company_name?: string | null
+  billing_id?: number | null
+  target_month?: string | null
+  member_name?: string | null
+  withdraw_date?: string | null
+  withdraw_amount?: number | null
+  withdraw_status?: string | null
+  created_at: string
+}
+
+export interface ClientDebitReceiptListResponse {
+  total: number
+  page: number
+  size: number
+  items: ClientDebitReceiptOut[]
+}
+
+export interface ClientDebitReceiptListFilters {
+  target_month_from?: string
+  target_month_to?: string
+  company_id?: number
+  matched_only?: boolean
+  unmatched_only?: boolean
+  page?: number
+  size?: number
+}
+
+export interface ClientDebitReceiptMonthlySummaryOut {
+  target_month: string
+  received_amount_sum: number
+  matched_amount_sum: number
+  unmatched_amount_sum: number
+  matched_count: number
+  unmatched_count: number
+}
+
+export interface ClientDebitReceiptSummaryResponse {
+  year: number
+  items: ClientDebitReceiptMonthlySummaryOut[]
+}
+
+export interface ClientBillingSyncReceiptsResponse {
+  message: string
+  billing_id: number
+  attached_count: number
+  status: string
+  receivable_amount: number
+}
+
 export interface ClientDebitUploadBatchOut {
   id: number
   client_id: number

@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import ClientBookkeepingDebitReceiptsSection from '@/components/client/bookkeeping/debits/ClientBookkeepingDebitReceiptsSection'
 
 export default function ClientBookkeepingDebitsPage() {
-  redirect('/client/bookkeeping/debits/batches')
+  return <ClientBookkeepingDebitReceiptsSection />
 }

@@ -20,12 +20,27 @@ interface Props {
   deleteBusinessLicenseFn?: (company_id: number) => Promise<unknown>
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  description,
+  action,
+  children,
+}: {
+  title: string
+  description?: string
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div className="border-b border-zinc-100 px-5 py-4">
-        <h3 className="text-base font-semibold text-zinc-900">{title}</h3>
-        {description ? <p className="mt-1 text-sm text-zinc-500">{description}</p> : null}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-900">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-zinc-500">{description}</p> : null}
+          </div>
+          {action ? <div className="sm:ml-auto">{action}</div> : null}
+        </div>
       </div>
       <div className="px-5 py-5">{children}</div>
     </section>
@@ -180,41 +195,35 @@ export default function CompanyDetailForm({
 
   return (
     <div className="w-full space-y-6">
-      <div className="py-1">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-900">고객사 상세정보</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              {editable ? '고객사 기본 정보와 주소 정보를 수정할 수 있습니다.' : '고객사 기본 정보와 주소 정보를 확인할 수 있습니다.'}
-            </p>
-          </div>
-          {editable && updateFn ? (
-            <button
-              onClick={async () => {
-                try {
-                  setSaving(true)
-                  const { id: _id, created_at, updated_at, ...payload } = form
-                  const res = await updateFn(companyId, payload)
-                  alert(res.message)
-                  router.push(listPath)
-                } catch (err: any) {
-                  alert(err.response?.data?.detail || '수정 실패')
-                } finally {
-                  setSaving(false)
-                }
-              }}
-              disabled={saving}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
-            >
-              {saving ? '저장 중...' : '수정완료'}
-            </button>
-          ) : null}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
         <div className="space-y-6 xl:col-span-3">
-          <Section title="기본 정보">
+          <Section
+            title="기본 정보"
+            action={
+              editable && updateFn ? (
+                <button
+                  onClick={async () => {
+                    try {
+                      setSaving(true)
+                      const { id: _id, created_at, updated_at, ...payload } = form
+                      const res = await updateFn(companyId, payload)
+                      toast.success(res.message || '수정이 완료되었습니다.')
+                      const refreshed = await fetchDetailFn(companyId)
+                      setForm(refreshed)
+                    } catch (err: any) {
+                      toast.error(err.response?.data?.detail || '수정 실패')
+                    } finally {
+                      setSaving(false)
+                    }
+                  }}
+                  disabled={saving}
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                >
+                  {saving ? '저장 중...' : '수정완료'}
+                </button>
+              ) : null
+            }
+          >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="회사명">
                 <input className={inputClass} value={form.company_name} readOnly={!editable} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />

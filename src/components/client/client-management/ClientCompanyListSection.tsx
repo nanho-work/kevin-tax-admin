@@ -34,7 +34,8 @@ export default function ClientCompanyListSection() {
         q: q.trim() || undefined,
         status: status || undefined,
       })
-      setRows(data)
+      const sorted = [...data].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
+      setRows(sorted)
     } catch (err: any) {
       toast.error(statusMessage(err?.response?.status, 'list'))
       setRows([])

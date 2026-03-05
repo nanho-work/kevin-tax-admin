@@ -21,7 +21,12 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         {children}
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            style: { marginTop: '64px' },
+          }}
+        />
       </body>
     </html>
   )

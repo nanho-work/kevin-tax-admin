@@ -325,19 +325,6 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-base font-semibold text-zinc-900">자동이체 배치 상세</h1>
-          <button
-            type="button"
-            onClick={() => {
-              if (window.history.length > 1) {
-                router.back()
-                return
-              }
-              router.push('/client/bookkeeping/debits/batches')
-            }}
-            className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-          >
-            뒤로가기
-          </button>
         </div>
         {metaLoading ? (
           <p className="mt-2 text-sm text-zinc-500">배치 정보 조회 중...</p>

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMemo } from 'react'
+import BackButton from '@/components/common/BackButton'
 
 const Header = () => {
   const pathname = usePathname()
@@ -17,6 +18,13 @@ const Header = () => {
     return '어드민'
   }, [pathname])
 
+  const backPath = useMemo(() => {
+    if (pathname.startsWith('/admin/companies/') && pathname !== '/admin/companies/new') return '/admin/companies'
+    if (pathname.startsWith('/admin/companies/new')) return '/admin/companies'
+    if (pathname.startsWith('/admin/companies/account/new')) return '/admin/companies/account'
+    return null
+  }, [pathname])
+
   return (
     <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur">
       <div className="px-4 py-3">
@@ -25,6 +33,7 @@ const Header = () => {
             <div className="text-sm font-semibold text-neutral-900">KEVIN TAX ADMIN</div>
             <div className="mt-0.5 text-xs text-neutral-500">{currentLabel}</div>
           </div>
+          {backPath ? <BackButton fallbackPath={backPath} /> : null}
         </div>
         <div className="mt-2 text-xs text-neutral-500">
           <Link href="/admin/dashboard" className="hover:underline">대시보드</Link>

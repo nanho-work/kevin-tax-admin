@@ -21,6 +21,7 @@ interface FetchCompanyParams {
   limit: number;
   keyword?: string;
   category?: string;
+  business_type?: 'individual' | 'corporate';
 }
 
 // ------------------------------
@@ -30,10 +31,11 @@ export async function fetchCompanyTaxList({
   page,
   limit,
   keyword,
+  business_type,
 
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
   const response = await adminHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
-    params: { page, limit, keyword },
+    params: { page, limit, keyword, business_type },
   });
   return response.data;
 }
