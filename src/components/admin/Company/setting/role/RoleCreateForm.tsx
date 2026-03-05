@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { createRole } from '@/services/admin/roleService';
+import { createRole } from '@/services/client/roleService';
 import { toast } from 'react-hot-toast';
 
 const inputClass =

@@ -31,10 +31,12 @@ export default function ClientLayout({
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <ClientHeader />
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-screen overflow-hidden">
+      <div className="relative z-30 h-full">
         <ClientSidebar />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ClientHeader />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

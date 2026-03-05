@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import StaffTable from '@/components/admin/staff/StaffTable'
+import StaffTable from '@/components/client/staff/management/StaffTable'
 import { checkClientSession } from '@/services/client/clientAuthService'
 
 export default function ClientStaffPage() {
@@ -27,11 +27,7 @@ export default function ClientStaffPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white px-4 py-4">
-        <h1 className="text-xl font-bold text-zinc-900">직원목록/검색</h1>
-        <p className="mt-1 text-sm text-zinc-500">직원 목록 조회 및 검색 화면입니다.</p>
-      </div>
+    <section>
       <StaffTable canManage={canManage} />
     </section>
   )

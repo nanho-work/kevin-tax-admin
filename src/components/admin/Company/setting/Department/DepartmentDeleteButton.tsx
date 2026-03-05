@@ -1,6 +1,6 @@
 'use client';
 
-import { deleteDepartment } from '@/services/admin/departmentService';
+import { deleteDepartment } from '@/services/client/departmentService';
 
 export default function DepartmentDeleteButton({ departmentId, onSuccess }: { departmentId: number; onSuccess: () => void }) {
   const handleDelete = async () => {

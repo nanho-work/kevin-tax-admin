@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getTeams } from '@/services/admin/teamService';
+import { getTeams } from '@/services/client/teamService';
 import type { TeamOut } from '@/types/team';
 import TeamDeleteButton from './TeamDeleteButton';
 

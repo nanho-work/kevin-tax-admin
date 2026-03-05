@@ -2,8 +2,8 @@
 
 import RoleCreateForm from './RoleCreateForm';
 import RoleList from './RoleList';
-import { useEffect, useState } from 'react';
-import { checkAdminSession } from '@/services/admin/adminService';
+import { useMemo, useState } from 'react';
+import { useAdminSessionContext } from '@/contexts/AdminSessionContext';
 
 function statusMessage(status?: number): string {
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
@@ -14,36 +14,17 @@ function statusMessage(status?: number): string {
 }
 
 export default function RoleTable() {
+  const { session, loading: sessionLoading, error } = useAdminSessionContext();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [adminLevel, setAdminLevel] = useState<number | null>(null);
-
-  useEffect(() => {
-    const loadSession = async () => {
-      try {
-        setLoading(true);
-        setErrorMessage(null);
-        const session = await checkAdminSession();
-        const level = session.role_level ?? (session as any).role?.level;
-        if (typeof level !== 'number') {
-          setErrorMessage('직급 정보를 확인할 수 없습니다.');
-          return;
-        }
-        setAdminLevel(level);
-      } catch (err: any) {
-        setErrorMessage(statusMessage(err?.response?.status));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSession();
-  }, []);
+  const adminLevel = useMemo(() => {
+    if (!session) return null
+    const level = session.role_level ?? (session as any).role?.level
+    return typeof level === 'number' ? level : null
+  }, [session])
 
   const handleSuccess = () => setRefreshKey((prev) => prev + 1);
 
-  if (loading) {
+  if (sessionLoading) {
     return (
       <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
         권한 정보를 확인하는 중입니다...
@@ -51,10 +32,18 @@ export default function RoleTable() {
     );
   }
 
-  if (errorMessage) {
+  if (error) {
     return (
       <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">
-        {errorMessage}
+        {statusMessage((error as any)?.response?.status)}
+      </div>
+    );
+  }
+
+  if (adminLevel === null) {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">
+        직급 정보를 확인할 수 없습니다.
       </div>
     );
   }

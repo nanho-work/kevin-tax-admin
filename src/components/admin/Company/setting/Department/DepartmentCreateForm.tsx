@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createDepartment } from '@/services/admin/departmentService';
+import { createDepartment } from '@/services/client/departmentService';
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200';

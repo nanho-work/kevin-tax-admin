@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { checkClientSession } from '@/services/client/clientAuthService'
+import { usePathname, useRouter } from 'next/navigation'
+import { checkClientSession, logoutClient } from '@/services/client/clientAuthService'
+import { clearClientAccessToken } from '@/services/http'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -30,14 +31,25 @@ const clientManagementMenus = [
   { label: '클라이언트(관리자) 목록', href: '/client/client-management/list' },
 ]
 
+const bookkeepingMenus = [
+  { label: '기장 거래처 관리', href: '/client/bookkeeping/contracts' },
+  { label: '월별 청구/수납 관리', href: '/client/bookkeeping/billings' },
+  { label: '월별 집계', href: '/client/bookkeeping/summary' },
+  { label: '자동이체 업로드(출금조회)', href: '/client/bookkeeping/debits' },
+]
+
 export default function ClientSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const hasStaffManagementPath = pathname.startsWith('/client/staff')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
+  const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
   const [isStaffManagementOpen, setIsStaffManagementOpen] = useState(hasStaffManagementPath)
   const [isClientManagementOpen, setIsClientManagementOpen] = useState(hasClientManagementPath)
+  const [isBookkeepingOpen, setIsBookkeepingOpen] = useState(hasBookkeepingPath)
   const [canManageClients, setCanManageClients] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
+  const [profile, setProfile] = useState<{ name: string; companyName?: string } | null>(null)
 
   useEffect(() => {
     if (hasStaffManagementPath) setIsStaffManagementOpen(true)
@@ -48,12 +60,21 @@ export default function ClientSidebar() {
   }, [hasClientManagementPath])
 
   useEffect(() => {
+    if (hasBookkeepingPath) setIsBookkeepingOpen(true)
+  }, [hasBookkeepingPath])
+
+  useEffect(() => {
     const loadSession = async () => {
       try {
         const session = await checkClientSession()
         setCanManageClients(session.role_level === 0)
+        setProfile({
+          name: session.name,
+          companyName: (session as any).client_company_name || undefined,
+        })
       } catch {
         setCanManageClients(false)
+        setProfile(null)
       } finally {
         setAuthLoading(false)
       }
@@ -61,11 +82,30 @@ export default function ClientSidebar() {
     loadSession()
   }, [])
 
+  const handleLogout = async () => {
+    try {
+      await logoutClient()
+    } finally {
+      clearClientAccessToken()
+      router.replace('/login/client')
+    }
+  }
+
   return (
-    <aside className="w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
+    <aside className="h-full w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-5 py-4">
         <p className="text-xs text-neutral-500">클라이언트 포털</p>
-        <p className="mt-1 text-sm font-semibold text-neutral-900">메뉴</p>
+        <p className="mt-1 text-sm font-semibold text-neutral-900">{profile?.companyName || '고객사'} 관리자</p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-neutral-500">{profile?.name ? `${profile.name}님 환영합니다` : '세션 확인 중...'}</p>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="h-6 rounded-md bg-neutral-900 px-2 text-[11px] font-medium text-white hover:bg-neutral-800"
+          >
+            로그아웃
+          </button>
+        </div>
       </div>
       <nav className="space-y-1 px-4 py-4">
         {menus.map((menu) => {
@@ -98,6 +138,39 @@ export default function ClientSidebar() {
             <div className="mt-1 space-y-1 pl-3">
               {staffManagementMenus.map((menu) => {
                 const active = pathname === menu.href
+                return (
+                  <Link key={menu.href} href={menu.href}>
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {menu.label}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setIsBookkeepingOpen((prev) => !prev)}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+              hasBookkeepingPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+          >
+            <span>기장 관리</span>
+            <span aria-hidden>{isBookkeepingOpen ? '▾' : '▸'}</span>
+          </button>
+          {isBookkeepingOpen && (
+            <div className="mt-1 space-y-1 pl-3">
+              {bookkeepingMenus.map((menu) => {
+                const active =
+                  pathname === menu.href ||
+                  (menu.href === '/client/bookkeeping/debits' && pathname.startsWith('/client/bookkeeping/debits'))
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div

@@ -1,6 +1,6 @@
 'use client';
 
-import { deleteTeam } from '@/services/admin/teamService';
+import { deleteTeam } from '@/services/client/teamService';
 
 export default function TeamDeleteButton({ teamId, onSuccess }: { teamId: number; onSuccess: () => void }) {
   const handleDelete = async () => {

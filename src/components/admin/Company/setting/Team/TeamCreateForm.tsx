@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createTeam } from '@/services/admin/teamService';
-import { getDepartments } from '@/services/admin/departmentService';
+import { createTeam } from '@/services/client/teamService';
+import { getDepartments } from '@/services/client/departmentService';
 import type { DepartmentOut } from '@/types/department';
 
 const inputClass =

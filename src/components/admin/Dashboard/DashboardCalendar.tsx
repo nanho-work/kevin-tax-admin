@@ -8,7 +8,6 @@ import koLocale from '@fullcalendar/core/locales/ko';
 import { EventInput } from '@fullcalendar/core';
 
 import { fetchTaxSchedules } from '@/services/admin/taxSchedulService';
-import { fetchSingleTaxes } from '@/services/admin/single_scheduleService';
 
 // ✅ 일정명 한글 변환
 const scheduleTypeMap: Record<string, string> = {
@@ -17,10 +16,6 @@ const scheduleTypeMap: Record<string, string> = {
   INCOME_TAX: '소득세',
   CORPORATE_TAX: '법인세',
   INTERIM_TAX: '중간예납',
-  양도세: '양도세',
-  상속세: '상속세',
-  증여세: '증여세',
-  기타: '기타',
 };
 
 // ✅ 색상 매핑 (파스텔톤)
@@ -37,20 +32,13 @@ export default function DashboardCalendar() {
 
   useEffect(() => {
     const fetchAllSchedules = async () => {
-      const [regularResult, singleResult] = await Promise.allSettled([
-        fetchTaxSchedules(),
-        fetchSingleTaxes(1, 100),
-      ]);
+      const [regularResult] = await Promise.allSettled([fetchTaxSchedules()]);
 
       if (regularResult.status === 'rejected') {
         console.warn('정기 일정 조회 실패');
       }
-      if (singleResult.status === 'rejected') {
-        console.warn('단발성 일정 조회 실패');
-      }
 
       const regular = regularResult.status === 'fulfilled' ? regularResult.value : [];
-      const singleRes = singleResult.status === 'fulfilled' ? singleResult.value : { items: [] };
 
       const regularEvents: EventInput[] = regular.map((item: any) => ({
           id: `r-${item.id}`,
@@ -60,15 +48,7 @@ export default function DashboardCalendar() {
           textColor: 'black',
       }));
 
-      const singleEvents: EventInput[] = singleRes.items.map((item) => ({
-          id: `s-${item.id}`,
-          title: `[단발성] ${item.client_name} - ${scheduleTypeMap[item.schedule_type] || item.schedule_type}`,
-          start: item.due_date?.split('T')[0],
-          color: '#FFDAC1',
-          textColor: 'black',
-      }));
-
-      const allEvents = [...regularEvents, ...singleEvents];
+      const allEvents = [...regularEvents];
       setEvents(allEvents);
     };
 

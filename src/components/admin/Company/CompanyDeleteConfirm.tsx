@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, Fragment } from 'react'
-import { deactivateCompany } from '@/services/admin/company'
 import { Dialog as HeadlessDialog, Transition } from '@headlessui/react'
 import type { ButtonHTMLAttributes } from 'react'
 import clsx from 'clsx'
@@ -12,6 +11,7 @@ interface CompanyDeleteConfirmProps {
   open: boolean
   onClose: () => void
   onDeleted: () => void
+  onConfirmDelete: (companyId: number) => Promise<void>
 }
 
 // ✅ Button 컴포넌트 정의
@@ -90,13 +90,14 @@ export default function CompanyDeleteConfirm({
   open,
   onClose,
   onDeleted,
+  onConfirmDelete,
 }: CompanyDeleteConfirmProps) {
   const [loading, setLoading] = useState(false)
 
   const handleDelete = async () => {
     setLoading(true)
     try {
-      await deactivateCompany(companyId)
+      await onConfirmDelete(companyId)
       onDeleted()
       onClose()
     } catch (err) {

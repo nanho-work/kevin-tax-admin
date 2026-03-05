@@ -1,6 +1,6 @@
 'use client';
 
-import { deleteRole } from '@/services/admin/roleService';
+import { deleteRole } from '@/services/client/roleService';
 import { toast } from 'react-hot-toast';
 
 function statusMessage(status?: number): string {

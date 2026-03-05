@@ -36,23 +36,28 @@ export default function MemoEditModal({ open, onClose, title = '메모 수정', 
     return (
         <Dialog open={open} onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center">
             {/* 직접 Overlay 추가 */}
-            <div className="fixed inset-0 bg-black bg-opacity-30" />
+            <div className="fixed inset-0 bg-black/30" />
 
-            <div className="bg-white rounded shadow-md w-[600px] p-6 z-50 relative">
-                <Dialog.Title className="text-lg font-semibold mb-4">{title}</Dialog.Title>
+            <div className="relative z-50 w-[600px] rounded-xl border border-zinc-200 bg-white p-6 shadow-md">
+                <Dialog.Title className="mb-4 text-lg font-semibold text-zinc-900">{title}</Dialog.Title>
 
                 <textarea
-                    className="w-full h-40 border rounded p-2 text-sm"
+                    className="h-40 w-full rounded-lg border border-zinc-300 p-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                 />
 
-                <div className="flex justify-end gap-2 mt-4">
-                    <button onClick={onClose} className="px-4 py-2 border rounded">닫기</button>
+                <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      onClick={onClose}
+                      className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    >
+                      닫기
+                    </button>
                     <button
                         onClick={handleSave}
                         disabled={loading}
-                        className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                        className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
                     >
                         {loading ? '저장 중...' : '저장'}
                     </button>

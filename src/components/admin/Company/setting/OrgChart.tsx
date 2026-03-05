@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDepartments } from '@/services/admin/departmentService';
-import { getTeams } from '@/services/admin/teamService';
-import { getRoles } from '@/services/admin/roleService';
+import { getDepartments } from '@/services/client/departmentService';
+import { getTeams } from '@/services/client/teamService';
+import { getRoles } from '@/services/client/roleService';
 import type { DepartmentOut } from '@/types/department';
 import type { TeamOut } from '@/types/team';
 import type { RoleOut } from '@/types/role';

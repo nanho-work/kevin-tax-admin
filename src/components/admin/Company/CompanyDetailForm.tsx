@@ -1,13 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import { useRouter, useParams } from 'next/navigation'
-import type { CompanyDetailResponse } from '@/types/admin_campany'
-import { fetchCompanyDetail, updateCompany } from '@/services/admin/company'
+import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'react-hot-toast'
+import { fetchCompanyDetail } from '@/services/admin/company'
+import type { CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
+import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
 
 interface Props {
   company: CompanyDetailResponse
+  businessLicensePreview?: CompanyDocumentPreviewResponse | null
+  editable?: boolean
+  listPath?: string
+  fetchDetailFn?: (company_id: number) => Promise<CompanyDetailResponse>
+  updateFn?: (company_id: number, payload: CompanyUpdateRequest) => Promise<{ message: string }>
+  fetchBusinessLicensePreviewFn?: (company_id: number) => Promise<CompanyDocumentPreviewResponse>
+  uploadBusinessLicenseFn?: (company_id: number, file: File) => Promise<unknown>
+  deleteBusinessLicenseFn?: (company_id: number) => Promise<unknown>
 }
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -33,23 +43,69 @@ function Field({ label, className, children }: { label: string; className?: stri
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
-const textareaClass =
-  'w-full min-h-[96px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
-export default function CompanyDetailForm({ company }: Props) {
+function toDateOnly(value?: string | null): string {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10)
+  }
+  return value.slice(0, 10)
+}
+
+function buildPreviewSrc(previewUrl: string, fileName?: string | null): string {
+  const isPdf = (fileName ?? '').toLowerCase().endsWith('.pdf')
+  if (!isPdf) return previewUrl
+  const hash = 'view=FitH&zoom=page-width&toolbar=0&navpanes=0&scrollbar=0'
+  return `${previewUrl}#${hash}`
+}
+
+function isImageFile(fileName?: string | null): boolean {
+  if (!fileName) return false
+  const lower = fileName.toLowerCase()
+  return (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.bmp')
+  )
+}
+
+export default function CompanyDetailForm({
+  company,
+  businessLicensePreview = null,
+  editable = true,
+  listPath = '/admin/companies',
+  fetchDetailFn = fetchCompanyDetail,
+  updateFn,
+  fetchBusinessLicensePreviewFn,
+  uploadBusinessLicenseFn,
+  deleteBusinessLicenseFn,
+}: Props) {
   const { id } = useParams()
   const companyId = Number(id)
-
+  const router = useRouter()
   const [form, setForm] = useState<CompanyDetailResponse | null>(null)
+  const [localPreview, setLocalPreview] = useState<CompanyDocumentPreviewResponse | null>(businessLicensePreview)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingDocument, setUploadingDocument] = useState(false)
+  const [deletingDocument, setDeletingDocument] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const router = useRouter()
+  const extractApiDetail = (error: unknown): string | null => {
+    const detail = (error as any)?.response?.data?.detail
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') return detail[0].msg
+    return null
+  }
 
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await fetchCompanyDetail(companyId)
+        const data = await fetchDetailFn(companyId)
         setForm(data)
       } catch (err) {
         console.error('상세 정보 불러오기 실패:', err)
@@ -58,212 +114,252 @@ export default function CompanyDetailForm({ company }: Props) {
       }
     }
     if (companyId) load()
-  }, [companyId])
+  }, [companyId, fetchDetailFn])
 
-  if (loading) {
-    return (
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
-        회사 정보를 불러오는 중...
-      </div>
-    )
+  useEffect(() => {
+    setLocalPreview(businessLicensePreview)
+  }, [businessLicensePreview])
+
+  const reloadBusinessLicensePreview = async () => {
+    if (!fetchBusinessLicensePreviewFn) return
+    try {
+      const preview = await fetchBusinessLicensePreviewFn(companyId)
+      setLocalPreview(preview)
+    } catch {
+      setLocalPreview(null)
+    }
   }
 
+  const handleUploadBusinessLicense = async (file: File | null) => {
+    if (!uploadBusinessLicenseFn || !file) return
+    try {
+      setUploadingDocument(true)
+      await uploadBusinessLicenseFn(companyId, file)
+      await reloadBusinessLicensePreview()
+      toast.success('사업자등록증이 등록되었습니다.')
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '사업자등록증 등록 중 오류가 발생했습니다.')
+    } finally {
+      setUploadingDocument(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteBusinessLicense = async () => {
+    if (!localPreview) return
+    if (!deleteBusinessLicenseFn) {
+      toast.error('문서 삭제 API가 아직 준비되지 않았습니다.')
+      return
+    }
+    if (!confirm('등록된 사업자등록증을 삭제하시겠습니까?')) return
+    try {
+      setDeletingDocument(true)
+      await deleteBusinessLicenseFn(companyId)
+      setLocalPreview(null)
+      toast.success('사업자등록증이 삭제되었습니다.')
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '사업자등록증 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingDocument(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">회사 정보를 불러오는 중...</div>
+  }
   if (!company || !form) {
-    return (
-      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">
-        회사 정보를 찾을 수 없습니다.
-      </div>
-    )
+    return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">회사 정보를 찾을 수 없습니다.</div>
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div className="sticky top-0 z-10 -mx-4 border-b border-zinc-200 bg-white/90 px-4 py-4 backdrop-blur">
+    <div className="w-full space-y-6">
+      <div className="py-1">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">업체 상세정보</h2>
-            <p className="mt-1 text-sm text-zinc-500">기본 정보와 세무 항목을 수정할 수 있습니다.</p>
+            <h2 className="text-xl font-semibold text-zinc-900">고객사 상세정보</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {editable ? '고객사 기본 정보와 주소 정보를 수정할 수 있습니다.' : '고객사 기본 정보와 주소 정보를 확인할 수 있습니다.'}
+            </p>
           </div>
-          <button
-            onClick={async () => {
-              try {
-                setSaving(true)
-                const { id: _id, created_at, updated_at, ...payload } = form
-                const res = await updateCompany(companyId, payload)
-                alert(res.message)
-                router.push('/admin/companies')
-              } catch (err: any) {
-                alert(err.response?.data?.detail || '수정 실패')
-              } finally {
-                setSaving(false)
-              }
-            }}
-            disabled={saving}
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
-          >
-            {saving ? '저장 중...' : '수정완료'}
-          </button>
+          {editable && updateFn ? (
+            <button
+              onClick={async () => {
+                try {
+                  setSaving(true)
+                  const { id: _id, created_at, updated_at, ...payload } = form
+                  const res = await updateFn(companyId, payload)
+                  alert(res.message)
+                  router.push(listPath)
+                } catch (err: any) {
+                  alert(err.response?.data?.detail || '수정 실패')
+                } finally {
+                  setSaving(false)
+                }
+              }}
+              disabled={saving}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+            >
+              {saving ? '저장 중...' : '수정완료'}
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <Section title="기본 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="회사명">
-            <input className={inputClass} value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
-          </Field>
-          <Field label="대표자">
-            <input className={inputClass} value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
-          </Field>
-          <Field label="사업자등록번호">
-            <input className={inputClass} value={form.registration_number || ''} onChange={(e) => setForm({ ...form, registration_number: e.target.value })} />
-          </Field>
-          <Field label="설립일">
-            <input
-              className={inputClass}
-              value={form.founded_date || ''}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/\D/g, '').slice(0, 8)
-                const formatted = raw.length >= 8 ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` : raw
-                setForm({ ...form, founded_date: formatted })
-              }}
-            />
-          </Field>
-          <Field label="수임일">
-            <input
-              className={inputClass}
-              value={form.contract_date || ''}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/\D/g, '').slice(0, 8)
-                const formatted = raw.length >= 8 ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` : raw
-                setForm({ ...form, contract_date: formatted })
-              }}
-            />
-          </Field>
-          <Field label="구분">
-            <select className={inputClass} value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="">선택</option>
-              <option value="법인">법인</option>
-              <option value="개인">개인</option>
-            </select>
-          </Field>
-          <Field label="기장료">
-            <input
-              type="number"
-              className={`${inputClass} text-right`}
-              value={form.monthly_fee ?? ''}
-              onChange={(e) => setForm({ ...form, monthly_fee: Number(e.target.value) })}
-            />
-          </Field>
-        </div>
-      </Section>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="space-y-6 xl:col-span-3">
+          <Section title="기본 정보">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="회사명">
+                <input className={inputClass} value={form.company_name} readOnly={!editable} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
+              </Field>
+              <Field label="대표자">
+                <input className={inputClass} value={form.owner_name} readOnly={!editable} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
+              </Field>
+              <Field label="사업자등록번호">
+                <input className={inputClass} value={form.registration_number || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, registration_number: e.target.value })} />
+              </Field>
+              <Field label="구분">
+                <select className={inputClass} value={form.category || ''} disabled={!editable} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  <option value="">선택</option>
+                  <option value="법인">법인</option>
+                  <option value="개인">개인</option>
+                </select>
+              </Field>
+              <Field label="업태">
+                <input className={inputClass} value={form.industry_type || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
+              </Field>
+              <Field label="종목">
+                <input className={inputClass} value={form.business_type || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
+              </Field>
+            </div>
+          </Section>
 
-      <Section title="담당자 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="담당자">
-            <input className={inputClass} value={form.manager_name || ''} onChange={(e) => setForm({ ...form, manager_name: e.target.value })} />
-          </Field>
-          <Field label="담당자 연락처">
-            <input className={inputClass} value={form.manager_phone || ''} onChange={(e) => setForm({ ...form, manager_phone: e.target.value })} />
-          </Field>
-          <Field label="이메일">
-            <input className={inputClass} value={form.manager_email || ''} onChange={(e) => setForm({ ...form, manager_email: e.target.value })} />
-          </Field>
-        </div>
-      </Section>
+          <Section title="주소 정보">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="우편번호">
+                <input className={inputClass} value={form.postal_code || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
+              </Field>
+              <Field label="주소1">
+                <input className={inputClass} value={form.address1 || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
+              </Field>
+              <Field label="주소2">
+                <input className={inputClass} value={form.address2 || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
+              </Field>
+            </div>
+          </Section>
 
-      <Section title="연락 및 주소 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="홈페이지">
-            <input className={inputClass} value={form.homepage_url || ''} onChange={(e) => setForm({ ...form, homepage_url: e.target.value })} />
-          </Field>
-          <Field label="연락방법">
-            <input className={inputClass} value={form.contact_method || ''} onChange={(e) => setForm({ ...form, contact_method: e.target.value })} />
-          </Field>
-          <Field label="기본 주소">
-            <input className={inputClass} value={form.address1 || ''} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
-          </Field>
-          <Field label="상세 주소">
-            <input className={inputClass} value={form.address2 || ''} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
-          </Field>
-          <Field label="우편번호">
-            <input className={inputClass} value={form.postal_code || ''} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
-          </Field>
-          <Field label="회사연락처">
-            <input className={inputClass} value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </Field>
+          <Section title="시스템 정보">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="활성 상태">
+                <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
+              </Field>
+              <Field label="등록일">
+                <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
+              </Field>
+              <Field label="수정일">
+                <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
+              </Field>
+            </div>
+          </Section>
         </div>
-      </Section>
-
-      <Section title="업종 및 CMS 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="업태">
-            <input className={inputClass} value={form.industry_type || ''} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
-          </Field>
-          <Field label="종목">
-            <input className={inputClass} value={form.business_type || ''} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
-          </Field>
-          <Field label="CMS 통장">
-            <input className={inputClass} value={form.cms_bank_account || ''} onChange={(e) => setForm({ ...form, cms_bank_account: e.target.value })} />
-          </Field>
-          <Field label="CMS 계좌번호">
-            <input className={inputClass} value={form.cms_account_number || ''} onChange={(e) => setForm({ ...form, cms_account_number: e.target.value })} />
-          </Field>
-          <Field label="CMS 이체일">
-            <input className={inputClass} value={form.cms_transfer_day || ''} onChange={(e) => setForm({ ...form, cms_transfer_day: e.target.value })} />
-          </Field>
+        <div className="w-full xl:col-span-2 xl:max-w-[500px] xl:justify-self-start">
+          <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+            <div className="px-5 py-5">
+            {localPreview?.preview_url ? (
+              <div className="space-y-3">
+                {editable ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+                      className="hidden"
+                      onChange={(e) => void handleUploadBusinessLicense(e.target.files?.[0] || null)}
+                    />
+                    <button
+                      type="button"
+                      disabled={uploadingDocument}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    >
+                      {uploadingDocument ? '등록 중...' : '등록'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteBusinessLicense}
+                      disabled={deletingDocument}
+                      className="inline-flex h-8 items-center rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      {deletingDocument ? '삭제 중...' : '삭제'}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="aspect-[3/4] min-h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                  {isImageFile(localPreview.file_name) ? (
+                    <img
+                      src={localPreview.preview_url}
+                      alt="사업자등록증 미리보기"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <object
+                      data={buildPreviewSrc(localPreview.preview_url, localPreview.file_name)}
+                      type="application/pdf"
+                      className="h-full w-full"
+                    >
+                      <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-500">
+                        미리보기를 불러오지 못했습니다. 아래 버튼으로 새 창에서 확인해 주세요.
+                      </div>
+                    </object>
+                  )}
+                </div>
+                <a
+                  href={localPreview.preview_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  새 창에서 보기
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {editable ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+                      className="hidden"
+                      onChange={(e) => void handleUploadBusinessLicense(e.target.files?.[0] || null)}
+                    />
+                    <button
+                      type="button"
+                      disabled={uploadingDocument}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    >
+                      {uploadingDocument ? '등록 중...' : '등록'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex h-8 items-center rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-400"
+                      title="등록된 문서가 없습니다."
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ) : null}
+                <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
+                  등록된 사업자등록증이 없습니다.
+                </div>
+              </div>
+            )}
+            </div>
+          </section>
         </div>
-      </Section>
-
-      <Section title="세금/메모 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="급여작성형태">
-            <input className={inputClass} value={form.salary_type || ''} onChange={(e) => setForm({ ...form, salary_type: e.target.value })} />
-          </Field>
-          <Field label="급여일">
-            <input className={inputClass} value={form.salary_date || ''} onChange={(e) => setForm({ ...form, salary_date: e.target.value })} />
-          </Field>
-          <Field label="원천세 특이사항">
-            <textarea className={textareaClass} value={form.w_memo || ''} onChange={(e) => setForm({ ...form, w_memo: e.target.value })} />
-          </Field>
-          <Field label="메모">
-            <textarea className={textareaClass} value={form.memo || ''} onChange={(e) => setForm({ ...form, memo: e.target.value })} />
-          </Field>
-          <Field label="부가세 특이사항">
-            <input className={inputClass} value={form.v_note || ''} onChange={(e) => setForm({ ...form, v_note: e.target.value })} />
-          </Field>
-          <Field label="부가세 비고">
-            <input className={inputClass} value={form.v_remark || ''} onChange={(e) => setForm({ ...form, v_remark: e.target.value })} />
-          </Field>
-          <Field label="법인세 특이사항">
-            <input className={inputClass} value={form.ct_note || ''} onChange={(e) => setForm({ ...form, ct_note: e.target.value })} />
-          </Field>
-          <Field label="법인세 비고">
-            <input className={inputClass} value={form.ct_remark || ''} onChange={(e) => setForm({ ...form, ct_remark: e.target.value })} />
-          </Field>
-        </div>
-      </Section>
-
-      <Section title="옵션/시스템 정보">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[{ key: 'info_agreed', label: '정보활용동의' }, { key: 'is_half_term', label: '반기 여부' }, { key: 'is_export', label: '수출 여부' }, { key: 'is_online', label: '온라인 매출 여부' }, { key: 'has_foreign_currency', label: '외화 여부' }].map((item) => (
-            <label key={item.key} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-              <span className="text-sm text-zinc-700">{item.label}</span>
-              <input
-                type="checkbox"
-                checked={Boolean((form as any)[item.key])}
-                onChange={(e) => setForm({ ...form, [item.key]: e.target.checked })}
-                className="h-4 w-4"
-              />
-            </label>
-          ))}
-          <Field label="등록일">
-            <input className={`${inputClass} bg-zinc-100`} value={form.created_at ?? ''} readOnly />
-          </Field>
-          <Field label="수정일">
-            <input className={`${inputClass} bg-zinc-100`} value={form.updated_at ?? ''} readOnly />
-          </Field>
-        </div>
-      </Section>
+      </div>
     </div>
   )
 }

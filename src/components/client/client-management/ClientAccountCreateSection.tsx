@@ -101,11 +101,6 @@ export default function ClientAccountCreateSection() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white px-4 py-4">
-        <h1 className="text-xl font-bold text-zinc-900">클라이언트(관리자) 등록</h1>
-        <p className="mt-1 text-sm text-zinc-500">클라이언트 관리자 계정을 생성합니다.</p>
-      </div>
-
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-zinc-900">등록 정보</h2>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">

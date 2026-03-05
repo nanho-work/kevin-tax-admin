@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getRoles } from '@/services/admin/roleService';
+import { getRoles } from '@/services/client/roleService';
 import type { RoleOut } from '@/types/role';
 import RoleDeleteButton from './RoleDeleteButton';
 

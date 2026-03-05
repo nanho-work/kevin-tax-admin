@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDepartments } from '@/services/admin/departmentService';
+import { getDepartments } from '@/services/client/departmentService';
 import type { DepartmentOut } from '@/types/department';
 import DepartmentDeleteButton from './DepartmentDeleteButton';
 
