@@ -93,6 +93,8 @@ export default function CompanyDetailForm({
   const [saving, setSaving] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
   const [deletingDocument, setDeletingDocument] = useState(false)
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null)
+  const [isDragOverDocument, setIsDragOverDocument] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const extractApiDetail = (error: unknown): string | null => {
@@ -130,17 +132,22 @@ export default function CompanyDetailForm({
     }
   }
 
-  const handleUploadBusinessLicense = async (file: File | null) => {
-    if (!uploadBusinessLicenseFn || !file) return
+  const handleUploadBusinessLicense = async () => {
+    if (!uploadBusinessLicenseFn) return
+    if (!selectedDocumentFile) {
+      toast.error('업로드할 파일을 먼저 선택해 주세요.')
+      return
+    }
     try {
       setUploadingDocument(true)
-      await uploadBusinessLicenseFn(companyId, file)
+      await uploadBusinessLicenseFn(companyId, selectedDocumentFile)
       await reloadBusinessLicensePreview()
       toast.success('사업자등록증이 등록되었습니다.')
     } catch (error) {
       toast.error(extractApiDetail(error) || '사업자등록증 등록 중 오류가 발생했습니다.')
     } finally {
       setUploadingDocument(false)
+      setSelectedDocumentFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -268,30 +275,55 @@ export default function CompanyDetailForm({
             {localPreview?.preview_url ? (
               <div className="space-y-3">
                 {editable ? (
-                  <div className="flex items-center gap-2">
+                  <div className="space-y-2">
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
                       className="hidden"
-                      onChange={(e) => void handleUploadBusinessLicense(e.target.files?.[0] || null)}
+                      onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
                     />
-                    <button
-                      type="button"
-                      disabled={uploadingDocument}
+                    <label
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(true)
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(false)
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(false)
+                        setSelectedDocumentFile(e.dataTransfer.files?.[0] || null)
+                      }}
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      className={`flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
+                        isDragOverDocument
+                          ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
+                          : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                      }`}
                     >
-                      {uploadingDocument ? '등록 중...' : '등록'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteBusinessLicense}
-                      disabled={deletingDocument}
-                      className="inline-flex h-8 items-center rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                    >
-                      {deletingDocument ? '삭제 중...' : '삭제'}
-                    </button>
+                      {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={uploadingDocument || !selectedDocumentFile}
+                        onClick={handleUploadBusinessLicense}
+                        className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      >
+                        {uploadingDocument ? '등록 중...' : '등록'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteBusinessLicense}
+                        disabled={deletingDocument}
+                        className="inline-flex h-8 items-center rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        {deletingDocument ? '삭제 중...' : '삭제'}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
                 <div className="aspect-[3/4] min-h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
@@ -325,30 +357,55 @@ export default function CompanyDetailForm({
             ) : (
               <div className="space-y-3">
                 {editable ? (
-                  <div className="flex items-center gap-2">
+                  <div className="space-y-2">
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
                       className="hidden"
-                      onChange={(e) => void handleUploadBusinessLicense(e.target.files?.[0] || null)}
+                      onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
                     />
-                    <button
-                      type="button"
-                      disabled={uploadingDocument}
+                    <label
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(true)
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(false)
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        setIsDragOverDocument(false)
+                        setSelectedDocumentFile(e.dataTransfer.files?.[0] || null)
+                      }}
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      className={`flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
+                        isDragOverDocument
+                          ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
+                          : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                      }`}
                     >
-                      {uploadingDocument ? '등록 중...' : '등록'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled
-                      className="inline-flex h-8 items-center rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-400"
-                      title="등록된 문서가 없습니다."
-                    >
-                      삭제
-                    </button>
+                      {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={uploadingDocument || !selectedDocumentFile}
+                        onClick={handleUploadBusinessLicense}
+                        className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      >
+                        {uploadingDocument ? '등록 중...' : '등록'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex h-8 items-center rounded-md border border-zinc-200 px-3 text-xs font-medium text-zinc-400"
+                        title="등록된 문서가 없습니다."
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </div>
                 ) : null}
                 <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
