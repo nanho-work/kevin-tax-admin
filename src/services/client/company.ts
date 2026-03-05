@@ -67,3 +67,10 @@ export async function uploadClientCompanyBusinessLicense(
   const res = await clientHttp.post(`${BASE}/${company_id}/documents/${COMPANY_DOC_TYPE_BUSINESS_LICENSE}`, form)
   return res.data
 }
+
+export async function deleteClientCompanyBusinessLicense(company_id: number): Promise<{ message: string }> {
+  const res = await clientHttp.delete<{ message: string }>(
+    `${BASE}/${company_id}/documents/${COMPANY_DOC_TYPE_BUSINESS_LICENSE}`
+  )
+  return res.data
+}

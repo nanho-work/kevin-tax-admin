@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
 import {
+  deleteClientCompanyBusinessLicense,
   fetchClientCompanyBusinessLicensePreview,
   fetchClientCompanyDetail,
   updateClientCompany,
@@ -64,6 +65,7 @@ export default function ClientCompanyDetailPage() {
       updateFn={updateClientCompany}
       fetchBusinessLicensePreviewFn={fetchClientCompanyBusinessLicensePreview}
       uploadBusinessLicenseFn={uploadClientCompanyBusinessLicense}
+      deleteBusinessLicenseFn={deleteClientCompanyBusinessLicense}
     />
   )
 }
