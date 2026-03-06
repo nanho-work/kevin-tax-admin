@@ -8,8 +8,8 @@ import type {
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/companies`
 export const COMPANY_DOC_TYPE_BUSINESS_LICENSE = 'business_license'
-export const COMPANY_DOC_TYPE_OWNER_ID = 'owner_id'
-export const COMPANY_DOC_TYPE_BANKBOOK = 'bankbook'
+export const COMPANY_DOC_TYPE_OWNER_ID = 'id_card'
+export const COMPANY_DOC_TYPE_BANKBOOK = 'bank_account'
 
 export interface ClientCompanyDocumentPreviewResponse {
   file_name: string
