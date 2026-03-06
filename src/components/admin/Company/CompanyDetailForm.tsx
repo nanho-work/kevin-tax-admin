@@ -26,7 +26,10 @@ interface Props {
   listCustomDocumentsFn?: (
     company_id: number,
     include_deleted?: boolean
-  ) => Promise<{ total: number; items: Array<{ id: number; title: string; file_name: string; created_at: string }> }>
+  ) => Promise<{
+    total: number
+    items: Array<{ id: number; title: string; file_name: string; created_at: string; uploaded_at?: string }>
+  }>
   uploadCustomDocumentFn?: (
     company_id: number,
     params: { title: string; file: File }
@@ -36,6 +39,10 @@ interface Props {
     company_id: number,
     document_id: number
   ) => Promise<{ download_url: string; file_name: string }>
+  getCustomDocumentPreviewUrlFn?: (
+    company_id: number,
+    document_id: number
+  ) => Promise<{ preview_url: string; file_name: string }>
   listCustomDocumentLogsFn?: (
     company_id: number,
     document_id: number
@@ -146,6 +153,7 @@ export default function CompanyDetailForm({
   uploadCustomDocumentFn,
   deleteCustomDocumentFn,
   getCustomDocumentDownloadUrlFn,
+  getCustomDocumentPreviewUrlFn,
   listCustomDocumentLogsFn,
 }: Props) {
   const { id } = useParams()
@@ -181,7 +189,8 @@ export default function CompanyDetailForm({
     Boolean(listCustomDocumentsFn) &&
     Boolean(uploadCustomDocumentFn) &&
     Boolean(deleteCustomDocumentFn) &&
-    Boolean(getCustomDocumentDownloadUrlFn)
+    Boolean(getCustomDocumentDownloadUrlFn) &&
+    Boolean(getCustomDocumentPreviewUrlFn)
   const sortedCustomDocuments = useMemo(
     () =>
       [...customDocuments].sort(
@@ -254,7 +263,7 @@ export default function CompanyDetailForm({
             id: row.id,
             title: row.title,
             fileName: row.file_name,
-            uploadedAt: row.created_at,
+            uploadedAt: row.uploaded_at || row.created_at,
             downloadCount: 0,
           }))
         )
@@ -278,7 +287,7 @@ export default function CompanyDetailForm({
           id: row.id,
           title: row.title,
           fileName: row.file_name,
-          uploadedAt: row.created_at,
+          uploadedAt: row.uploaded_at || row.created_at,
           downloadCount: countMap[row.id] ?? 0,
         }))
       )
@@ -380,20 +389,25 @@ export default function CompanyDetailForm({
     }
   }
 
-  const issueCustomDocumentDownload = async (
+  const issueCustomDocumentAction = async (
     documentId: number,
     mode: 'preview' | 'download',
     fileName: string
   ) => {
-    if (!getCustomDocumentDownloadUrlFn) {
+    if (mode === 'preview' && !getCustomDocumentPreviewUrlFn) {
+      toast.error('미리보기 URL API가 아직 준비되지 않았습니다.')
+      return
+    }
+    if (mode === 'download' && !getCustomDocumentDownloadUrlFn) {
       toast.error('다운로드 URL API가 아직 준비되지 않았습니다.')
       return
     }
     try {
-      const res = await getCustomDocumentDownloadUrlFn(companyId, documentId)
       if (mode === 'preview') {
-        window.open(res.download_url, '_blank', 'noopener,noreferrer')
+        const res = await getCustomDocumentPreviewUrlFn!(companyId, documentId)
+        window.open(res.preview_url, '_blank', 'noopener,noreferrer')
       } else {
+        const res = await getCustomDocumentDownloadUrlFn!(companyId, documentId)
         const link = document.createElement('a')
         link.href = res.download_url
         link.download = fileName || res.file_name
@@ -402,10 +416,10 @@ export default function CompanyDetailForm({
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
+        setCustomDocuments((prev) =>
+          prev.map((doc) => (doc.id === documentId ? { ...doc, downloadCount: doc.downloadCount + 1 } : doc))
+        )
       }
-      setCustomDocuments((prev) =>
-        prev.map((doc) => (doc.id === documentId ? { ...doc, downloadCount: doc.downloadCount + 1 } : doc))
-      )
     } catch (error) {
       toast.error(extractApiDetail(error) || '문서 URL 발급에 실패했습니다.')
     }
@@ -608,7 +622,7 @@ export default function CompanyDetailForm({
                             <td className="px-3 py-2 text-center">
                               <button
                                 type="button"
-                                onClick={() => issueCustomDocumentDownload(doc.id, 'preview', doc.fileName)}
+                                onClick={() => issueCustomDocumentAction(doc.id, 'preview', doc.fileName)}
                                 className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
                               >
                                 새창에서보기
@@ -617,7 +631,7 @@ export default function CompanyDetailForm({
                             <td className="px-3 py-2 text-center">
                               <button
                                 type="button"
-                                onClick={() => issueCustomDocumentDownload(doc.id, 'download', doc.fileName)}
+                                onClick={() => issueCustomDocumentAction(doc.id, 'download', doc.fileName)}
                                 className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
                               >
                                 다운로드

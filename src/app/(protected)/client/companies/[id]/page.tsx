@@ -12,6 +12,7 @@ import {
   fetchClientCompanyDocumentPreview,
   fetchClientCompanyDetail,
   getClientCompanyCustomDocumentDownloadUrl,
+  getClientCompanyCustomDocumentPreviewUrl,
   listClientCompanyCustomDocumentLogs,
   listClientCompanyCustomDocuments,
   updateClientCompany,
@@ -90,6 +91,7 @@ export default function ClientCompanyDetailPage() {
       uploadCustomDocumentFn={uploadClientCompanyCustomDocument}
       deleteCustomDocumentFn={deleteClientCompanyCustomDocument}
       getCustomDocumentDownloadUrlFn={getClientCompanyCustomDocumentDownloadUrl}
+      getCustomDocumentPreviewUrlFn={getClientCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listClientCompanyCustomDocumentLogs}
     />
   )

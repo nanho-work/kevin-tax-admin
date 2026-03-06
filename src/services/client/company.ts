@@ -27,7 +27,12 @@ export interface ClientCompanyCustomDocumentOut {
   file_size: number
   uploaded_by_client_account_id?: number | null
   uploaded_by_admin_id?: number | null
+  uploaded_by_type?: string
+  uploaded_by_id?: number
+  uploaded_at?: string
   is_active: boolean
+  deleted_by_type?: string | null
+  deleted_by_id?: number | null
   deleted_at?: string | null
   deleted_by_client_account_id?: number | null
   deleted_by_admin_id?: number | null
@@ -44,6 +49,13 @@ export interface ClientCompanyCustomDocumentDownloadUrlOut {
   document_id: number
   file_name: string
   download_url: string
+  expires_in: number
+}
+
+export interface ClientCompanyCustomDocumentPreviewUrlOut {
+  document_id: number
+  file_name: string
+  preview_url: string
   expires_in: number
 }
 
@@ -186,6 +198,16 @@ export async function listClientCompanyCustomDocumentLogs(
 ): Promise<ClientCompanyCustomDocumentLogListResponse> {
   const res = await clientHttp.get<ClientCompanyCustomDocumentLogListResponse>(
     `${BASE}/${company_id}/custom-documents/${document_id}/logs`
+  )
+  return res.data
+}
+
+export async function getClientCompanyCustomDocumentPreviewUrl(
+  company_id: number,
+  document_id: number
+): Promise<ClientCompanyCustomDocumentPreviewUrlOut> {
+  const res = await clientHttp.get<ClientCompanyCustomDocumentPreviewUrlOut>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/preview-url`
   )
   return res.data
 }
