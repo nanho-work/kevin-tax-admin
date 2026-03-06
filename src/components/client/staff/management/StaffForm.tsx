@@ -9,7 +9,7 @@ import { getDepartments } from '@/services/client/departmentService'
 import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
 import type { DepartmentOut } from '@/types/department'
-import { checkClientSession } from '@/services/client/clientAuthService'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 export default function StaffForm() {
     const inputClass =
@@ -34,19 +34,10 @@ export default function StaffForm() {
 
     const [visibleTeams, setVisibleTeams] = useState<TeamOut[]>([])
     const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | ''>('')
+    const { session } = useClientSessionContext()
 
     useEffect(() => {
         async function loadData() {
-            try {
-                const sessionRes = await checkClientSession()
-                setForm((prev) => ({
-                  ...prev,
-                  client_id: sessionRes.client_id,
-                }))
-            } catch {
-                setForm((prev) => ({ ...prev, client_id: 0 }))
-            }
-
             const [roleRes, teamRes, deptRes] = await Promise.allSettled([
                 getRoles(),
                 getTeams(),
@@ -64,6 +55,10 @@ export default function StaffForm() {
         }
         loadData()
     }, [])
+
+    useEffect(() => {
+      setForm((prev) => ({ ...prev, client_id: session?.client_id ?? 0 }))
+    }, [session?.client_id])
 
     const handleDepartmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const selectedDeptId = Number(e.target.value)

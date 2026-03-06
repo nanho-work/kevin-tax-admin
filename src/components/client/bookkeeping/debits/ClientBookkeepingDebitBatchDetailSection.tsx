@@ -81,10 +81,11 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
   const [total, setTotal] = useState(0)
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size])
 
-  const [matchStats, setMatchStats] = useState<{ total: number; matched: number; unmatched: number }>({
+  const [matchStats, setMatchStats] = useState<{ total: number; matched: number; unmatched: number; failed: number }>({
     total: 0,
     matched: 0,
     unmatched: 0,
+    failed: 0,
   })
 
   const [companyMap, setCompanyMap] = useState<Record<number, CompanyTaxDetail>>({})
@@ -115,8 +116,8 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
   }, [rows, companyMap])
 
   const filteredRows = useMemo(() => {
-    if (tab === 'unmapped') return sortedRows.filter((row) => !row.company_id)
-    if (tab === 'mapped') return sortedRows.filter((row) => Boolean(row.company_id))
+    if (tab === 'unmapped') return sortedRows.filter((row) => !row.company_id && isLinkableWithdrawStatus(row.withdraw_status))
+    if (tab === 'mapped') return sortedRows.filter((row) => Boolean(row.company_id) && isLinkableWithdrawStatus(row.withdraw_status))
     return sortedRows
   }, [sortedRows, tab])
 
@@ -208,13 +209,11 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
           size,
         }),
         listBookkeepingDebitBatchItems(batchId, {
-          withdraw_status: nextStatus || undefined,
           matched_only: false,
           page: 1,
           size: 1,
         }),
         listBookkeepingDebitBatchItems(batchId, {
-          withdraw_status: nextStatus || undefined,
           matched_only: true,
           page: 1,
           size: 1,
@@ -225,10 +224,15 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       setRows(items)
       setTotal(res.total || 0)
       setPage(nextPage)
+      const failedCount = batchMeta?.failed_rows ?? 0
+      const totalCount = batchMeta?.total_rows ?? (totalRes.total || 0)
+      const successTotal = batchMeta?.success_rows ?? Math.max(0, totalCount - failedCount)
+      const matchedCount = matchedRes.total || 0
       setMatchStats({
-        total: totalRes.total || 0,
-        matched: matchedRes.total || 0,
-        unmatched: Math.max(0, (totalRes.total || 0) - (matchedRes.total || 0)),
+        total: totalCount,
+        matched: matchedCount,
+        unmatched: Math.max(0, successTotal - matchedCount),
+        failed: failedCount,
       })
       setStatusOptions((prev) => {
         const merged = new Set(prev)
@@ -247,7 +251,7 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       toast.error(extractApiDetail(error) || '배치 아이템 조회 중 오류가 발생했습니다.')
       setRows([])
       setTotal(0)
-      setMatchStats({ total: 0, matched: 0, unmatched: 0 })
+      setMatchStats({ total: 0, matched: 0, unmatched: 0, failed: 0 })
     } finally {
       setLoading(false)
     }
@@ -403,6 +407,9 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
           <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
             미매핑 {matchStats.unmatched.toLocaleString('ko-KR')}건
           </span>
+          <span className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">
+            출금실패 {matchStats.failed.toLocaleString('ko-KR')}건
+          </span>
           {rematchResult ? (
             <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
               최근 재매칭: {rematchResult.rematched_count}건 / 잔여 {rematchResult.still_unmatched_count}건
@@ -447,7 +454,9 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
                 const companyName = row.company_id ? (companyMap[row.company_id]?.company_name || `회사#${row.company_id}`) : ''
                 return (
                   <tr key={row.id} className={failedWithdraw ? 'bg-rose-50/60' : undefined}>
-                    <td className="border-r border-zinc-100 px-3 py-3 text-center">{mapped ? '매핑완료' : '미매핑'}</td>
+                    <td className="border-r border-zinc-100 px-3 py-3 text-center">
+                      {failedWithdraw ? '출금실패' : mapped ? '매핑완료' : '미매핑'}
+                    </td>
                     <td className="max-w-[190px] border-r border-zinc-100 px-3 py-3 text-center">
                       {mapped ? (
                         <span className="block truncate" title={companyName || '-'}>

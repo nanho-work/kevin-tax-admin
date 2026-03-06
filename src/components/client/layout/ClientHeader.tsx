@@ -29,6 +29,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/company-list')) return { parent: '클라이언트 관리', child: '클라이언트(업체) 목록' }
   if (pathname.startsWith('/client/client-management/create')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 등록' }
   if (pathname.startsWith('/client/client-management/list')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 목록' }
+  if (pathname.startsWith('/client/client-management/templates')) return { parent: '클라이언트 관리', child: '샘플양식 업로드' }
   if (pathname.startsWith('/client/client-management')) return { parent: '클라이언트 관리' }
   if (pathname.startsWith('/client/setting')) return { parent: '설정' }
   if (pathname.startsWith('/client/schedule')) return { parent: '일정관리' }

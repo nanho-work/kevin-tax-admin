@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { checkClientSession } from '@/services/client/clientAuthService'
+import { useEffect } from 'react'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 export default function ClientManagementLayout({
   children,
@@ -10,28 +10,21 @@ export default function ClientManagementLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const [allowed, setAllowed] = useState(false)
-  const [checking, setChecking] = useState(true)
+  const { session, loading } = useClientSessionContext()
+  const allowed = session?.role_level === 0
 
   useEffect(() => {
-    const verifyPermission = async () => {
-      try {
-        const session = await checkClientSession()
-        if (session.role_level !== 0) {
-          router.replace('/client/dashboard')
-          return
-        }
-        setAllowed(true)
-      } catch {
-        router.replace('/login/client')
-      } finally {
-        setChecking(false)
-      }
+    if (loading) return
+    if (!session) {
+      router.replace('/login/client')
+      return
     }
-    verifyPermission()
-  }, [router])
+    if (!allowed) {
+      router.replace('/client/dashboard')
+    }
+  }, [allowed, loading, router, session])
 
-  if (checking) {
+  if (loading) {
     return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">권한 확인 중...</div>
   }
 

@@ -4,11 +4,22 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
 import {
+  COMPANY_DOC_TYPE_BANKBOOK,
   deleteClientCompanyBusinessLicense,
+  deleteClientCompanyCustomDocument,
+  deleteClientCompanyDocument,
   fetchClientCompanyBusinessLicensePreview,
+  fetchClientCompanyDocumentPreview,
   fetchClientCompanyDetail,
+  getClientCompanyCustomDocumentDownloadUrl,
+  listClientCompanyCustomDocumentLogs,
+  listClientCompanyCustomDocuments,
   updateClientCompany,
+  uploadClientCompanyCustomDocument,
+  uploadClientCompanyDocument,
   uploadClientCompanyBusinessLicense,
+  COMPANY_DOC_TYPE_OWNER_ID,
+  COMPANY_DOC_TYPE_BUSINESS_LICENSE,
   type ClientCompanyDocumentPreviewResponse,
 } from '@/services/client/company'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
@@ -59,13 +70,27 @@ export default function ClientCompanyDetailPage() {
     <CompanyDetailForm
       company={company}
       editable
+      enableCustomDocuments
       listPath="/client/companies"
       businessLicensePreview={businessLicensePreview}
+      documentTypes={[
+        { code: COMPANY_DOC_TYPE_BUSINESS_LICENSE, label: '사업자등록증' },
+        { code: COMPANY_DOC_TYPE_OWNER_ID, label: '대표자 신분증' },
+        { code: COMPANY_DOC_TYPE_BANKBOOK, label: '통장사본' },
+      ]}
       fetchDetailFn={fetchClientCompanyDetail}
       updateFn={updateClientCompany}
       fetchBusinessLicensePreviewFn={fetchClientCompanyBusinessLicensePreview}
       uploadBusinessLicenseFn={uploadClientCompanyBusinessLicense}
       deleteBusinessLicenseFn={deleteClientCompanyBusinessLicense}
+      fetchDocumentPreviewFn={fetchClientCompanyDocumentPreview}
+      uploadDocumentFn={uploadClientCompanyDocument}
+      deleteDocumentFn={deleteClientCompanyDocument}
+      listCustomDocumentsFn={listClientCompanyCustomDocuments}
+      uploadCustomDocumentFn={uploadClientCompanyCustomDocument}
+      deleteCustomDocumentFn={deleteClientCompanyCustomDocument}
+      getCustomDocumentDownloadUrlFn={getClientCompanyCustomDocumentDownloadUrl}
+      listCustomDocumentLogsFn={listClientCompanyCustomDocumentLogs}
     />
   )
 }

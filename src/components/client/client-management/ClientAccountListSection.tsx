@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { checkClientSession } from '@/services/client/clientAuthService'
 import { listClients } from '@/services/client/clientService'
 import { deactivateClientAccount, listClientAccounts } from '@/services/client/clientManagementService'
 import type { ClientAccountOut } from '@/types/clientAccount'
 import { inputClass, statusMessage } from './constants'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 export default function ClientAccountListSection() {
   const [rows, setRows] = useState<ClientAccountOut[]>([])
   const [clientNameMap, setClientNameMap] = useState<Record<number, string>>({})
-  const [myAccountId, setMyAccountId] = useState<number | null>(null)
+  const { session } = useClientSessionContext()
+  const myAccountId = session?.account_id ?? null
   const [loading, setLoading] = useState(false)
   const [workingId, setWorkingId] = useState<number | null>(null)
 
@@ -52,10 +53,6 @@ export default function ClientAccountListSection() {
   }
 
   useEffect(() => {
-    checkClientSession()
-      .then((session) => setMyAccountId(session.account_id))
-      .catch(() => setMyAccountId(null))
-
     listClients()
       .then((clients) => {
         const map = clients.reduce<Record<number, string>>((acc, client) => {

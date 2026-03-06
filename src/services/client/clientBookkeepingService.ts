@@ -10,11 +10,14 @@ import type {
   ClientBookkeepingContractCreateRequest,
   ClientBookkeepingGenerateBillingsRequest,
   ClientBookkeepingGenerateBillingsResponse,
+  ClientBookkeepingContractBulkApplyResponse,
+  ClientBookkeepingContractBulkPreviewResponse,
   ClientBookkeepingContractListFilters,
   ClientBookkeepingContractListResponse,
   ClientBookkeepingContractOut,
   ClientBookkeepingContractUpdateRequest,
   ClientBookkeepingSummaryResponse,
+  ClientBookkeepingYearsSummaryResponse,
   ClientBillingSyncReceiptsResponse,
   ClientDebitReceiptListFilters,
   ClientDebitReceiptListResponse,
@@ -106,6 +109,24 @@ export async function generateBookkeepingContractBillings(
   return res.data
 }
 
+export async function previewBookkeepingContractBulkUpload(
+  file: File
+): Promise<ClientBookkeepingContractBulkPreviewResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await clientHttp.post<ClientBookkeepingContractBulkPreviewResponse>(`${BASE}/contracts/upload/preview`, form)
+  return res.data
+}
+
+export async function applyBookkeepingContractBulkUpload(
+  file: File
+): Promise<ClientBookkeepingContractBulkApplyResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await clientHttp.post<ClientBookkeepingContractBulkApplyResponse>(`${BASE}/contracts/upload/apply`, form)
+  return res.data
+}
+
 export async function createBookkeepingBilling(
   payload: ClientBookkeepingBillingCreateRequest
 ): Promise<ClientBookkeepingBillingOut> {
@@ -151,6 +172,16 @@ export async function syncBookkeepingBillingReceipts(
 export async function getBookkeepingSummary(year: number): Promise<ClientBookkeepingSummaryResponse> {
   const res = await clientHttp.get<ClientBookkeepingSummaryResponse>(`${BASE}/summary`, {
     params: { year },
+  })
+  return res.data
+}
+
+export async function getBookkeepingSummaryYears(
+  fromYear: number,
+  toYear: number
+): Promise<ClientBookkeepingYearsSummaryResponse> {
+  const res = await clientHttp.get<ClientBookkeepingYearsSummaryResponse>(`${BASE}/summary/years`, {
+    params: { from: fromYear, to: toYear },
   })
   return res.data
 }
@@ -227,6 +258,8 @@ export const createContract = createBookkeepingContract
 export const updateContract = updateBookkeepingContract
 export const patchContractActive = patchBookkeepingContractActive
 export const generateContractBillings = generateBookkeepingContractBillings
+export const previewContractBulkUpload = previewBookkeepingContractBulkUpload
+export const applyContractBulkUpload = applyBookkeepingContractBulkUpload
 export const listBillings = listBookkeepingBillings
 export const createBilling = createBookkeepingBilling
 export const updateBilling = updateBookkeepingBilling
@@ -234,5 +267,6 @@ export const deleteBilling = deleteBookkeepingBilling
 export const syncBillingReceipts = syncBookkeepingBillingReceipts
 export const patchBillingStatus = patchBookkeepingBillingStatus
 export const updateBillingStatus = patchBookkeepingBillingStatus
+export const getSummaryYears = getBookkeepingSummaryYears
 export const listDebitReceipts = listBookkeepingDebitReceipts
 export const getDebitSummary = getBookkeepingDebitSummary

@@ -169,6 +169,20 @@ export interface ClientBookkeepingSummaryResponse {
   items: ClientBookkeepingMonthlySummaryOut[]
 }
 
+export interface ClientBookkeepingYearSummaryOut {
+  year: number
+  supply_amount_sum: number
+  vat_amount_sum: number
+  total_amount_sum: number
+  receivable_amount_sum: number
+}
+
+export interface ClientBookkeepingYearsSummaryResponse {
+  from_year: number
+  to_year: number
+  items: ClientBookkeepingYearSummaryOut[]
+}
+
 export interface ClientDebitReceiptOut {
   id: number
   batch_id: number
@@ -302,6 +316,32 @@ export interface ClientDebitBatchRematchResponse {
   rematched_count: number
   still_unmatched_count: number
   rematched_item_ids: number[]
+}
+
+export interface ClientBookkeepingContractBulkRowResult {
+  row_no: number
+  company_name?: string | null
+  registration_number?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  monthly_fee_supply?: number | null
+  vat_included?: boolean | null
+  status: string
+  reason?: string | null
+}
+
+export interface ClientBookkeepingContractBulkPreviewResponse {
+  total_rows: number
+  valid_rows: number
+  invalid_rows: number
+  rows: ClientBookkeepingContractBulkRowResult[]
+}
+
+export interface ClientBookkeepingContractBulkApplyResponse {
+  total_rows: number
+  created_count: number
+  failed_count: number
+  rows: ClientBookkeepingContractBulkRowResult[]
 }
 
 export interface MessageOut {

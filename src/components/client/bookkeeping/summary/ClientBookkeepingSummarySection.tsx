@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   getBookkeepingSummary,
+  getBookkeepingSummaryYears,
   getClientBookkeepingErrorMessage,
   listContracts,
 } from '@/services/client/clientBookkeepingService'
@@ -21,12 +22,38 @@ export default function ClientBookkeepingSummarySection() {
   const [startYear, setStartYear] = useState<number>(currentYear - 3)
   const [rows, setRows] = useState<ClientBookkeepingMonthlySummaryOut[]>([])
   const [loading, setLoading] = useState(false)
+  const [yearTotals, setYearTotals] = useState<Record<number, number>>({})
+  const [yearBarStartIndex, setYearBarStartIndex] = useState(0)
+  const [loadingYearTotals, setLoadingYearTotals] = useState(false)
+  const YEARS_VISIBLE = 5
 
   const yearOptions = useMemo(() => {
     const from = Math.min(startYear, currentYear)
     const to = Math.max(startYear, currentYear)
     return Array.from({ length: to - from + 1 }, (_, idx) => from + idx)
   }, [currentYear, startYear])
+
+  const maxYearBarStartIndex = useMemo(
+    () => Math.max(0, yearOptions.length - YEARS_VISIBLE),
+    [yearOptions.length]
+  )
+
+  const visibleYearOptions = useMemo(() => {
+    return yearOptions.slice(yearBarStartIndex, yearBarStartIndex + YEARS_VISIBLE)
+  }, [yearOptions, yearBarStartIndex])
+
+  const selectedYearTotals = useMemo(() => {
+    return (rows || []).reduce(
+      (acc, item) => {
+        acc.supply += item.supply_amount_sum || 0
+        acc.vat += item.vat_amount_sum || 0
+        acc.total += item.total_amount_sum || 0
+        acc.receivable += item.receivable_amount_sum || 0
+        return acc
+      },
+      { supply: 0, vat: 0, total: 0, receivable: 0 }
+    )
+  }, [rows])
 
   const loadYearRange = async () => {
     try {
@@ -74,30 +101,134 @@ export default function ClientBookkeepingSummarySection() {
     loadSummary(year)
   }, [year])
 
+  useEffect(() => {
+    if (yearOptions.length === 0) return
+    setYearBarStartIndex((prev) => {
+      if (prev > maxYearBarStartIndex) return maxYearBarStartIndex
+      return prev
+    })
+  }, [yearOptions.length, maxYearBarStartIndex])
+
+  useEffect(() => {
+    const index = yearOptions.indexOf(year)
+    if (index < 0) return
+    if (index < yearBarStartIndex) {
+      setYearBarStartIndex(index)
+      return
+    }
+    if (index >= yearBarStartIndex + YEARS_VISIBLE) {
+      setYearBarStartIndex(index - YEARS_VISIBLE + 1)
+    }
+  }, [year, yearOptions, yearBarStartIndex])
+
+  useEffect(() => {
+    if (yearOptions.length === 0) return
+
+    const loadYearTotals = async () => {
+      try {
+        setLoadingYearTotals(true)
+        const fromYear = Math.min(...yearOptions)
+        const toYear = Math.max(...yearOptions)
+        const res = await getBookkeepingSummaryYears(fromYear, toYear)
+        const totals = (res.items || []).reduce<Record<number, number>>((acc, item) => {
+          acc[item.year] = item.total_amount_sum || 0
+          return acc
+        }, {})
+        setYearTotals(totals)
+      } catch {
+        setYearTotals({})
+      } finally {
+        setLoadingYearTotals(false)
+      }
+    }
+
+    loadYearTotals()
+  }, [yearOptions])
+
   return (
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-base font-semibold text-zinc-900">월별 집계</h1>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-sm font-medium text-zinc-700">연도별 합계 (총액)</p>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-zinc-600">연도</label>
-            <select
-              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+            <button
+              type="button"
+              disabled={yearBarStartIndex <= 0}
+              onClick={() => setYearBarStartIndex((prev) => Math.max(0, prev - 1))}
+              className="h-8 w-8 rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
             >
-              {yearOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              ‹
+            </button>
+            <button
+              type="button"
+              disabled={yearBarStartIndex >= maxYearBarStartIndex}
+              onClick={() => setYearBarStartIndex((prev) => Math.min(maxYearBarStartIndex, prev + 1))}
+              className="h-8 w-8 rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+            >
+              ›
+            </button>
           </div>
+        </div>
+
+        <div className="flex items-stretch justify-start gap-2">
+          {visibleYearOptions.map((y) => {
+            const active = y === year
+            return (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setYear(y)}
+                className={`w-full max-w-[150px] rounded-md border px-2 py-1.5 text-left transition ${
+                  active
+                    ? 'border-zinc-900 bg-zinc-900 text-white'
+                    : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
+                }`}
+              >
+                <p className={`text-xs ${active ? 'text-zinc-200' : 'text-zinc-500'}`}>{y}년</p>
+                <p className="mt-0.5 text-xs font-semibold">
+                  {loadingYearTotals ? '계산 중...' : formatNumber(yearTotals[y] ?? 0)}
+                </p>
+              </button>
+            )
+          })}
         </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-        <table className="min-w-[880px] w-full text-sm">
+        <table className="min-w-[880px] w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-[16%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[12%]" />
+          </colgroup>
+          <tbody>
+            <tr>
+              <td className="px-3 py-3 text-center font-semibold text-zinc-800">{year}년</td>
+              <td className="px-3 py-3 text-right font-semibold text-zinc-800">{formatNumber(selectedYearTotals.supply)}</td>
+              <td className="px-3 py-3 text-right font-semibold text-zinc-800">{formatNumber(selectedYearTotals.vat)}</td>
+              <td className="px-3 py-3 text-right font-semibold text-zinc-800">{formatNumber(selectedYearTotals.total)}</td>
+              <td className="px-3 py-3 text-right font-semibold text-zinc-800">
+                {formatNumber(selectedYearTotals.receivable)}
+              </td>
+              <td className="px-3 py-3" />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+        <table className="min-w-[880px] w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-[16%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[12%]" />
+          </colgroup>
           <thead className="bg-zinc-50 text-xs text-zinc-600">
             <tr>
               <th className="px-3 py-3 text-center">월</th>

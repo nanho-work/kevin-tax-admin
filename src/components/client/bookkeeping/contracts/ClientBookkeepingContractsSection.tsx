@@ -1,25 +1,31 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
+  applyContractBulkUpload,
   createContract,
   generateContractBillings,
   getClientBookkeepingErrorMessage,
   listContracts,
   patchContractActive,
+  previewContractBulkUpload,
   updateContract,
 } from '@/services/client/clientBookkeepingService'
 import type {
+  ClientBookkeepingContractBulkApplyResponse,
+  ClientBookkeepingContractBulkPreviewResponse,
   ClientBookkeepingContractCreateRequest,
   ClientBookkeepingContractOut,
   ClientBookkeepingGenerateBillingsResponse,
 } from '@/types/clientBookkeeping'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
+import TemplateDownloadButton from '@/components/client/templates/TemplateDownloadButton'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
 type ContractModalState = {
   open: boolean
@@ -126,9 +132,15 @@ function mapContractToForm(target: ClientBookkeepingContractOut): ContractFormSt
 }
 
 export default function ClientBookkeepingContractsSection() {
+  const bulkFileInputRef = useRef<HTMLInputElement | null>(null)
   const [rows, setRows] = useState<ClientBookkeepingContractOut[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false)
+  const [bulkApplyLoading, setBulkApplyLoading] = useState(false)
+  const [bulkFile, setBulkFile] = useState<File | null>(null)
+  const [bulkPreview, setBulkPreview] = useState<ClientBookkeepingContractBulkPreviewResponse | null>(null)
+  const [bulkApplyResult, setBulkApplyResult] = useState<ClientBookkeepingContractBulkApplyResponse | null>(null)
 
   const [q, setQ] = useState('')
   const [includeInactive, setIncludeInactive] = useState(false)
@@ -332,6 +344,16 @@ export default function ClientBookkeepingContractsSection() {
     }
   }
 
+  const handleToggleActive = async (row: ClientBookkeepingContractOut) => {
+    try {
+      await patchContractActive(row.id, !row.is_active)
+      toast.success(row.is_active ? '비활성화되었습니다.' : '활성화되었습니다.')
+      await loadContracts()
+    } catch (error) {
+      toast.error(getClientBookkeepingErrorMessage(error))
+    }
+  }
+
   const handleGenerateBillings = async (row: ClientBookkeepingContractOut) => {
     try {
       setGeneratingId(row.id)
@@ -345,13 +367,54 @@ export default function ClientBookkeepingContractsSection() {
     }
   }
 
-  const handleToggleActive = async (row: ClientBookkeepingContractOut) => {
+  const clearBulkPreview = () => {
+    setBulkFile(null)
+    setBulkPreview(null)
+    setBulkApplyResult(null)
+    if (bulkFileInputRef.current) bulkFileInputRef.current.value = ''
+  }
+
+  const handleBulkFileSelect = async (file: File | null) => {
+    if (!file) return
+    const lowerFileName = file.name.toLowerCase()
+    const canUpload = ALLOWED_EXCEL_EXTENSIONS.some((ext) => lowerFileName.endsWith(ext))
+    if (!canUpload) {
+      toast.error('엑셀 파일(.xls, .xlsx, .xlsm, .xltx, .xltm)만 업로드할 수 있습니다.')
+      return
+    }
+
     try {
-      await patchContractActive(row.id, !row.is_active)
-      toast.success(row.is_active ? '비활성화되었습니다.' : '활성화되었습니다.')
+      setBulkPreviewLoading(true)
+      setBulkApplyResult(null)
+      const preview = await previewContractBulkUpload(file)
+      setBulkFile(file)
+      setBulkPreview(preview)
+      toast.success(`검증 완료: 유효 ${preview.valid_rows}건 / 오류 ${preview.invalid_rows}건`)
+    } catch (error) {
+      setBulkFile(null)
+      setBulkPreview(null)
+      toast.error(getClientBookkeepingErrorMessage(error))
+    } finally {
+      setBulkPreviewLoading(false)
+    }
+  }
+
+  const handleApplyBulk = async () => {
+    if (!bulkFile || !bulkPreview) {
+      toast.error('먼저 엑셀 검증을 진행해 주세요.')
+      return
+    }
+    try {
+      setBulkApplyLoading(true)
+      const result = await applyContractBulkUpload(bulkFile)
+      setBulkApplyResult(result)
+      toast.success(`등록 완료: 생성 ${result.created_count}건 / 실패 ${result.failed_count}건`)
       await loadContracts()
+      clearBulkPreview()
     } catch (error) {
       toast.error(getClientBookkeepingErrorMessage(error))
+    } finally {
+      setBulkApplyLoading(false)
     }
   }
 
@@ -359,13 +422,33 @@ export default function ClientBookkeepingContractsSection() {
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto_auto]">
-          <button
-            type="button"
-            onClick={openCreate}
-            className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
-          >
-            거래처 추가
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openCreate}
+              className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
+            >
+              거래처 추가
+            </button>
+            <TemplateDownloadButton code="BOOKKEEPING_CONTRACT_BULK" label="거래처 계약 일괄등록 양식" />
+            <button
+              type="button"
+              onClick={() => bulkFileInputRef.current?.click()}
+              disabled={bulkPreviewLoading || bulkApplyLoading}
+              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+            >
+              {bulkPreviewLoading ? '검증 중...' : '엑셀파일 일괄등록'}
+            </button>
+            <input
+              ref={bulkFileInputRef}
+              type="file"
+              accept=".xls,.xlsx,.xlsm,.xltx,.xltm"
+              className="hidden"
+              onChange={(e) => {
+                void handleBulkFileSelect(e.target.files?.[0] || null)
+              }}
+            />
+          </div>
           <input
             className={inputClass}
             placeholder="회사명/사업자번호 검색"
@@ -395,6 +478,125 @@ export default function ClientBookkeepingContractsSection() {
           </button>
         </div>
       </div>
+
+      {bulkPreview ? (
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-zinc-900">엑셀 검증 프리뷰</h3>
+            <p className="text-xs text-zinc-500">{bulkFile?.name || '-'}</p>
+          </div>
+
+          <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+              전체 행 <span className="ml-1 font-semibold text-zinc-900">{bulkPreview.total_rows}</span>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              유효 행 <span className="ml-1 font-semibold">{bulkPreview.valid_rows}</span>
+            </div>
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              오류 행 <span className="ml-1 font-semibold">{bulkPreview.invalid_rows}</span>
+            </div>
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+              등록 가능 <span className="ml-1 font-semibold text-zinc-900">{bulkPreview.valid_rows > 0 ? '예' : '아니오'}</span>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+            <p>열 순서가 달라도 컬럼명 기준으로 읽습니다.</p>
+            <p>사업자번호는 하이픈 유무 상관없이 처리됩니다.</p>
+            <p>기간 중복 행은 자동으로 실패 처리됩니다.</p>
+          </div>
+
+          <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="min-w-[1080px] w-full text-xs">
+              <thead className="bg-zinc-50 text-zinc-600">
+                <tr>
+                  <th className="px-2 py-2 text-center">행</th>
+                  <th className="px-2 py-2 text-center">회사명</th>
+                  <th className="px-2 py-2 text-center">사업자번호</th>
+                  <th className="px-2 py-2 text-center">시작일</th>
+                  <th className="px-2 py-2 text-center">종료일</th>
+                  <th className="px-2 py-2 text-right">월기장료</th>
+                  <th className="px-2 py-2 text-center">VAT포함</th>
+                  <th className="px-2 py-2 text-center">상태</th>
+                  <th className="px-2 py-2 text-center">사유</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {bulkPreview.rows.map((row) => {
+                  const isValid = row.status === 'valid'
+                  return (
+                    <tr key={`preview-row-${row.row_no}`} className={isValid ? '' : 'bg-rose-50/40'}>
+                      <td className="px-2 py-2 text-center">{row.row_no}</td>
+                      <td className="px-2 py-2 text-center">{row.company_name || '-'}</td>
+                      <td className="px-2 py-2 text-center">{row.registration_number || '-'}</td>
+                      <td className="px-2 py-2 text-center">{row.start_date || '-'}</td>
+                      <td className="px-2 py-2 text-center">{row.end_date || '-'}</td>
+                      <td className="px-2 py-2 text-right">{typeof row.monthly_fee_supply === 'number' ? row.monthly_fee_supply.toLocaleString('ko-KR') : '-'}</td>
+                      <td className="px-2 py-2 text-center">{typeof row.vat_included === 'boolean' ? (row.vat_included ? 'Y' : 'N') : '-'}</td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`rounded px-2 py-0.5 ${isValid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-center">{row.reason || '-'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={clearBulkPreview}
+              disabled={bulkApplyLoading}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleApplyBulk}
+              disabled={bulkApplyLoading || bulkPreview.valid_rows === 0}
+              className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+            >
+              {bulkApplyLoading ? '등록 중...' : '등록'}
+            </button>
+          </div>
+
+          {bulkApplyResult && bulkApplyResult.failed_count > 0 ? (
+            <div className="mt-4">
+              <h4 className="text-xs font-semibold text-rose-700">등록 실패 행 ({bulkApplyResult.failed_count}건)</h4>
+              <div className="mt-2 overflow-x-auto rounded-lg border border-rose-200">
+                <table className="min-w-[800px] w-full text-xs">
+                  <thead className="bg-rose-50 text-rose-700">
+                    <tr>
+                      <th className="px-2 py-2 text-center">행</th>
+                      <th className="px-2 py-2 text-center">회사명</th>
+                      <th className="px-2 py-2 text-center">사업자번호</th>
+                      <th className="px-2 py-2 text-center">사유</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rose-100">
+                    {bulkApplyResult.rows
+                      .filter((row) => row.status !== 'valid')
+                      .map((row) => (
+                        <tr key={`apply-failed-${row.row_no}`}>
+                          <td className="px-2 py-2 text-center">{row.row_no}</td>
+                          <td className="px-2 py-2 text-center">{row.company_name || '-'}</td>
+                          <td className="px-2 py-2 text-center">{row.registration_number || '-'}</td>
+                          <td className="px-2 py-2 text-center">{row.reason || '-'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
         <table className="min-w-[1320px] w-full text-sm">

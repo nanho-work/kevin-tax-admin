@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { checkClientSession, logoutClient } from '@/services/client/clientAuthService'
+import { logoutClient } from '@/services/client/clientAuthService'
 import { clearClientAccessToken } from '@/services/http'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -29,6 +30,7 @@ const clientManagementMenus = [
   { label: '클라이언트(업체) 목록', href: '/client/client-management/company-list' },
   { label: '클라이언트(관리자) 등록', href: '/client/client-management/create' },
   { label: '클라이언트(관리자) 목록', href: '/client/client-management/list' },
+  { label: '샘플양식 업로드', href: '/client/client-management/templates' },
 ]
 
 const bookkeepingMenus = [
@@ -47,9 +49,15 @@ export default function ClientSidebar() {
   const [isStaffManagementOpen, setIsStaffManagementOpen] = useState(hasStaffManagementPath)
   const [isClientManagementOpen, setIsClientManagementOpen] = useState(hasClientManagementPath)
   const [isBookkeepingOpen, setIsBookkeepingOpen] = useState(hasBookkeepingPath)
-  const [canManageClients, setCanManageClients] = useState(false)
-  const [authLoading, setAuthLoading] = useState(true)
-  const [profile, setProfile] = useState<{ name: string; companyName?: string } | null>(null)
+  const { session, loading } = useClientSessionContext()
+  const canManageClients = session?.role_level === 0
+  const profile = useMemo(
+    () => ({
+      name: session?.name || '',
+      companyName: (session as any)?.client_company_name || undefined,
+    }),
+    [session]
+  )
 
   useEffect(() => {
     if (hasStaffManagementPath) setIsStaffManagementOpen(true)
@@ -62,25 +70,6 @@ export default function ClientSidebar() {
   useEffect(() => {
     if (hasBookkeepingPath) setIsBookkeepingOpen(true)
   }, [hasBookkeepingPath])
-
-  useEffect(() => {
-    const loadSession = async () => {
-      try {
-        const session = await checkClientSession()
-        setCanManageClients(session.role_level === 0)
-        setProfile({
-          name: session.name,
-          companyName: (session as any).client_company_name || undefined,
-        })
-      } catch {
-        setCanManageClients(false)
-        setProfile(null)
-      } finally {
-        setAuthLoading(false)
-      }
-    }
-    loadSession()
-  }, [])
 
   const handleLogout = async () => {
     try {
@@ -95,9 +84,9 @@ export default function ClientSidebar() {
     <aside className="h-full w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-5 py-4">
         <p className="text-xs text-neutral-500">클라이언트 포털</p>
-        <p className="mt-1 text-sm font-semibold text-neutral-900">{profile?.companyName || '고객사'} 관리자</p>
+        <p className="mt-1 text-sm font-semibold text-neutral-900">{profile.companyName || '고객사'} 관리자</p>
         <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-neutral-500">{profile?.name ? `${profile.name}님 환영합니다` : '세션 확인 중...'}</p>
+          <p className="text-xs text-neutral-500">{profile.name ? `${profile.name}님 환영합니다` : '세션 확인 중...'}</p>
           <button
             type="button"
             onClick={handleLogout}
@@ -187,7 +176,7 @@ export default function ClientSidebar() {
           )}
         </div>
 
-        {!authLoading && canManageClients ? (
+        {!loading && canManageClients ? (
           <div className="pt-2">
             <button
               type="button"

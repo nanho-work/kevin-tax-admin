@@ -184,8 +184,18 @@ export default function ClientBookkeepingBillingsSection() {
 
   const loadCompanies = async () => {
     try {
-      const res = await fetchClientCompanyTaxList({ page: 1, limit: 200, keyword: '' })
-      const sorted = [...(res.items || [])].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
+      const limit = 100
+      let pageCursor = 1
+      let totalCount = 0
+      const merged: CompanyTaxDetail[] = []
+      do {
+        const res = await fetchClientCompanyTaxList({ page: pageCursor, limit, keyword: '' })
+        merged.push(...(res.items || []))
+        totalCount = res.total || 0
+        pageCursor += 1
+      } while (merged.length < totalCount)
+
+      const sorted = [...merged].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
       setCompanyOptions(sorted)
     } catch {
       setCompanyOptions([])

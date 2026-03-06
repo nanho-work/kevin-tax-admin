@@ -1,32 +1,26 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { checkClientSession } from '@/services/client/clientAuthService'
 import ClientHeader from '@/components/client/layout/ClientHeader'
 import ClientSidebar from '@/components/client/layout/ClientSidebar'
+import { ClientSessionProvider, useClientSessionContext } from '@/contexts/ClientSessionContext'
 
-export default function ClientLayout({
+function ProtectedClientShell({
   children,
 }: {
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const [verified, setVerified] = useState(false)
+  const { loading, session } = useClientSessionContext()
 
   useEffect(() => {
-    const verify = async () => {
-      try {
-        await checkClientSession()
-        setVerified(true)
-      } catch {
-        router.replace('/login/client')
-      }
+    if (!loading && !session) {
+      router.replace('/login/client')
     }
-    verify()
-  }, [router])
+  }, [loading, session, router])
 
-  if (!verified) {
+  if (loading || !session) {
     return <p className="mt-20 text-center text-gray-500">클라이언트 인증 확인 중...</p>
   }
 
@@ -40,5 +34,17 @@ export default function ClientLayout({
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
+  )
+}
+
+export default function ClientLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <ClientSessionProvider>
+      <ProtectedClientShell>{children}</ProtectedClientShell>
+    </ClientSessionProvider>
   )
 }
