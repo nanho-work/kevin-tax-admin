@@ -57,3 +57,11 @@ export async function logoutClient(): Promise<void> {
   await clientHttp.post(`${CLIENT_AUTH_BASE}/logout`)
   clearClientAccessToken()
 }
+
+export async function changeClientPassword(payload: {
+  current_password: string
+  new_password: string
+}): Promise<{ message: string }> {
+  const res = await clientHttp.patch<{ message: string }>(`${CLIENT_AUTH_BASE}/password`, payload)
+  return res.data
+}

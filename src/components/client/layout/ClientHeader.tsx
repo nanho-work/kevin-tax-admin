@@ -11,8 +11,9 @@ type HeaderInfo = {
 
 function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/dashboard')) return { parent: '대시보드' }
-  if (pathname.startsWith('/client/companies/')) return { parent: '고객사관리', child: '고객사 상세정보' }
-  if (pathname.startsWith('/client/companies')) return { parent: '고객사관리' }
+  if (pathname.startsWith('/client/companies/new')) return { parent: '거래처관리', child: '거래처등록' }
+  if (pathname.startsWith('/client/companies/')) return { parent: '거래처관리', child: '거래처 기본사항' }
+  if (pathname.startsWith('/client/companies')) return { parent: '거래처관리', child: '거래처 기본사항' }
   if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '기장 관리', child: '기장 거래처 관리' }
   if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '기장 관리', child: '월별 청구/수납 관리' }
   if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '기장 관리', child: '월별 집계' }
@@ -31,6 +32,8 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/list')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 목록' }
   if (pathname.startsWith('/client/client-management/templates')) return { parent: '클라이언트 관리', child: '샘플양식 업로드' }
   if (pathname.startsWith('/client/client-management')) return { parent: '클라이언트 관리' }
+  if (pathname.startsWith('/client/setting/account')) return { parent: '설정', child: '비밀번호 변경' }
+  if (pathname.startsWith('/client/setting/security')) return { parent: '설정', child: '로그/보안' }
   if (pathname.startsWith('/client/setting')) return { parent: '설정' }
   if (pathname.startsWith('/client/schedule')) return { parent: '일정관리' }
   return { parent: '클라이언트' }

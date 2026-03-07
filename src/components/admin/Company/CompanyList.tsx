@@ -19,6 +19,8 @@ interface Props {
   deactivate?: (companyId: number) => Promise<{ message?: string }>;
   disableDelete?: boolean;
   pageSize?: number;
+  createHref?: string;
+  createLabel?: string;
 }
 
 export default function CompanyList({
@@ -27,6 +29,8 @@ export default function CompanyList({
   deactivate,
   disableDelete = true,
   pageSize = 9,
+  createHref,
+  createLabel = '거래처등록',
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -150,7 +154,17 @@ export default function CompanyList({
       <div className="w-full overflow-x-auto">
         <div className="min-w-[900px]">
           <div className="mb-4 flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-white p-3">
-            <div className="text-sm text-zinc-500">총 {totalCount}개</div>
+            <div className="flex items-center gap-2">
+              {createHref ? (
+                <Link
+                  href={createHref}
+                  className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                >
+                  {createLabel}
+                </Link>
+              ) : null}
+              <div className="text-sm text-zinc-500">총 {totalCount}개</div>
+            </div>
             <div className="ml-auto flex gap-2">
               <input
                 type="text"

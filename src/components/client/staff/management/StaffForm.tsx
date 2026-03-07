@@ -21,6 +21,7 @@ export default function StaffForm() {
         password: '',
         phone: '',
         hired_at: '',
+        birth_date: '',
         client_id: 0,
         team_id: undefined,
         role_id: undefined,
@@ -93,6 +94,7 @@ export default function StaffForm() {
             formData.append('password', form.password)
             formData.append('phone', form.phone ?? '')
             formData.append('hired_at', form.hired_at ?? '')
+            formData.append('birth_date', form.birth_date ?? '')
             formData.append('client_id', String(form.client_id))
             if (form.team_id) formData.append('team_id', String(form.team_id))
             if (form.role_id) formData.append('role_id', String(form.role_id))
@@ -165,6 +167,17 @@ export default function StaffForm() {
                         id="hired_at"
                         name="hired_at"
                         value={form.hired_at}
+                        onChange={handleChange}
+                        type="date"
+                        className={inputClass}
+                    />
+                </div>
+                <div>
+                    <label htmlFor="birth_date" className="mb-1 block text-xs text-zinc-600">생일</label>
+                    <input
+                        id="birth_date"
+                        name="birth_date"
+                        value={form.birth_date ?? ''}
                         onChange={handleChange}
                         type="date"
                         className={inputClass}

@@ -9,6 +9,7 @@ import type { LoginRequest } from '@/types/admin'
 export default function LoginForm() {
   const router = useRouter()
   const [form, setForm] = useState<LoginRequest>({ email: '', password: '' })
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -87,17 +88,26 @@ export default function LoginForm() {
             <label htmlFor="password" className="block text-sm text-gray-700 mb-1">
               비밀번호
             </label>
-            <input
-              id="password"
-              type="password"
-              name="password"
-              placeholder="비밀번호를 입력하세요"
-              value={form.password}
-              onChange={handleChange}
-              required
-              autoComplete="current-password"
-              className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-900"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                placeholder="비밀번호를 입력하세요"
+                value={form.password}
+                onChange={handleChange}
+                required
+                autoComplete="current-password"
+                className="w-full border px-4 py-2 pr-16 rounded focus:outline-none focus:ring-2 focus:ring-blue-900"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                {showPassword ? '숨김' : '보기'}
+              </button>
+            </div>
           </div>
 
           {/* ✅ 로그인 버튼 */}

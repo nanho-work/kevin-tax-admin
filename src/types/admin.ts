@@ -28,6 +28,7 @@ export interface AdminOut {
   last_login_at?: string
   profile_image_url?: string
   hired_at?: string
+  birth_date?: string
   retired_at?: string
   client_id: number
   team_id?: number
@@ -48,6 +49,7 @@ export interface CreateStaffRequest {
   phone?: string
   client_id: number;
   hired_at?: string
+  birth_date?: string
   profile_image_url?: string
   team_id?: number
   role_id?: number
@@ -59,6 +61,7 @@ export interface UpdateStaffRequest {
   phone?: string
   profile_image_url?: File | string
   hired_at?: string
+  birth_date?: string
   retired_at?: string
   team_id?: number
   role_id?: number

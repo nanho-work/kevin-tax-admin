@@ -38,6 +38,7 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
     profile_image: null as File | null,
     profile_image_url: staff.profile_image_url || '',
     hired_at: staff.hired_at || '',
+    birth_date: staff.birth_date || '',
     retired_at: staff.retired_at || '',
     team_id: staff.team_id || undefined,
     role_id: staff.role_id || undefined,
@@ -50,6 +51,7 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
         profile_image: null,
         profile_image_url: staff.profile_image_url || '',
         hired_at: staff.hired_at || '',
+        birth_date: staff.birth_date || '',
         retired_at: staff.retired_at || '',
         team_id: staff.team_id || undefined,
         role_id: staff.role_id || undefined,
@@ -94,6 +96,7 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
       if (form.role_id !== undefined) formData.append('role_id', String(form.role_id))
       if (form.team_id !== undefined) formData.append('team_id', String(form.team_id))
       if (form.hired_at) formData.append('hired_at', form.hired_at)
+      if (form.birth_date) formData.append('birth_date', form.birth_date)
       if (form.retired_at) formData.append('retired_at', form.retired_at)
       if (form.profile_image) {
         formData.append('file', form.profile_image)  // 'profile_image' → 'file'
@@ -215,6 +218,15 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
             type="date"
             value={form.hired_at}
             onChange={(e) => setForm((prev) => ({ ...prev, hired_at: e.target.value }))}
+            className="border px-2 py-1 w-full rounded"
+          />
+        </div>
+        <div>
+          <label className="block font-medium">생일:</label>
+          <input
+            type="date"
+            value={form.birth_date}
+            onChange={(e) => setForm((prev) => ({ ...prev, birth_date: e.target.value }))}
             className="border px-2 py-1 w-full rounded"
           />
         </div>

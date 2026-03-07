@@ -9,9 +9,11 @@ import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
-  { label: '고객사관리', href: '/client/companies' },
   { label: '일정관리', href: '/client/schedule' },
-  { label: '설정', href: '/client/setting' },
+]
+
+const companyManagementMenus = [
+  { label: '거래처 기본사항', href: '/client/companies' },
 ]
 
 const staffManagementMenus = [
@@ -40,15 +42,24 @@ const bookkeepingMenus = [
   { label: '자동이체 업로드(출금조회)', href: '/client/bookkeeping/debits' },
 ]
 
+const settingMenus = [
+  { label: '비밀번호 변경', href: '/client/setting/account' },
+  { label: '로그/보안', href: '/client/setting/security' },
+]
+
 export default function ClientSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const hasCompanyManagementPath = pathname.startsWith('/client/companies')
   const hasStaffManagementPath = pathname.startsWith('/client/staff')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
+  const hasSettingPath = pathname.startsWith('/client/setting')
+  const [isCompanyManagementOpen, setIsCompanyManagementOpen] = useState(hasCompanyManagementPath)
   const [isStaffManagementOpen, setIsStaffManagementOpen] = useState(hasStaffManagementPath)
   const [isClientManagementOpen, setIsClientManagementOpen] = useState(hasClientManagementPath)
   const [isBookkeepingOpen, setIsBookkeepingOpen] = useState(hasBookkeepingPath)
+  const [isSettingOpen, setIsSettingOpen] = useState(hasSettingPath)
   const { session, loading } = useClientSessionContext()
   const canManageClients = session?.role_level === 0
   const profile = useMemo(
@@ -58,6 +69,10 @@ export default function ClientSidebar() {
     }),
     [session]
   )
+
+  useEffect(() => {
+    if (hasCompanyManagementPath) setIsCompanyManagementOpen(true)
+  }, [hasCompanyManagementPath])
 
   useEffect(() => {
     if (hasStaffManagementPath) setIsStaffManagementOpen(true)
@@ -70,6 +85,10 @@ export default function ClientSidebar() {
   useEffect(() => {
     if (hasBookkeepingPath) setIsBookkeepingOpen(true)
   }, [hasBookkeepingPath])
+
+  useEffect(() => {
+    if (hasSettingPath) setIsSettingOpen(true)
+  }, [hasSettingPath])
 
   const handleLogout = async () => {
     try {
@@ -111,6 +130,41 @@ export default function ClientSidebar() {
             </Link>
           )
         })}
+
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setIsCompanyManagementOpen((prev) => !prev)}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+              hasCompanyManagementPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+          >
+            <span>거래처관리</span>
+            <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
+          </button>
+          {isCompanyManagementOpen && (
+            <div className="mt-1 space-y-1 pl-3">
+              {companyManagementMenus.map((menu) => {
+                const active =
+                  menu.href === '/client/companies/new'
+                    ? pathname === menu.href
+                    : pathname === menu.href ||
+                      (pathname.startsWith('/client/companies/') && !pathname.startsWith('/client/companies/new'))
+                return (
+                  <Link key={menu.href} href={menu.href}>
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {menu.label}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="pt-2">
           <button
@@ -160,6 +214,37 @@ export default function ClientSidebar() {
                 const active =
                   pathname === menu.href ||
                   (menu.href === '/client/bookkeeping/debits' && pathname.startsWith('/client/bookkeeping/debits'))
+                return (
+                  <Link key={menu.href} href={menu.href}>
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {menu.label}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setIsSettingOpen((prev) => !prev)}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+              hasSettingPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+          >
+            <span>설정</span>
+            <span aria-hidden>{isSettingOpen ? '▾' : '▸'}</span>
+          </button>
+          {isSettingOpen && (
+            <div className="mt-1 space-y-1 pl-3">
+              {settingMenus.map((menu) => {
+                const active = pathname === menu.href
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div

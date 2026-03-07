@@ -2,20 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { fetchCompanyDetail } from '@/services/admin/company'
-import type { CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
+import type { CompanyCreateRequest, CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
 import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
 
 interface Props {
   company: CompanyDetailResponse
+  mode?: 'edit' | 'create'
   businessLicensePreview?: CompanyDocumentPreviewResponse | null
   documentTypes?: { code: string; label: string }[]
   enableCustomDocuments?: boolean
   editable?: boolean
+  showSystemInfo?: boolean
   listPath?: string
   fetchDetailFn?: (company_id: number) => Promise<CompanyDetailResponse>
+  createFn?: (payload: CompanyCreateRequest) => Promise<unknown>
   updateFn?: (company_id: number, payload: CompanyUpdateRequest) => Promise<{ message: string }>
   fetchBusinessLicensePreviewFn?: (company_id: number) => Promise<CompanyDocumentPreviewResponse>
   uploadBusinessLicenseFn?: (company_id: number, file: File) => Promise<unknown>
@@ -47,6 +50,44 @@ interface Props {
     company_id: number,
     document_id: number
   ) => Promise<{ total: number; items: Array<{ action: string }> }>
+  getHometaxCredentialFn?: (company_id: number) => Promise<{
+    id: number
+    client_id: number
+    company_id: number
+    hometax_login_id: string
+    password_set: boolean
+    enc_key_version: string
+    is_active: boolean
+    created_at: string
+    updated_at: string
+  }>
+  upsertHometaxCredentialFn?: (
+    company_id: number,
+    payload: { hometax_login_id: string; hometax_password: string; is_active: boolean }
+  ) => Promise<unknown>
+  patchHometaxCredentialActiveFn?: (company_id: number, payload: { is_active: boolean }) => Promise<{ message: string }>
+  revealHometaxCredentialPasswordFn?: (
+    company_id: number,
+    payload: { account_password: string }
+  ) => Promise<{
+    company_id: number
+    hometax_login_id: string
+    hometax_password: string
+    reveal_count: number
+  }>
+  listHometaxCredentialLogsFn?: (
+    company_id: number,
+    limit?: number
+  ) => Promise<{
+    total: number
+    items: Array<{
+      id: number
+      action: string
+      actor_type: string
+      created_at: string
+      ip?: string | null
+    }>
+  }>
 }
 
 type LocalCustomDocument = {
@@ -55,6 +96,13 @@ type LocalCustomDocument = {
   fileName: string
   uploadedAt: string
   downloadCount: number
+}
+
+type LocalHometaxCredential = {
+  hometax_login_id: string
+  password_set: boolean
+  is_active: boolean
+  enc_key_version: string
 }
 
 function Section({
@@ -136,12 +184,15 @@ function isImageFile(fileName?: string | null): boolean {
 
 export default function CompanyDetailForm({
   company,
+  mode = 'edit',
   businessLicensePreview = null,
   documentTypes,
   enableCustomDocuments = false,
   editable = true,
+  showSystemInfo = true,
   listPath = '/admin/companies',
   fetchDetailFn = fetchCompanyDetail,
+  createFn,
   updateFn,
   fetchBusinessLicensePreviewFn,
   uploadBusinessLicenseFn,
@@ -155,9 +206,17 @@ export default function CompanyDetailForm({
   getCustomDocumentDownloadUrlFn,
   getCustomDocumentPreviewUrlFn,
   listCustomDocumentLogsFn,
+  getHometaxCredentialFn,
+  upsertHometaxCredentialFn,
+  patchHometaxCredentialActiveFn,
+  revealHometaxCredentialPasswordFn,
+  listHometaxCredentialLogsFn,
 }: Props) {
+  const router = useRouter()
   const { id } = useParams()
   const companyId = Number(id)
+  const isCreateMode = mode === 'create'
+  const hasValidCompanyId = Number.isFinite(companyId) && companyId > 0
   const [form, setForm] = useState<CompanyDetailResponse | null>(null)
   const resolvedDocumentTypes = documentTypes?.length
     ? documentTypes
@@ -166,8 +225,11 @@ export default function CompanyDetailForm({
     {}
   )
   const [activePreviewDocType, setActivePreviewDocType] = useState<string>(resolvedDocumentTypes[0].code)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!isCreateMode)
   const [saving, setSaving] = useState(false)
+  const [editMode, setEditMode] = useState(isCreateMode)
+  const [addressExpanded, setAddressExpanded] = useState(false)
+  const [hometaxExpanded, setHometaxExpanded] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
   const [deletingDocumentCode, setDeletingDocumentCode] = useState<string | null>(null)
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null)
@@ -180,12 +242,28 @@ export default function CompanyDetailForm({
   const [customDocuments, setCustomDocuments] = useState<LocalCustomDocument[]>([])
   const [loadingCustomDocs, setLoadingCustomDocs] = useState(false)
   const [uploadingCustomDoc, setUploadingCustomDoc] = useState(false)
+  const [hometaxCredential, setHometaxCredential] = useState<LocalHometaxCredential | null>(null)
+  const [loadingHometax, setLoadingHometax] = useState(false)
+  const [savingHometax, setSavingHometax] = useState(false)
+  const [hometaxForm, setHometaxForm] = useState({
+    hometax_login_id: '',
+    hometax_password: '',
+    is_active: true,
+  })
+  const [revealAccountPassword, setRevealAccountPassword] = useState('')
+  const [revealedHometaxPassword, setRevealedHometaxPassword] = useState<string | null>(null)
+  const [revealedCount, setRevealedCount] = useState<number | null>(null)
+  const [hometaxLogs, setHometaxLogs] = useState<
+    Array<{ id: number; action: string; actor_type: string; created_at: string; ip?: string | null }>
+  >([])
+  const [loadingHometaxLogs, setLoadingHometaxLogs] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const customDocFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activePreview = documentPreviews[activePreviewDocType] || null
-  const supportsDocumentCrud = Boolean(uploadDocumentFn || uploadBusinessLicenseFn)
+  const supportsDocumentCrud = !isCreateMode && Boolean(uploadDocumentFn || uploadBusinessLicenseFn)
   const supportsCustomDocumentCrud =
+    !isCreateMode &&
     Boolean(listCustomDocumentsFn) &&
     Boolean(uploadCustomDocumentFn) &&
     Boolean(deleteCustomDocumentFn) &&
@@ -198,6 +276,8 @@ export default function CompanyDetailForm({
       ),
     [customDocuments]
   )
+  const supportsHometax = !isCreateMode && Boolean(getHometaxCredentialFn)
+  const hasHometaxRegistered = Boolean(hometaxCredential?.password_set)
 
   const extractApiDetail = (error: unknown): string | null => {
     const detail = (error as any)?.response?.data?.detail
@@ -205,8 +285,29 @@ export default function CompanyDetailForm({
     if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') return detail[0].msg
     return null
   }
+  const canEditFields = isCreateMode ? true : editable && editMode
+  const editableInputClass = canEditFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
 
   useEffect(() => {
+    if (isCreateMode) {
+      setForm({
+        id: 0,
+        company_name: '',
+        owner_name: '',
+        registration_number: '',
+        category: '',
+        industry_type: '',
+        business_type: '',
+        postal_code: '',
+        address1: '',
+        address2: '',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      })
+      setLoading(false)
+      return
+    }
     const load = async () => {
       try {
         const data = await fetchDetailFn(companyId)
@@ -217,8 +318,8 @@ export default function CompanyDetailForm({
         setLoading(false)
       }
     }
-    if (companyId) load()
-  }, [companyId, fetchDetailFn])
+    if (hasValidCompanyId) load()
+  }, [companyId, fetchDetailFn, hasValidCompanyId, isCreateMode])
 
   const fetchPreviewByDocType = async (docTypeCode: string): Promise<CompanyDocumentPreviewResponse | null> => {
     try {
@@ -242,14 +343,14 @@ export default function CompanyDetailForm({
   }
 
   useEffect(() => {
-    if (!companyId) return
+    if (!hasValidCompanyId || isCreateMode) return
     const initialMap: Record<string, CompanyDocumentPreviewResponse | null> = {}
     if (businessLicensePreview) {
       initialMap.business_license = businessLicensePreview
     }
     setDocumentPreviews(initialMap)
     void reloadAllDocumentPreviews()
-  }, [companyId, businessLicensePreview])
+  }, [companyId, businessLicensePreview, hasValidCompanyId, isCreateMode])
 
   const loadCustomDocuments = async () => {
     if (!enableCustomDocuments || !listCustomDocumentsFn) return
@@ -297,8 +398,145 @@ export default function CompanyDetailForm({
   }
 
   useEffect(() => {
+    if (isCreateMode || !hasValidCompanyId) return
     void loadCustomDocuments()
-  }, [companyId, enableCustomDocuments, listCustomDocumentsFn])
+  }, [companyId, enableCustomDocuments, hasValidCompanyId, isCreateMode, listCustomDocumentsFn])
+
+  useEffect(() => {
+    if (!supportsHometax || !hasValidCompanyId || !getHometaxCredentialFn) return
+    const loadHometax = async () => {
+      try {
+        setLoadingHometax(true)
+        const res = await getHometaxCredentialFn(companyId)
+        setHometaxCredential({
+          hometax_login_id: res.hometax_login_id,
+          password_set: res.password_set,
+          is_active: res.is_active,
+          enc_key_version: res.enc_key_version,
+        })
+        setHometaxForm((prev) => ({
+          ...prev,
+          hometax_login_id: res.hometax_login_id || '',
+          is_active: Boolean(res.is_active),
+          hometax_password: '',
+        }))
+      } catch (error: any) {
+        if (error?.response?.status !== 404) {
+          toast.error(extractApiDetail(error) || '홈택스 정보 조회에 실패했습니다.')
+        }
+        setHometaxCredential(null)
+      } finally {
+        setLoadingHometax(false)
+      }
+    }
+    void loadHometax()
+  }, [companyId, getHometaxCredentialFn, hasValidCompanyId, supportsHometax])
+
+  useEffect(() => {
+    if (!supportsHometax || !hasValidCompanyId || !listHometaxCredentialLogsFn) return
+    const loadHometaxLogs = async () => {
+      try {
+        setLoadingHometaxLogs(true)
+        const res = await listHometaxCredentialLogsFn(companyId, 50)
+        const items = res.items || []
+        setHometaxLogs(items)
+        if (revealedCount === null) {
+          setRevealedCount(items.filter((item) => item.action === 'reveal').length)
+        }
+      } catch {
+        setHometaxLogs([])
+      } finally {
+        setLoadingHometaxLogs(false)
+      }
+    }
+    void loadHometaxLogs()
+  }, [companyId, hasValidCompanyId, listHometaxCredentialLogsFn, revealedCount, supportsHometax])
+
+  const handleUpsertHometax = async () => {
+    if (!upsertHometaxCredentialFn) {
+      toast.error('홈택스 등록 API가 아직 준비되지 않았습니다.')
+      return
+    }
+    if (!hometaxForm.hometax_login_id.trim()) {
+      toast.error('홈택스 아이디를 입력해 주세요.')
+      return
+    }
+    if (!hometaxForm.hometax_password.trim()) {
+      toast.error('홈택스 비밀번호를 입력해 주세요.')
+      return
+    }
+    try {
+      setSavingHometax(true)
+      const res: any = await upsertHometaxCredentialFn(companyId, {
+        hometax_login_id: hometaxForm.hometax_login_id.trim(),
+        hometax_password: hometaxForm.hometax_password,
+        is_active: hometaxForm.is_active,
+      })
+      const next = {
+        hometax_login_id: res?.hometax_login_id || hometaxForm.hometax_login_id.trim(),
+        password_set: true,
+        is_active: Boolean(res?.is_active ?? hometaxForm.is_active),
+        enc_key_version: res?.enc_key_version || 'v1',
+      }
+      setHometaxCredential(next)
+      setHometaxForm((prev) => ({ ...prev, hometax_password: '' }))
+      setRevealedHometaxPassword(null)
+      setRevealAccountPassword('')
+      toast.success('홈택스 정보가 저장되었습니다.')
+      if (listHometaxCredentialLogsFn) {
+        const logs = await listHometaxCredentialLogsFn(companyId, 50)
+        setHometaxLogs(logs.items || [])
+      }
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '홈택스 정보 저장에 실패했습니다.')
+    } finally {
+      setSavingHometax(false)
+    }
+  }
+
+  const handlePatchHometaxActive = async (nextActive: boolean) => {
+    if (!patchHometaxCredentialActiveFn) {
+      setHometaxForm((prev) => ({ ...prev, is_active: nextActive }))
+      return
+    }
+    try {
+      const res = await patchHometaxCredentialActiveFn(companyId, { is_active: nextActive })
+      setHometaxCredential((prev) => (prev ? { ...prev, is_active: nextActive } : prev))
+      setHometaxForm((prev) => ({ ...prev, is_active: nextActive }))
+      toast.success(res.message || '상태가 변경되었습니다.')
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '활성 상태 변경에 실패했습니다.')
+    }
+  }
+
+  const handleRevealHometax = async () => {
+    if (!revealHometaxCredentialPasswordFn) {
+      toast.error('정보 확인 API가 아직 준비되지 않았습니다.')
+      return
+    }
+    if (!revealAccountPassword.trim()) {
+      toast.error('본인 계정 비밀번호를 입력해 주세요.')
+      return
+    }
+    try {
+      const res = await revealHometaxCredentialPasswordFn(companyId, {
+        account_password: revealAccountPassword,
+      })
+      setRevealedHometaxPassword(res.hometax_password)
+      setRevealedCount(res.reveal_count)
+      setRevealAccountPassword('')
+      toast.success('홈택스 정보가 확인되었습니다.')
+      window.setTimeout(() => {
+        setRevealedHometaxPassword(null)
+      }, 15000)
+      if (listHometaxCredentialLogsFn) {
+        const logs = await listHometaxCredentialLogsFn(companyId, 50)
+        setHometaxLogs(logs.items || [])
+      }
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '홈택스 정보 확인에 실패했습니다.')
+    }
+  }
 
   const handleUploadBusinessLicense = async () => {
     if (!selectedUploadDocType) {
@@ -443,7 +681,7 @@ export default function CompanyDetailForm({
   if (loading) {
     return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">회사 정보를 불러오는 중...</div>
   }
-  if (!company || !form) {
+  if (!form) {
     return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">회사 정보를 찾을 수 없습니다.</div>
   }
 
@@ -454,95 +692,323 @@ export default function CompanyDetailForm({
           <Section
             title="기본 정보"
             action={
-              editable && updateFn ? (
-                <button
-                  onClick={async () => {
-                    try {
-                      setSaving(true)
-                      const { id: _id, created_at, updated_at, ...payload } = form
-                      const res = await updateFn(companyId, payload)
-                      toast.success(res.message || '수정이 완료되었습니다.')
-                      const refreshed = await fetchDetailFn(companyId)
-                      setForm(refreshed)
-                    } catch (err: any) {
-                      toast.error(err.response?.data?.detail || '수정 실패')
-                    } finally {
-                      setSaving(false)
-                    }
-                  }}
-                  disabled={saving}
-                  className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
-                >
-                  {saving ? '저장 중...' : '수정완료'}
-                </button>
+              isCreateMode && createFn ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={async () => {
+                      try {
+                        setSaving(true)
+                        const payload: CompanyCreateRequest = {
+                          company_name: form.company_name?.trim() || '',
+                          owner_name: form.owner_name?.trim() || '',
+                          registration_number: form.registration_number?.trim() || '',
+                          category: form.category?.trim() || undefined,
+                          industry_type: form.industry_type?.trim() || undefined,
+                          business_type: form.business_type?.trim() || undefined,
+                          postal_code: form.postal_code?.trim() || undefined,
+                          address1: form.address1?.trim() || undefined,
+                          address2: form.address2?.trim() || undefined,
+                        }
+                        await createFn(payload)
+                        toast.success('등록이 완료되었습니다.')
+                        router.push(listPath)
+                      } catch (err: any) {
+                        toast.error(err?.response?.data?.detail || '등록 실패')
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                    disabled={saving}
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                  >
+                    {saving ? '등록 중...' : '등록완료'}
+                  </button>
+                </div>
+              ) : editable && updateFn ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-zinc-700">수정</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editMode}
+                    onClick={() => setEditMode((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                      editMode ? 'bg-blue-500' : 'bg-zinc-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                        editMode ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  {editMode ? (
+                    <button
+                      onClick={async () => {
+                        try {
+                          setSaving(true)
+                          const { id: _id, created_at, updated_at, ...payload } = form
+                          const res = await updateFn(companyId, payload)
+                          toast.success(res.message || '수정이 완료되었습니다.')
+                          const refreshed = await fetchDetailFn(companyId)
+                          setForm(refreshed)
+                          setEditMode(false)
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.detail || '수정 실패')
+                        } finally {
+                          setSaving(false)
+                        }
+                      }}
+                      disabled={saving}
+                      className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                    >
+                      {saving ? '저장 중...' : '수정완료'}
+                    </button>
+                  ) : null}
+                </div>
               ) : null
             }
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="회사명">
-                <input className={inputClass} value={form.company_name} readOnly={!editable} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
+                <input className={editableInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
               </Field>
               <Field label="대표자">
-                <input className={inputClass} value={form.owner_name} readOnly={!editable} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
+                <input className={editableInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
               </Field>
               <Field label="사업자등록번호">
-                <input className={inputClass} value={form.registration_number || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, registration_number: e.target.value })} />
+                <input className={editableInputClass} value={form.registration_number || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, registration_number: e.target.value })} />
               </Field>
               <Field label="구분">
-                <select className={inputClass} value={form.category || ''} disabled={!editable} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <select className={editableInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   <option value="">선택</option>
                   <option value="법인">법인</option>
                   <option value="개인">개인</option>
                 </select>
               </Field>
               <Field label="업태">
-                <input className={inputClass} value={form.industry_type || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
+                <input className={editableInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
               </Field>
               <Field label="종목">
-                <input className={inputClass} value={form.business_type || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
+                <input className={editableInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
               </Field>
+              {supportsHometax ? (
+                <Field label="홈택스 정보 등록 여부">
+                  <input
+                    className={`${inputClass} bg-zinc-100`}
+                    value={hometaxCredential?.password_set ? '등록됨' : '미등록'}
+                    readOnly
+                  />
+                </Field>
+              ) : null}
             </div>
           </Section>
 
-          <Section title="주소 정보">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="우편번호">
-                <input className={inputClass} value={form.postal_code || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
-              </Field>
-              <Field label="주소1">
-                <input className={inputClass} value={form.address1 || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
-              </Field>
-              <Field label="주소2">
-                <input className={inputClass} value={form.address2 || ''} readOnly={!editable} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
-              </Field>
-            </div>
+          <Section
+            title="주소 정보"
+            action={
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">{addressExpanded ? '펼침' : '접힘'}</span>
+                <button
+                  type="button"
+                  onClick={() => setAddressExpanded((prev) => !prev)}
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                >
+                  {addressExpanded ? '접기 ▴' : '펼치기 ▾'}
+                </button>
+              </div>
+            }
+          >
+            {addressExpanded ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="우편번호">
+                  <input className={editableInputClass} value={form.postal_code || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
+                </Field>
+                <Field label="주소1">
+                  <input className={editableInputClass} value={form.address1 || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
+                </Field>
+                <Field label="주소2">
+                  <input className={editableInputClass} value={form.address2 || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
+                </Field>
+              </div>
+            ) : null}
           </Section>
 
-          <Section title="시스템 정보">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="활성 상태">
-                <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
-              </Field>
-              <Field label="등록일">
-                <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
-              </Field>
-              <Field label="수정일">
-                <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
-              </Field>
-            </div>
+          {showSystemInfo ? (
+            <Section title="시스템 정보">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="활성 상태">
+                  <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
+                </Field>
+                <Field label="등록일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
+                </Field>
+                <Field label="수정일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
+                </Field>
+              </div>
+            </Section>
+          ) : null}
+
+          {supportsHometax ? (
+            <Section
+              title="홈택스 정보"
+              action={
+                <div className="flex items-center gap-2">
+                  {hasHometaxRegistered ? (
+                    <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      등록됨
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
+                      미등록
+                    </div>
+                  )}
+                  <span className="text-xs text-zinc-500">{hometaxExpanded ? '펼침' : '접힘'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHometaxExpanded((prev) => !prev)}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                  >
+                    {hometaxExpanded ? '접기 ▴' : '펼치기 ▾'}
+                  </button>
+                </div>
+              }
+            >
+              {hometaxExpanded ? (
+                <div className="space-y-4">
+                  {loadingHometax ? (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                      홈택스 정보를 불러오는 중...
+                    </div>
+                  ) : null}
+                  {hasHometaxRegistered ? null : (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <Field label="홈택스 아이디">
+                          <input
+                            className={inputClass}
+                            value={hometaxForm.hometax_login_id}
+                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_login_id: e.target.value }))}
+                          />
+                        </Field>
+                        <Field label="홈택스 비밀번호">
+                          <input
+                            type="password"
+                            className={inputClass}
+                            value={hometaxForm.hometax_password}
+                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_password: e.target.value }))}
+                          />
+                        </Field>
+                        <Field label="활성 상태">
+                          <select
+                            className={inputClass}
+                            value={hometaxForm.is_active ? 'active' : 'inactive'}
+                            onChange={(e) => handlePatchHometaxActive(e.target.value === 'active')}
+                          >
+                            <option value="active">활성</option>
+                            <option value="inactive">비활성</option>
+                          </select>
+                        </Field>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={handleUpsertHometax}
+                          disabled={savingHometax}
+                          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                        >
+                          {savingHometax ? '저장 중...' : '홈택스 정보 저장'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                    <p className="text-xs text-zinc-600">정보 확인 시 본인 계정 비밀번호 재입력이 필요합니다.</p>
+                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                      <input
+                        type="password"
+                        className={inputClass}
+                        placeholder="본인 계정 비밀번호 입력"
+                        value={revealAccountPassword}
+                        onChange={(e) => setRevealAccountPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRevealHometax}
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                      >
+                        정보 확인
+                      </button>
+                    </div>
+                    {revealedHometaxPassword !== null ? (
+                      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <input
+                          className={`${inputClass} bg-white`}
+                          value={`아이디: ${hometaxCredential?.hometax_login_id || hometaxForm.hometax_login_id}`}
+                          readOnly
+                        />
+                        <input className={`${inputClass} bg-white`} value={`비밀번호: ${revealedHometaxPassword}`} readOnly />
+                      </div>
+                    ) : null}
+                    {revealedCount !== null ? (
+                      <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
+                    ) : null}
+                  {hometaxCredential?.enc_key_version ? (
+                    <p className="mt-1 text-xs text-zinc-400">암호화 키 버전: {hometaxCredential.enc_key_version}</p>
+                  ) : null}
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-zinc-200">
+                  <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
+                    조회 이력
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-white text-zinc-500">
+                      <tr>
+                        <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
+                        <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
+                        <th className="border-b border-zinc-200 px-3 py-2 text-center">주체</th>
+                        <th className="border-b border-zinc-200 px-3 py-2 text-left">IP</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {loadingHometaxLogs ? (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                            로그를 불러오는 중...
+                          </td>
+                        </tr>
+                      ) : hometaxLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                            로그가 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        hometaxLogs.map((log) => (
+                          <tr key={log.id}>
+                            <td className="px-3 py-2 text-zinc-700">{toDateTime(log.created_at)}</td>
+                            <td className="px-3 py-2 text-center text-zinc-700">{log.action}</td>
+                            <td className="px-3 py-2 text-center text-zinc-700">{log.actor_type}</td>
+                            <td className="px-3 py-2 text-zinc-500">{log.ip || '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </Section>
+          ) : null}
 
           {enableCustomDocuments ? (
             <Section title="기타 관련 서류">
               <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
-                  <input
-                    className={inputClass}
-                    placeholder="문서이름입력 (예: 주주명부)"
-                    value={customDocTypeInput}
-                    onChange={(e) => setCustomDocTypeInput(e.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_minmax(240px,320px)] md:grid-rows-[auto_auto]">
+                  <div className="md:row-span-2">
                     <input
                       ref={customDocFileInputRef}
                       type="file"
@@ -564,26 +1030,50 @@ export default function CompanyDetailForm({
                         setCustomDocFile(e.dataTransfer.files?.[0] || null)
                       }}
                       onClick={() => customDocFileInputRef.current?.click()}
-                      className={`inline-flex h-10 min-w-[170px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
+                      className={`flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
                         isDragOverCustomDoc
                           ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
                           : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
                       }`}
+                      title={customDocFile?.name || '파일 드래그 또는 클릭 선택'}
                     >
-                      파일 드래그 또는 클릭 선택
+                      <span className="max-w-[440px] truncate">
+                        {customDocFile?.name || '파일 드래그 또는 클릭 선택'}
+                      </span>
                     </label>
-                    <span className="truncate text-xs text-zinc-500" title={customDocFile?.name || ''}>
-                      {customDocFile?.name || '선택된 파일 없음'}
-                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAddCustomDocument}
-                    disabled={uploadingCustomDoc || !supportsCustomDocumentCrud}
-                    className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                  >
-                    {uploadingCustomDoc ? '등록 중...' : '등록'}
-                  </button>
+
+                  <input
+                    className={inputClass}
+                    placeholder="문서이름입력 (예: 주주명부)"
+                    value={customDocTypeInput}
+                    onChange={(e) => setCustomDocTypeInput(e.target.value)}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    {customDocFile ? (
+                      <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomDocFile(null)
+                          if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
+                        }}
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100"
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomDocument}
+                        disabled={uploadingCustomDoc || !supportsCustomDocumentCrud}
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                      >
+                        {uploadingCustomDoc ? '등록 중...' : '등록'}
+                      </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
 
                 {!supportsCustomDocumentCrud ? (
@@ -732,6 +1222,11 @@ export default function CompanyDetailForm({
                     >
                       {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
                     </label>
+                  </div>
+                ) : null}
+                {isCreateMode ? (
+                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
+                    회사 등록 후 문서 업로드/미리보기가 가능합니다.
                   </div>
                 ) : null}
 

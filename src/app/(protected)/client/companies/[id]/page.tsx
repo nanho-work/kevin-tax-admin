@@ -14,6 +14,7 @@ import {
   getClientCompanyCustomDocumentDownloadUrl,
   getClientCompanyCustomDocumentPreviewUrl,
   listClientCompanyCustomDocumentLogs,
+  listClientHometaxCredentialLogs,
   listClientCompanyCustomDocuments,
   updateClientCompany,
   uploadClientCompanyCustomDocument,
@@ -21,7 +22,11 @@ import {
   uploadClientCompanyBusinessLicense,
   COMPANY_DOC_TYPE_OWNER_ID,
   COMPANY_DOC_TYPE_BUSINESS_LICENSE,
+  getClientHometaxCredential,
+  patchClientHometaxCredentialActive,
+  revealClientHometaxCredentialPassword,
   type ClientCompanyDocumentPreviewResponse,
+  upsertClientHometaxCredential,
 } from '@/services/client/company'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 
@@ -71,6 +76,7 @@ export default function ClientCompanyDetailPage() {
     <CompanyDetailForm
       company={company}
       editable
+      showSystemInfo={false}
       enableCustomDocuments
       listPath="/client/companies"
       businessLicensePreview={businessLicensePreview}
@@ -93,6 +99,11 @@ export default function ClientCompanyDetailPage() {
       getCustomDocumentDownloadUrlFn={getClientCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getClientCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listClientCompanyCustomDocumentLogs}
+      getHometaxCredentialFn={getClientHometaxCredential}
+      upsertHometaxCredentialFn={upsertClientHometaxCredential}
+      patchHometaxCredentialActiveFn={patchClientHometaxCredentialActive}
+      revealHometaxCredentialPasswordFn={revealClientHometaxCredentialPassword}
+      listHometaxCredentialLogsFn={listClientHometaxCredentialLogs}
     />
   )
 }

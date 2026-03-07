@@ -1,10 +1,10 @@
 'use client'
 
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
-import { createCompany } from '@/services/admin/company'
+import { createClientPortalCompany } from '@/services/client/company'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 
-export default function NewCompanyPage() {
+export default function ClientCompanyCreatePage() {
   const emptyCompany: CompanyDetailResponse = {
     id: 0,
     company_name: '',
@@ -22,15 +22,14 @@ export default function NewCompanyPage() {
   }
 
   return (
-    <div className="min-w-0 overflow-x-auto">
-      <CompanyDetailForm
-        company={emptyCompany}
-        mode="create"
-        listPath="/admin/companies"
-        createFn={createCompany}
-        editable
-        enableCustomDocuments={false}
-      />
-    </div>
+    <CompanyDetailForm
+      company={emptyCompany}
+      mode="create"
+      listPath="/client/companies"
+      createFn={createClientPortalCompany}
+      editable
+      showSystemInfo={false}
+      enableCustomDocuments={false}
+    />
   )
 }

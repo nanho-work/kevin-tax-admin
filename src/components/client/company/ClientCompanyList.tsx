@@ -11,6 +11,8 @@ export default function ClientCompanyList() {
       deactivate={deactivateClientCompany}
       disableDelete={false}
       pageSize={15}
+      createHref="/client/companies/new"
+      createLabel="거래처등록"
     />
   )
 }

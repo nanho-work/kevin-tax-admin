@@ -1,0 +1,162 @@
+'use client'
+
+import { useState } from 'react'
+import type React from 'react'
+import { useRouter } from 'next/navigation'
+import { createClientPortalCompany } from '@/services/client/company'
+import type { CompanyCreateRequest } from '@/types/admin_campany'
+
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="border-b border-zinc-100 px-5 py-4">
+        <h3 className="text-base font-semibold text-zinc-900">{title}</h3>
+        {description ? <p className="mt-1 text-sm text-zinc-500">{description}</p> : null}
+      </div>
+      <div className="px-5 py-5">{children}</div>
+    </section>
+  )
+}
+
+function Field({
+  label,
+  required,
+  className,
+  children,
+}: {
+  label: string
+  required?: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={`space-y-1.5 ${className ?? ''}`.trim()}>
+      <label className="block text-sm font-medium text-zinc-700">
+        {label}
+        {required ? <span className="ml-1 text-red-500">*</span> : null}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+const inputClass =
+  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const selectClass =
+  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+
+export default function ClientCompanyCreateForm() {
+  const router = useRouter()
+  const [form, setForm] = useState<CompanyCreateRequest>({
+    category: '',
+    company_name: '',
+    owner_name: '',
+    registration_number: '',
+    industry_type: '',
+    business_type: '',
+    postal_code: '',
+    address1: '',
+    address2: '',
+  })
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    try {
+      await createClientPortalCompany(form)
+      setSuccess('등록 완료되었습니다.')
+      router.push('/client/companies')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || '등록 실패')
+    }
+  }
+
+  return (
+    <div className="w-full">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {(error || success) && (
+          <div
+            className={
+              success
+                ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700'
+                : 'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700'
+            }
+          >
+            {success || error}
+          </div>
+        )}
+
+        <Section title="기본 정보" description="회사 기본 식별 정보를 입력합니다.">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="회사명" required>
+              <input name="company_name" value={form.company_name} onChange={handleChange} className={inputClass} required />
+            </Field>
+            <Field label="대표자명" required>
+              <input name="owner_name" value={form.owner_name} onChange={handleChange} className={inputClass} required />
+            </Field>
+            <Field label="사업자등록번호" required>
+              <input
+                name="registration_number"
+                value={form.registration_number}
+                onChange={handleChange}
+                className={inputClass}
+                required
+              />
+            </Field>
+            <Field label="구분">
+              <select name="category" value={form.category} onChange={handleChange} className={selectClass}>
+                <option value="" disabled>
+                  선택해주세요
+                </option>
+                <option value="법인">법인</option>
+                <option value="개인">개인</option>
+              </select>
+            </Field>
+            <Field label="업종">
+              <input name="industry_type" value={form.industry_type} onChange={handleChange} className={inputClass} />
+            </Field>
+            <Field label="업태">
+              <input name="business_type" value={form.business_type} onChange={handleChange} className={inputClass} />
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="주소 정보">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="우편번호">
+              <input name="postal_code" value={form.postal_code} onChange={handleChange} className={inputClass} />
+            </Field>
+            <Field label="주소1">
+              <input name="address1" value={form.address1} onChange={handleChange} className={inputClass} />
+            </Field>
+            <Field label="주소2">
+              <input name="address2" value={form.address2} onChange={handleChange} className={inputClass} />
+            </Field>
+          </div>
+        </Section>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            취소
+          </button>
+          <button type="submit" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800">
+            등록하기
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}

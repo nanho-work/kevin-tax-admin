@@ -2,6 +2,8 @@ import { clientHttp } from '@/services/http'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
+  CompanyCreateRequest,
+  CompanySimpleResponse,
   CompanyUpdateRequest,
   PaginatedResponse,
 } from '@/types/admin_campany'
@@ -76,6 +78,59 @@ export interface ClientCompanyCustomDocumentLogListResponse {
   items: ClientCompanyCustomDocumentLogOut[]
 }
 
+export interface ClientHometaxCredentialOut {
+  id: number
+  client_id: number
+  company_id: number
+  hometax_login_id: string
+  password_set: boolean
+  enc_key_version: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientHometaxCredentialUpsertRequest {
+  hometax_login_id: string
+  hometax_password: string
+  is_active: boolean
+}
+
+export interface ClientHometaxCredentialActivePatchRequest {
+  is_active: boolean
+}
+
+export interface ClientHometaxCredentialRevealRequest {
+  account_password: string
+}
+
+export interface ClientHometaxCredentialRevealOut {
+  company_id: number
+  hometax_login_id: string
+  hometax_password: string
+  reveal_count: number
+}
+
+export interface ClientHometaxCredentialLogOut {
+  id: number
+  credential_id: number
+  client_id: number
+  company_id: number
+  action: string
+  changed_fields?: string[] | null
+  actor_type: string
+  actor_client_account_id?: number | null
+  actor_admin_id?: number | null
+  ip?: string | null
+  user_agent?: string | null
+  created_at: string
+}
+
+export interface ClientHometaxCredentialLogListResponse {
+  total: number
+  items: ClientHometaxCredentialLogOut[]
+}
+
 interface FetchCompanyParams {
   page: number
   limit: number
@@ -97,6 +152,11 @@ export async function fetchClientCompanyTaxList({
 
 export async function deactivateClientCompany(company_id: number): Promise<{ message: string }> {
   const res = await clientHttp.delete<{ message: string }>(`${BASE}/delete/${company_id}`)
+  return res.data
+}
+
+export async function createClientPortalCompany(payload: CompanyCreateRequest): Promise<CompanySimpleResponse> {
+  const res = await clientHttp.post<CompanySimpleResponse>(`${BASE}/create`, payload)
   return res.data
 }
 
@@ -217,5 +277,44 @@ export async function deleteClientCompanyCustomDocument(
   document_id: number
 ): Promise<{ message: string }> {
   const res = await clientHttp.delete<{ message: string }>(`${BASE}/${company_id}/custom-documents/${document_id}`)
+  return res.data
+}
+
+export async function getClientHometaxCredential(company_id: number): Promise<ClientHometaxCredentialOut> {
+  const res = await clientHttp.get<ClientHometaxCredentialOut>(`${BASE}/${company_id}/hometax-credential`)
+  return res.data
+}
+
+export async function upsertClientHometaxCredential(
+  company_id: number,
+  payload: ClientHometaxCredentialUpsertRequest
+): Promise<ClientHometaxCredentialOut> {
+  const res = await clientHttp.put<ClientHometaxCredentialOut>(`${BASE}/${company_id}/hometax-credential`, payload)
+  return res.data
+}
+
+export async function patchClientHometaxCredentialActive(
+  company_id: number,
+  payload: ClientHometaxCredentialActivePatchRequest
+): Promise<{ message: string }> {
+  const res = await clientHttp.patch<{ message: string }>(`${BASE}/${company_id}/hometax-credential/active`, payload)
+  return res.data
+}
+
+export async function listClientHometaxCredentialLogs(
+  company_id: number,
+  limit = 50
+): Promise<ClientHometaxCredentialLogListResponse> {
+  const res = await clientHttp.get<ClientHometaxCredentialLogListResponse>(`${BASE}/${company_id}/hometax-credential/logs`, {
+    params: { limit },
+  })
+  return res.data
+}
+
+export async function revealClientHometaxCredentialPassword(
+  company_id: number,
+  payload: ClientHometaxCredentialRevealRequest
+): Promise<ClientHometaxCredentialRevealOut> {
+  const res = await clientHttp.post<ClientHometaxCredentialRevealOut>(`${BASE}/${company_id}/hometax-credential/reveal`, payload)
   return res.data
 }

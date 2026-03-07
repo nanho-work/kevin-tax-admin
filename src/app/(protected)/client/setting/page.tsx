@@ -1,9 +1,5 @@
-import OrgChart from '@/components/admin/Company/setting/OrgChart'
+import { redirect } from 'next/navigation'
 
 export default function ClientSettingPage() {
-  return (
-    <main>
-      <OrgChart />
-    </main>
-  )
+  redirect('/client/setting/account')
 }
