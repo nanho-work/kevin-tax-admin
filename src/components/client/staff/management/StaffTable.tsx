@@ -8,6 +8,7 @@ import {
     deactivateClientStaff,
 } from '@/services/client/clientStaffService'
 import StaffDetailModal from './StaffDetailModal'
+import StaffForm from './StaffForm'
 
 export default function StaffTable({ canManage = false }: { canManage?: boolean }) {
     const inputClass =
@@ -15,34 +16,31 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
 
     const [staffs, setStaffs] = useState<AdminOut[]>([])
     const [keyword, setKeyword] = useState('')
-    const [searchText, setSearchText] = useState('')
+    const [showInactive, setShowInactive] = useState(false)
     const [page, setPage] = useState(1)
     const [total, setTotal] = useState(0)
     const limit = 10
 
     const [selectedStaff, setSelectedStaff] = useState<AdminOut | null>(null)
-    const [showDetail, setShowDetail] = useState(false)
+    const [showCreatePanel, setShowCreatePanel] = useState(false)
+
+    const visibleStaffs = staffs.filter((staff) => (showInactive ? !staff.is_active : staff.is_active))
+
+    const loadStaffs = async (nextPage = page, nextKeyword = keyword) => {
+        try {
+            const res = await getClientStaffs(nextPage, limit, nextKeyword)
+            setStaffs(res.items)
+            setTotal(res.total)
+        } catch (err) {
+            console.error('직원 목록 불러오기 실패', err)
+        }
+    }
 
     useEffect(() => {
-        const loadStaffs = async () => {
-            try {
-                const res = await getClientStaffs(page, limit, keyword)
-                setStaffs(res.items)
-                setTotal(res.total)
-            } catch (err) {
-                console.error('직원 목록 불러오기 실패', err)
-            }
-        }
-
-        loadStaffs()
+        loadStaffs(page, keyword)
     }, [page, keyword])
 
     const totalPages = Math.ceil(total / limit)
-
-    const handleSearch = () => {
-        setPage(1)
-        setKeyword(searchText.trim())
-    }
 
     const handleToggleStatus = async (id: number, is_active: boolean) => {
         try {
@@ -64,39 +62,43 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
     return (
         <section className="space-y-4">
             <div className="mb-4 rounded-lg border border-zinc-200 bg-white p-4">
-                <h2 className="text-sm font-semibold text-zinc-900">검색</h2>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_minmax(0,1fr)_auto]">
                     <input
                         type="text"
                         placeholder="이름 / 이메일 / 전화 검색"
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSearch()
-                            }
+                        value={keyword}
+                        onChange={(e) => {
+                            setKeyword(e.target.value)
+                            setPage(1)
                         }}
                         className={inputClass}
                     />
-                    <button
-                        type="button"
-                        onClick={handleSearch}
-                        className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
-                    >
-                        조회
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSearchText('')
-                            setKeyword('')
-                            setPage(1)
-                        }}
-                        className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
-                    >
-                        초기화
-                    </button>
+                    <div aria-hidden="true" />
+                    <div className="flex items-center justify-end gap-2">
+                        {canManage ? (
+                            <button
+                                type="button"
+                                onClick={() => setShowCreatePanel(true)}
+                                className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
+                            >
+                                직원등록
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowInactive((prev) => !prev)
+                                setPage(1)
+                            }}
+                            className={`rounded-md border px-4 py-2 text-sm transition ${
+                                showInactive
+                                    ? 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                    : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                            }`}
+                        >
+                            {showInactive ? '재직자 보기' : '퇴사자 보기'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -115,14 +117,14 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200">
-                        {staffs.length === 0 ? (
+                        {visibleStaffs.length === 0 ? (
                             <tr>
                                 <td colSpan={8} className="px-3 py-10 text-center text-zinc-500">
-                                    검색된 직원이 없습니다.
+                                    {showInactive ? '퇴사한 직원이 없습니다.' : '재직 중인 직원이 없습니다.'}
                                 </td>
                             </tr>
                         ) : (
-                            staffs.map((staff) => {
+                            visibleStaffs.map((staff) => {
                                 return (
                                     <tr key={staff.id} className={!staff.is_active ? 'bg-zinc-100' : 'even:bg-zinc-50/40'}>
                                         <td className="px-3 py-3 text-center">
@@ -141,7 +143,6 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                                                 <button
                                                     onClick={() => {
                                                         setSelectedStaff(staff)
-                                                        setShowDetail(true)
                                                     }}
                                                     className="text-blue-700 hover:underline"
                                                 >
@@ -228,12 +229,30 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
             {canManage && selectedStaff && (
               <StaffDetailModal
                 staff={selectedStaff}
+                onSaved={async () => {
+                  await loadStaffs(page, keyword)
+                }}
                 onClose={() => {
                   setSelectedStaff(null)
-                  setShowDetail(false)
                 }}
               />
             )}
+            {canManage && showCreatePanel ? (
+              <div className="fixed inset-0 z-40 bg-black/30">
+                <div className="absolute inset-y-0 right-0 w-full max-w-2xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 p-4 shadow-2xl">
+                  <StaffForm
+                    title="직원 등록"
+                    onCancel={() => setShowCreatePanel(false)}
+                    onSuccess={async () => {
+                      setShowCreatePanel(false)
+                      setShowInactive(false)
+                      setPage(1)
+                      await loadStaffs(1, keyword)
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
         </section>
     )
 }

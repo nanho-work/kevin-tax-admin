@@ -5,11 +5,16 @@ import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import type { AttendanceLog } from '@/types/attendanceLog'
 import Pagination from '@/components/common/Pagination'
 
+type Props = {
+    adminId?: number
+    hideKeywordFilter?: boolean
+}
+
 function formatTime(dateTime?: string | null): string {
     return dateTime?.split('T')[1]?.slice(0, 5) || '-'
 }
 
-export default function AttendanceLogTable() {
+export default function AttendanceLogTable({ adminId, hideKeywordFilter = false }: Props) {
     const [logs, setLogs] = useState<AttendanceLog[]>([])
     const [loading, setLoading] = useState(true)
     const [page, setPage] = useState(1)
@@ -28,7 +33,8 @@ export default function AttendanceLogTable() {
                 const { items, total: totalCount } = await getAttendanceLogs({
                     offset,
                     limit,
-                    keyword: keyword.trim(),
+                    keyword: hideKeywordFilter ? undefined : keyword.trim(),
+                    admin_id: adminId,
                     date_from: dateFrom,
                     date_to: dateTo,
                 })
@@ -49,16 +55,18 @@ export default function AttendanceLogTable() {
     return (
         <div>
             <div className="mb-4 flex text-sm items-center gap-4">
-                <input
-                    type="text"
-                    placeholder="이름"
-                    value={keyword}
-                    onChange={e => {
-                        setKeyword(e.target.value)
-                        setPage(1)
-                    }}
-                    className="border p-2 rounded"
-                />
+                {!hideKeywordFilter ? (
+                    <input
+                        type="text"
+                        placeholder="이름"
+                        value={keyword}
+                        onChange={e => {
+                            setKeyword(e.target.value)
+                            setPage(1)
+                        }}
+                        className="border p-2 rounded"
+                    />
+                ) : null}
                 <input
                     type="date"
                     value={dateFrom}

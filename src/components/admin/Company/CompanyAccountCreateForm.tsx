@@ -31,7 +31,19 @@ function Field({
   )
 }
 
-export default function CompanyAccountCreateForm() {
+type Props = {
+  onSuccess?: () => void | Promise<void>
+  onCancel?: () => void
+  compact?: boolean
+  hideHeader?: boolean
+}
+
+export default function CompanyAccountCreateForm({
+  onSuccess,
+  onCancel,
+  compact = false,
+  hideHeader = false,
+}: Props) {
   const router = useRouter()
   const [companies, setCompanies] = useState<CompanyTaxDetail[]>([])
   const [loadingCompanies, setLoadingCompanies] = useState(false)
@@ -95,7 +107,16 @@ export default function CompanyAccountCreateForm() {
         password: form.password,
       })
       toast.success('고객사 계정이 등록되었습니다.')
-      router.push('/admin/companies/account')
+      setForm({
+        company_id: '',
+        company_name: '',
+        login_id: '',
+        password: '',
+      })
+      await onSuccess?.()
+      if (!compact) {
+        router.push('/admin/companies/account')
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail
       toast.error(typeof detail === 'string' ? detail : '등록에 실패했습니다.')
@@ -107,38 +128,56 @@ export default function CompanyAccountCreateForm() {
   return (
     <div className="w-full">
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="sticky top-0 z-10 -mx-4 border-b border-zinc-200 bg-white/90 px-4 py-4 backdrop-blur">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-zinc-900">고객사(계정) 등록</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                직원 포털에서 고객사 로그인 계정을 생성하기 위한 입력 화면입니다.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                disabled={saving}
-              >
-                취소
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
-                disabled={saving}
-              >
-                {saving ? '저장 중...' : '저장'}
-              </button>
+        {hideHeader ? null : (
+          <div className={`${compact ? '' : 'sticky top-0 z-10 -mx-4 bg-white/90 backdrop-blur'} border-b border-zinc-200 px-4 py-4`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">고객사(계정) 등록</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  직원 포털에서 고객사 로그인 계정을 생성하기 위한 입력 화면입니다.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onCancel) onCancel()
+                    else router.back()
+                  }}
+                  className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  disabled={saving}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                  disabled={saving}
+                >
+                  {saving ? '저장 중...' : '저장'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-100 px-5 py-4">
-            <h3 className="text-base font-semibold text-zinc-900">계정 기본 정보</h3>
-            <p className="mt-1 text-sm text-zinc-500">회사 선택 후 로그인 아이디/비밀번호를 입력하세요.</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-zinc-900">고객사(계정) 등록</h3>
+                <p className="mt-1 text-sm text-zinc-500">회사 선택 후 로그인 아이디와 비밀번호를 입력하세요.</p>
+              </div>
+              {hideHeader ? (
+                <button
+                  type="submit"
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                  disabled={saving}
+                >
+                  {saving ? '저장 중...' : '등록'}
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-4 px-5 py-5 md:grid-cols-3">
             <Field label="고객사명" required>

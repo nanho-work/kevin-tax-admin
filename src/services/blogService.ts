@@ -1,5 +1,5 @@
 // src/services/blogService.ts
-import axios from "axios";
+import { clientHttp } from '@/services/http'
 import type {
   BlogPostCreate, BlogPostResponse,
   BlogCategoryCreate, BlogCategoryResponse,
@@ -15,15 +15,6 @@ export interface Paginated<T> {
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/blog`;
 
-// 공통 인증 헤더
-function authHeader() {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("admin_access_token")
-      : null;
-  return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-}
-
 // -------------------------- 게시글 --------------------------
 /** 목록 조회 (페이지네이션+필터) */
 export async function listPosts(params: {
@@ -34,67 +25,65 @@ export async function listPosts(params: {
   status?: "draft" | "published" | "archived";
   q?: string;
 } = {}): Promise<Paginated<BlogPostResponse>> {
-  const res = await axios.get(`${BASE}/posts`, { params });
+  const res = await clientHttp.get(`${BASE}/posts`, { params });
   return res.data as Paginated<BlogPostResponse>;
 }
 
 /** 슬러그로 단건 조회 */
 export async function getPostBySlug(slug: string): Promise<BlogPostResponse> {
-  const res = await axios.get(`${BASE}/posts/slug/${encodeURIComponent(slug)}`);
+  const res = await clientHttp.get(`${BASE}/posts/slug/${encodeURIComponent(slug)}`);
   return res.data as BlogPostResponse;
 }
 
 /** ID로 단건 조회 */
 export async function getPostById(postId: number): Promise<BlogPostResponse> {
-  const res = await axios.get(`${BASE}/posts/${postId}`);
+  const res = await clientHttp.get(`${BASE}/posts/${postId}`);
   return res.data as BlogPostResponse;
 }
 
 /** 생성 (keyword_ids 포함 가능) */
 export async function createPost(data: BlogPostCreate): Promise<BlogPostResponse> {
-  const auth = authHeader();
   const headers = {
-    ...(auth.headers || {}),
     "Content-Type": "application/json",
     Accept: "application/json",
   };
-  const res = await axios.post(`${BASE}/posts`, data, { ...auth, headers });
+  const res = await clientHttp.post(`${BASE}/posts`, data, { headers });
   return res.data as BlogPostResponse;
 }
 
 /** 삭제 */
 export async function deletePost(postId: number): Promise<void> {
-  await axios.delete(`${BASE}/posts/${postId}`, { ...authHeader() });
+  await clientHttp.delete(`${BASE}/posts/${postId}`);
 }
 
 // ----------------------- 카테고리 ------------------------
 export async function listCategories(): Promise<BlogCategoryResponse[]> {
-  const res = await axios.get(`${BASE}/categories`);
+  const res = await clientHttp.get(`${BASE}/categories`);
   return res.data as BlogCategoryResponse[];
 }
 
 export async function createCategory(payload: BlogCategoryCreate): Promise<BlogCategoryResponse> {
-  const res = await axios.post(`${BASE}/categories`, payload, { ...authHeader() });
+  const res = await clientHttp.post(`${BASE}/categories`, payload);
   return res.data as BlogCategoryResponse;
 }
 
 export async function deleteCategory(categoryId: number): Promise<void> {
-  await axios.delete(`${BASE}/categories/${categoryId}`, { ...authHeader() });
+  await clientHttp.delete(`${BASE}/categories/${categoryId}`);
 }
 
 // ------------------------- 키워드 ------------------------
 export async function listKeywords(): Promise<KeywordResponse[]> {
-  const res = await axios.get(`${BASE}/keywords`);
+  const res = await clientHttp.get(`${BASE}/keywords`);
   return res.data as KeywordResponse[];
 }
 
 export async function createKeyword(payload: KeywordCreate): Promise<KeywordResponse> {
-  const res = await axios.post(`${BASE}/keywords`, payload, { ...authHeader() });
+  const res = await clientHttp.post(`${BASE}/keywords`, payload);
   return res.data as KeywordResponse;
 }
 
 export async function deleteKeyword(keywordId: number): Promise<void> {
-  await axios.delete(`${BASE}/keywords/${keywordId}`, { ...authHeader() });
+  await clientHttp.delete(`${BASE}/keywords/${keywordId}`);
 }
 
 // ---------------------- 이미지 유틸 --------------------
@@ -102,7 +91,7 @@ export async function deleteKeyword(keywordId: number): Promise<void> {
 export async function uploadThumbnail(file: File): Promise<{ thumbnail_url: string }> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await axios.post(`${BASE}/posts/thumbnail-upload`, fd, { ...authHeader() });
+  const res = await clientHttp.post(`${BASE}/posts/thumbnail-upload`, fd);
   return res.data as { thumbnail_url: string };
 }
 
@@ -113,8 +102,7 @@ export async function deleteBodyImages(
   const fd = new FormData();
   imageUrls.forEach((u) => fd.append("image_urls", u));
   // axios delete 본문은 config.data로 전달
-  const res = await axios.delete(`${BASE}/posts/image-delete`, {
-    ...authHeader(),
+  const res = await clientHttp.delete(`${BASE}/posts/image-delete`, {
     data: fd,
   });
   return res.data as { message: string };
@@ -128,16 +116,14 @@ export interface UploadByUrlResponse {
 export async function uploadContentImageByUrl(
   imageUrl: string
 ): Promise<UploadByUrlResponse> {
-  const auth = authHeader();
   const headers = {
-    ...(auth.headers || {}),
     "Content-Type": "application/json",
     Accept: "application/json",
   };
-  const res = await axios.post(
+  const res = await clientHttp.post(
     `${BASE}/posts/content-image-upload-by-url`,
     { url: imageUrl },
-    { ...auth, headers, withCredentials: true } // 쿠키 세션이면 유지, 아니면 제거 가능
+    { headers }
   );
   return res.data as UploadByUrlResponse;
 }

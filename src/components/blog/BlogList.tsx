@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
 
 export default function BlogList() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<BlogPostResponse[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -17,59 +21,57 @@ export default function BlogList() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const categoryId = Number(searchParams.get('category') || 0) || undefined;
+  const keywordId = Number(searchParams.get('keyword') || 0) || undefined;
+
+  const loadPosts = useCallback(async (targetPage = page) => {
+    setLoading(true);
+    setErr(null);
+
+    try {
+      const data = await blogService.listPosts({
+        page: targetPage,
+        page_size: pageSize,
+        q: q.trim() || undefined,
+        category_id: categoryId,
+        keyword_id: keywordId,
+      });
+
+      setRows(data.items ?? []);
+      setTotal(data.total ?? 0);
+
+      const respPageSize = (data as any).page_size ?? (data as any).limit;
+      if (respPageSize && respPageSize !== pageSize) {
+        setPageSize(respPageSize);
+      }
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || e?.message || '불러오기에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, [categoryId, keywordId, page, pageSize, q]);
 
   const handleDelete = async (postId: number, title?: string) => {
     if (!window.confirm(`정말 삭제하시겠습니까?\n\n제목: ${title ?? ''}`)) return;
     try {
       setDeletingId(postId);
       await blogService.deletePost(postId);
-      // 낙관적 업데이트: 목록에서 제거하고 total 감소
-      setRows((prev) => prev.filter((p) => p.id !== postId));
-      setTotal((t) => Math.max(0, t - 1));
-      // 현재 페이지에서 모두 사라졌다면 이전 페이지로 이동
-      setPage((prevPage) => {
-        const remaining = rows.length - 1; // 삭제 후 현재 페이지에 남을 개수(대략치)
-        if (remaining <= 0 && prevPage > 1) return prevPage - 1;
-        return prevPage;
-      });
+      const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
+      if (nextPage !== page) {
+        setPage(nextPage);
+      } else {
+        await loadPosts(nextPage);
+      }
     } catch (e: any) {
-      alert(e?.message || '삭제 중 오류가 발생했습니다.');
+      alert(e?.response?.data?.detail || e?.message || '삭제 중 오류가 발생했습니다.');
     } finally {
       setDeletingId(null);
     }
   };
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setErr(null);
-
-    blogService
-      .listPosts({ page, page_size: pageSize, q })
-      .then((data) => {
-        if (cancelled) return;
-        setRows(data.items ?? []);
-        setTotal(data.total ?? 0);
-
-        // 응답 키가 page_size로 오면 그대로, 혹시 limit로 오는 서버면 대비
-        const respPageSize = (data as any).page_size ?? (data as any).limit;
-        if (respPageSize && respPageSize !== pageSize) {
-          setPageSize(respPageSize);
-        }
-      })
-      .catch((e: any) => {
-        if (cancelled) return;
-        setErr(e?.message || '불러오기에 실패했습니다.');
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [page, pageSize, q]);
+    void loadPosts(page);
+  }, [loadPosts, page]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / pageSize)),
@@ -105,6 +107,28 @@ export default function BlogList() {
           </select>
         </div>
       </div>
+
+      {categoryId || keywordId ? (
+        <div className="mb-4 flex items-center gap-2 text-sm">
+          {categoryId ? (
+            <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+              카테고리 필터 #{categoryId}
+            </span>
+          ) : null}
+          {keywordId ? (
+            <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+              키워드 필터 #{keywordId}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => router.replace(pathname)}
+            className="rounded-md border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+          >
+            필터 해제
+          </button>
+        </div>
+      ) : null}
 
       <div className="bg-white border rounded-md overflow-hidden">
         <table className="min-w-full text-sm">
@@ -143,7 +167,7 @@ export default function BlogList() {
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/blog/${r.slug}`}
+                      href={`/client/client-management/blog/${r.slug}`}
                       className="text-blue-600 hover:underline font-medium"
                     >
                       {r.title}

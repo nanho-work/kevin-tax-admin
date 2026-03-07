@@ -11,6 +11,12 @@ const Header = () => {
   const currentLabel = useMemo(() => {
     if (pathname.startsWith('/admin/companies')) return '고객사 관리'
     if (pathname.startsWith('/admin/tax-schedule')) return '일정 관리'
+    if (pathname.startsWith('/admin/staff/my-leave')) return '마이페이지 > 내휴가관리'
+    if (pathname.startsWith('/admin/staff/documents/new')) return '마이페이지 > 문서작성'
+    if (pathname.startsWith('/admin/staff/documents')) return '마이페이지 > 내 결재문서'
+    if (pathname.startsWith('/admin/staff/attendance')) return '마이페이지 > 출퇴근 관리'
+    if (pathname.startsWith('/admin/staff/account')) return '마이페이지 > 비밀번호 관리'
+    if (pathname.startsWith('/admin/staff')) return '마이페이지'
     if (pathname.startsWith('/admin/blog')) return '블로그'
     if (pathname.startsWith('/admin/gpt')) return 'GPT'
     if (pathname.startsWith('/admin/setting')) return '설정'

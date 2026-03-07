@@ -19,7 +19,12 @@ function statusLabel(status: CompanyAccountStatus) {
   return status === 'active' ? '활성' : '비활성'
 }
 
-export default function CompanyAccountList() {
+type Props = {
+  refreshKey?: number
+  hideTitle?: boolean
+}
+
+export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }: Props) {
   const [items, setItems] = useState<CompanyAccountOut[]>([])
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
@@ -44,7 +49,7 @@ export default function CompanyAccountList() {
       setPage(response.page)
     } catch (err: any) {
       const code = err?.response?.status
-      if (code === 403) toast.error('권한이 없습니다. 슈퍼관리자만 접근할 수 있습니다.')
+      if (code === 403) toast.error('권한이 없습니다.')
       else if (code === 401) toast.error('로그인이 만료되었습니다. 다시 로그인해 주세요.')
       else toast.error('회사 계정 목록을 불러오지 못했습니다.')
       setItems([])
@@ -56,7 +61,7 @@ export default function CompanyAccountList() {
 
   useEffect(() => {
     load(1)
-  }, [])
+  }, [refreshKey])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
@@ -68,7 +73,7 @@ export default function CompanyAccountList() {
       await load(page)
     } catch (err: any) {
       const code = err?.response?.status
-      if (code === 403) toast.error('권한이 없습니다. 슈퍼관리자만 변경할 수 있습니다.')
+      if (code === 403) toast.error('권한이 없습니다.')
       else if (code === 404) toast.error('대상 계정을 찾을 수 없습니다.')
       else toast.error('상태 변경에 실패했습니다.')
     }
@@ -76,10 +81,12 @@ export default function CompanyAccountList() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white px-4 py-4">
-        <h2 className="text-xl font-semibold text-zinc-900">고객사(계정) 목록</h2>
-        <p className="mt-1 text-sm text-zinc-500">회사 로그인 계정을 조회하고 활성 상태를 변경할 수 있습니다.</p>
-      </div>
+      {hideTitle ? null : (
+        <div className="rounded-lg border border-zinc-200 bg-white px-4 py-4">
+          <h2 className="text-xl font-semibold text-zinc-900">고객사(계정) 목록</h2>
+          <p className="mt-1 text-sm text-zinc-500">회사 로그인 계정을 조회하고 활성 상태를 변경할 수 있습니다.</p>
+        </div>
+      )}
 
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
@@ -198,4 +205,3 @@ export default function CompanyAccountList() {
     </section>
   )
 }
-

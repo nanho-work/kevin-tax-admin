@@ -52,6 +52,16 @@ function formatNumber(value?: number | null) {
   return value.toLocaleString('ko-KR')
 }
 
+function formatAppliedMonth(value?: string | null) {
+  if (!value) return '-'
+  const normalized = String(value).trim()
+  if (/^\d{4}-\d{2}$/.test(normalized)) {
+    const [year, month] = normalized.split('-')
+    return `${year}.${month}`
+  }
+  return normalized
+}
+
 function isLinkableWithdrawStatus(status?: string | null) {
   if (!status) return true
   const normalized = status.trim().toLowerCase()
@@ -181,13 +191,13 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       setBatchMeta(found)
       if (!found) {
         toast.error('배치 정보를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/batches')
+        router.replace('/client/bookkeeping/debits/history')
       }
     } catch (error) {
       const status = (error as any)?.response?.status
       if (status === 404) {
         toast.error(extractApiDetail(error) || '배치를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/batches')
+        router.replace('/client/bookkeeping/debits/history')
         return
       }
       toast.error(extractApiDetail(error) || '배치 메타 조회 중 오류가 발생했습니다.')
@@ -245,7 +255,7 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       const status = (error as any)?.response?.status
       if (status === 404) {
         toast.error(extractApiDetail(error) || '배치를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/batches')
+        router.replace('/client/bookkeeping/debits/history')
         return
       }
       toast.error(extractApiDetail(error) || '배치 아이템 조회 중 오류가 발생했습니다.')
@@ -328,7 +338,10 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-base font-semibold text-zinc-900">자동이체 배치 상세</h1>
+          <div>
+            <h1 className="text-base font-semibold text-zinc-900">업로드 이력 상세</h1>
+            <p className="mt-1 text-sm text-zinc-500">업로드된 자동이체 데이터의 매핑 결과와 예외 항목을 확인합니다.</p>
+          </div>
         </div>
         {metaLoading ? (
           <p className="mt-2 text-sm text-zinc-500">배치 정보 조회 중...</p>
@@ -337,7 +350,7 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
         ) : (
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-700 md:grid-cols-2 xl:grid-cols-3">
             <div>업로드일시: {formatDateTime(batchMeta.uploaded_at)}</div>
-            <div>출처: {batchMeta.source_name || '-'}</div>
+            <div>적용월: {formatAppliedMonth(batchMeta.source_name)}</div>
             <div>파일명: {batchMeta.file_name || '-'}</div>
             <div>총 행수: {formatNumber(batchMeta.total_rows)}</div>
             <div>성공: {formatNumber(batchMeta.success_rows)}</div>

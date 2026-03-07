@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 // 서비스 & 타입 임포트
 import { blogService } from '@/services/blogService'
@@ -22,6 +23,7 @@ const slugify = (s: string) =>
     .replace(/-+/g, '-')
 
 export default function BlogCreateForm() {
+  const router = useRouter()
   // 폼 상태
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -124,30 +126,17 @@ export default function BlogCreateForm() {
       setLoading(true)
       const created = await blogService.createPost(payload)
       alert('블로그 글이 생성되었습니다.')
-      // 초기화
-      setTitle('')
-      setSubtitle('')
-      setSummary('')
-      setCategoryId('')
-      setKeywordIds([])
-      setThumbnailUrl('')
-      setContent('')
+      router.push(created.slug ? `/client/client-management/blog/${created.slug}` : '/client/client-management/blog/list')
     } catch (err: any) {
       console.error('생성 실패:', err)
-      alert(err?.message || '생성 중 오류가 발생했습니다.')
+      alert(err?.response?.data?.detail || err?.message || '생성 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }
   }
 
   const handleCancel = async () => {
-    setTitle('')
-    setSubtitle('')
-    setSummary('')
-    setCategoryId('')
-    setKeywordIds([])
-    setThumbnailUrl('')
-    setContent('')
+    router.push('/client/client-management/blog/list')
   }
 
   return (

@@ -18,12 +18,11 @@ const companyManagementMenus = [
 
 const staffManagementMenus = [
   { label: '직원목록/검색', href: '/client/staff' },
-  { label: '직원등록', href: '/client/staff/register' },
-  { label: '직원정보수정/재직상태', href: '/client/staff/profile-status' },
   { label: '직원휴가관리', href: '/client/staff/leave' },
+  { label: '휴가 승인', href: '/client/staff/approvals' },
+  { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
   { label: '권한/조직배치', href: '/client/staff/organization' },
   { label: '근태기록 조회', href: '/client/staff/attendance' },
-  { label: '휴가승인/반려 이력', href: '/client/staff/leave-history' },
   { label: '초기비밀번호 재설정/잠금해제', href: '/client/staff/account-security' },
 ]
 
@@ -33,13 +32,17 @@ const clientManagementMenus = [
   { label: '클라이언트(관리자) 등록', href: '/client/client-management/create' },
   { label: '클라이언트(관리자) 목록', href: '/client/client-management/list' },
   { label: '샘플양식 업로드', href: '/client/client-management/templates' },
+  { label: '블로그 목록', href: '/client/client-management/blog/list' },
+  { label: '블로그 작성', href: '/client/client-management/blog/create' },
 ]
 
 const bookkeepingMenus = [
   { label: '기장 거래처 관리', href: '/client/bookkeeping/contracts' },
   { label: '월별 청구/수납 관리', href: '/client/bookkeeping/billings' },
   { label: '월별 집계', href: '/client/bookkeeping/summary' },
-  { label: '자동이체 업로드(출금조회)', href: '/client/bookkeeping/debits' },
+  { label: '입금내역', href: '/client/bookkeeping/debits' },
+  { label: '자동이체 업로드', href: '/client/bookkeeping/debits/upload' },
+  { label: '업로드 이력', href: '/client/bookkeeping/debits/history' },
 ]
 
 const settingMenus = [
@@ -276,7 +279,11 @@ export default function ClientSidebar() {
             {isClientManagementOpen && (
               <div className="mt-1 space-y-1 pl-3">
                 {clientManagementMenus.map((menu) => {
-                  const active = pathname === menu.href
+                  const active =
+                    pathname === menu.href ||
+                    (menu.href === '/client/client-management/blog/list' &&
+                      pathname.startsWith('/client/client-management/blog/') &&
+                      !pathname.startsWith('/client/client-management/blog/create'))
                   return (
                     <Link key={menu.href} href={menu.href}>
                       <div

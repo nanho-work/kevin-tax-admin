@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchCompanyTaxList } from '@/services/admin/company';
+import { getCompanyAccounts } from '@/services/admin/companyAccountService'
 import type { CompanyTaxDetail } from '@/types/admin_campany';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
@@ -49,6 +50,7 @@ export default function CompanyList({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
   });
   const [totalCount, setTotalCount] = useState(0);
+  const [companyAccountIds, setCompanyAccountIds] = useState<Set<number> | null>(null)
 
   useEffect(() => {
     setPage(1);
@@ -124,6 +126,49 @@ export default function CompanyList({
     const end = start + pageSize
     setCompanies(allCompanies.slice(start, end))
   }, [allCompanies, page, pageSize]);
+
+  useEffect(() => {
+    const loadCompanyAccounts = async () => {
+      try {
+        let nextPage = 1
+        let total = 0
+        const companyIds = new Set<number>()
+
+        do {
+          const response = await getCompanyAccounts({
+            page: nextPage,
+            limit: 100,
+          })
+          ;(response.items || []).forEach((item) => {
+            companyIds.add(item.company_id)
+          })
+          total = response.total || companyIds.size
+          nextPage += 1
+          if (!response.items || response.items.length === 0) break
+        } while (companyIds.size < total)
+
+        setCompanyAccountIds(companyIds)
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          setCompanyAccountIds(null)
+          return
+        }
+        console.error('고객사 계정 목록 조회 실패:', err)
+        setCompanyAccountIds(null)
+      }
+    }
+
+    const handleWindowFocus = () => {
+      void loadCompanyAccounts()
+    }
+
+    void loadCompanyAccounts()
+    window.addEventListener('focus', handleWindowFocus)
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+    }
+  }, [])
 
   const handleDelete = async (companyId: number) => {
     if (!deactivate) {
@@ -209,7 +254,7 @@ export default function CompanyList({
             <table className="min-w-full table-auto text-sm">
               <thead className="bg-zinc-50 text-zinc-700">
                 <tr>
-                  {['번호', '구분', '회사명', '상세보기', '대표자', '사업자등록번호', '종목', '상태'].map((title) => (
+                  {['번호', '구분', '회사명', '상세보기', '대표자', '사업자등록번호', '종목', '계정'].map((title) => (
                     <th key={title} className="h-10 border-b border-zinc-200 px-2 py-1 text-center whitespace-nowrap text-xs font-medium">
                       {title}
                     </th>
@@ -257,16 +302,16 @@ export default function CompanyList({
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.registration_number}</td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.business_type || '-'}</td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">
-                        {disableDelete ? (
+                        {companyAccountIds === null ? (
                           <span className="text-zinc-400">-</span>
+                        ) : companyAccountIds.has(c.id) ? (
+                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                            있음
+                          </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(c.id)}
-                            className="inline-flex h-7 items-center rounded-md bg-neutral-900 px-2 text-xs font-medium text-white hover:bg-neutral-800"
-                          >
-                            삭제
-                          </button>
+                          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">
+                            없음
+                          </span>
                         )}
                       </td>
                     </tr>

@@ -26,4 +26,3 @@ export async function updateCompanyAccountStatus(
   const res = await adminHttp.patch<CompanyAccountOut>(`${BASE}/${accountId}/status`, { status })
   return res.data
 }
-

@@ -5,8 +5,14 @@ import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { fetchCompanyDetail } from '@/services/admin/company'
+import {
+  createCompanyAccount,
+  getCompanyAccounts,
+  updateCompanyAccountStatus,
+} from '@/services/admin/companyAccountService'
 import type { CompanyCreateRequest, CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
 import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
+import type { CompanyAccountOut, CompanyAccountStatus } from '@/types/companyAccount'
 
 interface Props {
   company: CompanyDetailResponse
@@ -242,6 +248,13 @@ export default function CompanyDetailForm({
   const [customDocuments, setCustomDocuments] = useState<LocalCustomDocument[]>([])
   const [loadingCustomDocs, setLoadingCustomDocs] = useState(false)
   const [uploadingCustomDoc, setUploadingCustomDoc] = useState(false)
+  const [companyAccount, setCompanyAccount] = useState<CompanyAccountOut | null>(null)
+  const [loadingCompanyAccount, setLoadingCompanyAccount] = useState(false)
+  const [savingCompanyAccount, setSavingCompanyAccount] = useState(false)
+  const [companyAccountForm, setCompanyAccountForm] = useState({
+    login_id: '',
+    password: '',
+  })
   const [hometaxCredential, setHometaxCredential] = useState<LocalHometaxCredential | null>(null)
   const [loadingHometax, setLoadingHometax] = useState(false)
   const [savingHometax, setSavingHometax] = useState(false)
@@ -277,6 +290,7 @@ export default function CompanyDetailForm({
     [customDocuments]
   )
   const supportsHometax = !isCreateMode && Boolean(getHometaxCredentialFn)
+  const supportsCompanyAccount = !isCreateMode && hasValidCompanyId
   const hasHometaxRegistered = Boolean(hometaxCredential?.password_set)
 
   const extractApiDetail = (error: unknown): string | null => {
@@ -401,6 +415,31 @@ export default function CompanyDetailForm({
     if (isCreateMode || !hasValidCompanyId) return
     void loadCustomDocuments()
   }, [companyId, enableCustomDocuments, hasValidCompanyId, isCreateMode, listCustomDocumentsFn])
+
+  const loadCompanyAccount = async () => {
+    if (!supportsCompanyAccount) return
+    try {
+      setLoadingCompanyAccount(true)
+      const response = await getCompanyAccounts({
+        company_id: companyId,
+        page: 1,
+        limit: 1,
+      })
+      setCompanyAccount(response.items?.[0] ?? null)
+    } catch (error: any) {
+      if (error?.response?.status !== 403) {
+        toast.error(extractApiDetail(error) || '고객사 계정 정보를 불러오지 못했습니다.')
+      }
+      setCompanyAccount(null)
+    } finally {
+      setLoadingCompanyAccount(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!supportsCompanyAccount) return
+    void loadCompanyAccount()
+  }, [companyId, supportsCompanyAccount])
 
   useEffect(() => {
     if (!supportsHometax || !hasValidCompanyId || !getHometaxCredentialFn) return
@@ -678,6 +717,46 @@ export default function CompanyDetailForm({
     }
   }
 
+  const handleCreateCompanyAccount = async () => {
+    const loginId = companyAccountForm.login_id.trim()
+    const password = companyAccountForm.password
+    if (!loginId || !password) {
+      toast.error('로그인 아이디와 비밀번호를 입력해 주세요.')
+      return
+    }
+
+    try {
+      setSavingCompanyAccount(true)
+      await createCompanyAccount({
+        company_id: companyId,
+        login_id: loginId,
+        password,
+      })
+      toast.success('고객사 계정이 등록되었습니다.')
+      setCompanyAccountForm({ login_id: '', password: '' })
+      await loadCompanyAccount()
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '고객사 계정 등록에 실패했습니다.')
+    } finally {
+      setSavingCompanyAccount(false)
+    }
+  }
+
+  const handleToggleCompanyAccountStatus = async () => {
+    if (!companyAccount) return
+    const nextStatus: CompanyAccountStatus = companyAccount.status === 'active' ? 'inactive' : 'active'
+    try {
+      setSavingCompanyAccount(true)
+      const updated = await updateCompanyAccountStatus(companyAccount.id, nextStatus)
+      setCompanyAccount(updated)
+      toast.success(nextStatus === 'active' ? '계정이 활성화되었습니다.' : '계정이 비활성화되었습니다.')
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '고객사 계정 상태 변경에 실패했습니다.')
+    } finally {
+      setSavingCompanyAccount(false)
+    }
+  }
+
   if (loading) {
     return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">회사 정보를 불러오는 중...</div>
   }
@@ -847,6 +926,79 @@ export default function CompanyDetailForm({
                   <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
                 </Field>
               </div>
+            </Section>
+          ) : null}
+
+          {supportsCompanyAccount ? (
+            <Section
+              title="고객사 계정"
+              action={
+                companyAccount ? (
+                  <button
+                    type="button"
+                    onClick={handleToggleCompanyAccountStatus}
+                    disabled={savingCompanyAccount}
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                  >
+                    {savingCompanyAccount ? '처리 중...' : companyAccount.status === 'active' ? '비활성화' : '활성화'}
+                  </button>
+                ) : null
+              }
+            >
+              {loadingCompanyAccount ? (
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                  고객사 계정 정보를 불러오는 중...
+                </div>
+              ) : companyAccount ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <Field label="로그인 아이디">
+                    <input className={`${inputClass} bg-zinc-100`} value={companyAccount.login_id} readOnly />
+                  </Field>
+                  <Field label="상태">
+                    <input
+                      className={`${inputClass} bg-zinc-100`}
+                      value={companyAccount.status === 'active' ? '활성' : '비활성'}
+                      readOnly
+                    />
+                  </Field>
+                  <Field label="마지막 로그인">
+                    <input className={`${inputClass} bg-zinc-100`} value={toDateTime(companyAccount.last_login_at)} readOnly />
+                  </Field>
+                  <Field label="등록일">
+                    <input className={`${inputClass} bg-zinc-100`} value={toDateTime(companyAccount.created_at)} readOnly />
+                  </Field>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="로그인 아이디">
+                      <input
+                        className={inputClass}
+                        value={companyAccountForm.login_id}
+                        onChange={(e) => setCompanyAccountForm((prev) => ({ ...prev, login_id: e.target.value }))}
+                        placeholder="로그인 아이디 입력"
+                      />
+                    </Field>
+                    <Field label="비밀번호">
+                      <input
+                        type="password"
+                        className={inputClass}
+                        value={companyAccountForm.password}
+                        onChange={(e) => setCompanyAccountForm((prev) => ({ ...prev, password: e.target.value }))}
+                        placeholder="비밀번호 입력"
+                      />
+                    </Field>
+                    <button
+                      type="button"
+                      onClick={handleCreateCompanyAccount}
+                      disabled={savingCompanyAccount}
+                      className="h-10 rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                    >
+                      {savingCompanyAccount ? '등록 중...' : '계정 생성'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </Section>
           ) : null}
 

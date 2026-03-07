@@ -26,7 +26,7 @@ export default function BlogDetail({ post }: BlogDetailProps) {
       {/* 카테고리 */}
       {post.category && (
         <div className="text-sm text-blue-600 mb-2">
-          <Link href={`/blog?category=${post.category.id}`}>
+          <Link href={`/client/client-management/blog/list?category=${post.category.id}`}>
             {post.category.name}
           </Link>
         </div>
@@ -73,7 +73,7 @@ export default function BlogDetail({ post }: BlogDetailProps) {
           {post.keywords.map((kw) => (
             <Link
               key={kw.id}
-              href={`/blog?keyword=${kw.id}`}
+              href={`/client/client-management/blog/list?keyword=${kw.id}`}
               className="px-3 py-1 bg-gray-100 rounded-full text-sm hover:bg-gray-200"
             >
               #{kw.name}

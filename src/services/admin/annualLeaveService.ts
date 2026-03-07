@@ -15,7 +15,6 @@ function authHeader() {
 
 interface FetchAnnualLeavesParams {
     year?: number;
-    keyword?: string;
     offset?: number;
     limit?: number;
 }

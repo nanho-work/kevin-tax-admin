@@ -11,9 +11,30 @@ import {
 } from '@/services/client/clientBookkeepingService'
 import type { ClientDebitUploadBatchOut } from '@/types/clientBookkeeping'
 
+type Props = {
+  mode?: 'upload' | 'history'
+}
+
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
+
+function getCurrentYearMonth() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+function formatAppliedMonth(value?: string | null) {
+  if (!value) return '-'
+  const normalized = String(value).trim()
+  if (/^\d{4}-\d{2}$/.test(normalized)) {
+    const [year, month] = normalized.split('-')
+    return `${year}.${month}`
+  }
+  return normalized
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-'
@@ -30,8 +51,10 @@ function extractApiDetail(error: unknown): string | null {
   return null
 }
 
-export default function ClientBookkeepingDebitBatchesSection() {
+export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' }: Props) {
   const router = useRouter()
+  const isUploadMode = mode === 'upload'
+  const isHistoryMode = mode === 'history'
 
   const [rows, setRows] = useState<ClientDebitUploadBatchOut[]>([])
   const [mappingStatusMap, setMappingStatusMap] = useState<
@@ -42,7 +65,7 @@ export default function ClientBookkeepingDebitBatchesSection() {
   const [deletingBatchId, setDeletingBatchId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ClientDebitUploadBatchOut | null>(null)
 
-  const [sourceName, setSourceName] = useState('')
+  const [sourceName, setSourceName] = useState(getCurrentYearMonth())
   const [memo, setMemo] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -137,7 +160,7 @@ export default function ClientBookkeepingDebitBatchesSection() {
       toast.success('업로드가 완료되었습니다.')
       await loadBatches(1)
       setFile(null)
-      setSourceName('')
+      setSourceName(getCurrentYearMonth())
       setMemo('')
     } catch (error) {
       toast.dismiss(loadingToastId)
@@ -188,77 +211,103 @@ export default function ClientBookkeepingDebitBatchesSection() {
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-base font-semibold text-zinc-900">자동이체 업로드(출금조회)</h1>
-          {uploadedBatchId ? (
+          <div>
+            <h1 className="text-base font-semibold text-zinc-900">
+              {isUploadMode ? '자동이체 업로드' : '업로드 이력'}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              {isUploadMode
+                ? '은행 자동이체 파일을 올리고, 업로드 결과를 바로 확인합니다.'
+                : '업로드된 배치별 처리 결과와 매핑 상태를 확인합니다.'}
+            </p>
+          </div>
+          {isUploadMode ? (
+            uploadedBatchId ? (
+              <button
+                type="button"
+                onClick={() => router.push(`/client/bookkeeping/debits/history/${uploadedBatchId}`)}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                방금 업로드한 이력 보기
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => router.push('/client/bookkeeping/debits/history')}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                업로드 이력 보기
+              </button>
+            )
+          ) : (
             <button
               type="button"
-              onClick={() => router.push(`/client/bookkeeping/debits/batches/${uploadedBatchId}`)}
+              onClick={() => router.push('/client/bookkeeping/debits/upload')}
               className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
             >
-              방금 업로드한 배치 상세 보기
+              새 파일 업로드
             </button>
-          ) : null}
+          )}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <input
-            className={inputClass}
-            placeholder="출처(사이트/은행명)"
-            value={sourceName}
-            onChange={(e) => setSourceName(e.target.value)}
-          />
-          <label
-            onDragOver={(event) => {
-              event.preventDefault()
-              setIsDragOver(true)
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault()
-              setIsDragOver(false)
-            }}
-            onDrop={handleDrop}
-            className={`relative flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
-              isDragOver
-                ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
-                : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            <input
-              type="file"
-              accept=".xls,.xlsx,.xlsm,.xltx,.xltm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
-              className="hidden"
-              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+        {isUploadMode ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <input type="month" className={inputClass} value={sourceName} onChange={(e) => setSourceName(e.target.value)} />
+            <label
+              onDragOver={(event) => {
+                event.preventDefault()
+                setIsDragOver(true)
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault()
+                setIsDragOver(false)
+              }}
+              onDrop={handleDrop}
+              className={`relative flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
+                isDragOver
+                  ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
+                  : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              <input
+                type="file"
+                accept=".xls,.xlsx,.xlsm,.xltx,.xltm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
+                className="hidden"
+                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+              />
+              {file ? file.name : '파일을 드래그 하시거나 파일을 선택해주세요'}
+            </label>
+            <button
+              type="button"
+              onClick={handleUpload}
+              disabled={uploading}
+              className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploading ? '업로드 중...' : '업로드'}
+            </button>
+            <textarea
+              className="md:col-span-3 min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              placeholder="업로드 메모"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
             />
-            {file ? file.name : '파일을 드래그 하시거나 파일을 선택해주세요'}
-          </label>
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={uploading}
-            className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {uploading ? '업로드 중...' : '업로드'}
-          </button>
-          <textarea
-            className="md:col-span-3 min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-            placeholder="업로드 메모"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-          />
-          <div className="md:col-span-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            자동매칭은 현재 회원명(member_name)과 회사명(company_name) 정확 일치 기준입니다.
-            불일치 시 미매핑으로 저장되며 배치 상세에서 수동 매핑이 필요합니다.
+            <div className="md:col-span-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              자동매칭은 현재 회원명(member_name)과 회사명(company_name) 정확 일치 기준입니다.
+              불일치 시 미매핑으로 저장되며 업로드 이력 상세에서 수동 매핑이 필요합니다.
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-800">배치 목록</div>
+        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-800">
+          {isHistoryMode ? '업로드 이력 목록' : '최근 업로드 이력'}
+        </div>
         <table className="min-w-[900px] w-full text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-600">
             <tr>
               <th className="px-3 py-3 text-center">업로드일시</th>
-              <th className="px-3 py-3 text-left">출처</th>
+              <th className="px-3 py-3 text-left">적용월</th>
               <th className="px-3 py-3 text-right">총 행수</th>
               <th className="px-3 py-3 text-right">성공</th>
               <th className="px-3 py-3 text-right">실패</th>
@@ -285,7 +334,7 @@ export default function ClientBookkeepingDebitBatchesSection() {
               rows.map((row) => (
                 <tr key={row.id} className="hover:bg-zinc-50">
                   <td className="px-3 py-3 text-center">{formatDateTime(row.uploaded_at)}</td>
-                  <td className="px-3 py-3 text-left">{row.source_name || '-'}</td>
+                  <td className="px-3 py-3 text-left">{formatAppliedMonth(row.source_name)}</td>
                   <td className="px-3 py-3 text-right">{row.total_rows.toLocaleString('ko-KR')}</td>
                   <td className="px-3 py-3 text-right text-emerald-700">{row.success_rows.toLocaleString('ko-KR')}</td>
                   <td className="px-3 py-3 text-right text-rose-700">{row.failed_rows.toLocaleString('ko-KR')}</td>
@@ -308,7 +357,7 @@ export default function ClientBookkeepingDebitBatchesSection() {
                   <td className="px-3 py-3 text-center">
                     <button
                       type="button"
-                      onClick={() => router.push(`/client/bookkeeping/debits/batches/${row.id}`)}
+                      onClick={() => router.push(`/client/bookkeeping/debits/history/${row.id}`)}
                       className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
                     >
                       상세보기

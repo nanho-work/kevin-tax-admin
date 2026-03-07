@@ -24,9 +24,6 @@ const menuSections: MenuSection[] = [
     label: '고객사 관리',
     children: [
       { label: '고객사 리스트', href: '/admin/companies' },
-      { label: '고객사(회사) 등록', href: '/admin/companies/new' },
-      { label: '고객사(계정) 목록', href: '/admin/companies/account' },
-      { label: '고객사(계정) 등록', href: '/admin/companies/account/new' },
     ],
   },
   {
@@ -37,20 +34,23 @@ const menuSections: MenuSection[] = [
     ],
   },
   {
+    key: 'leave',
+    label: '마이페이지',
+    children: [
+      { label: '내휴가관리', href: '/admin/staff/my-leave' },
+      { label: '내 결재문서', href: '/admin/staff/documents' },
+      { label: '문서작성', href: '/admin/staff/documents/new' },
+      { label: '출퇴근 관리', href: '/admin/staff/attendance' },
+      { label: '비밀번호 관리', href: '/admin/staff/account' },
+    ],
+  },
+  {
     key: 'company-withholding',
     label: '고객사 원천세',
     children: [
       { label: '사업신고', href: '/admin/company-withholding/business' },
       { label: '근로소득신고', href: '/admin/company-withholding/earned-income' },
       { label: '기타신고', href: '/admin/company-withholding/etc' },
-    ],
-  },
-  {
-    key: 'blog',
-    label: '블로그',
-    children: [
-      { label: '블로그 목록', href: '/admin/blog/list' },
-      { label: '블로그 작성', href: '/admin/blog/create' },
     ],
   },
   { key: 'gpt', label: 'GPT', href: '/admin/gpt' },
@@ -68,8 +68,8 @@ const menuSections: MenuSection[] = [
 function getActiveSection(pathname: string): string {
   if (pathname.startsWith('/admin/companies')) return 'companies'
   if (pathname.startsWith('/admin/tax-schedule')) return 'schedule'
+  if (pathname.startsWith('/admin/staff')) return 'leave'
   if (pathname.startsWith('/admin/company-withholding')) return 'company-withholding'
-  if (pathname.startsWith('/admin/blog')) return 'blog'
   if (pathname.startsWith('/admin/gpt')) return 'gpt'
   if (pathname.startsWith('/admin/setting')) return 'setting'
   if (pathname.startsWith('/admin/dashboard')) return 'dashboard'
@@ -256,10 +256,7 @@ export default function Sidebar() {
             const isOpen = Boolean(expanded[section.key])
             const visibleChildren = section.children?.filter((child) => {
               if (child.href === '/admin/setting/role' && (user?.roleLevel ?? 99) >= 2) return false
-              if (
-                (child.href === '/admin/companies/account' || child.href === '/admin/companies/account/new') &&
-                (user?.roleLevel ?? 99) !== 0
-              ) {
+              if (child.href === '/admin/companies/account' && !user) {
                 return false
               }
               return true

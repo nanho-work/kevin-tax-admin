@@ -17,13 +17,18 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '기장 관리', child: '기장 거래처 관리' }
   if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '기장 관리', child: '월별 청구/수납 관리' }
   if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '기장 관리', child: '월별 집계' }
-  if (pathname.startsWith('/client/bookkeeping/debits')) return { parent: '기장 관리', child: '자동이체 업로드(출금조회)' }
+  if (pathname.startsWith('/client/bookkeeping/debits/history/')) return { parent: '기장 관리', child: '업로드 이력 상세' }
+  if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return { parent: '기장 관리', child: '업로드 이력 상세' }
+  if (pathname.startsWith('/client/bookkeeping/debits/history')) return { parent: '기장 관리', child: '업로드 이력' }
+  if (pathname.startsWith('/client/bookkeeping/debits/upload')) return { parent: '기장 관리', child: '자동이체 업로드' }
+  if (pathname.startsWith('/client/bookkeeping/debits')) return { parent: '기장 관리', child: '입금내역' }
   if (pathname.startsWith('/client/staff/register')) return { parent: '인사관리', child: '직원등록' }
   if (pathname.startsWith('/client/staff/profile-status')) return { parent: '인사관리', child: '직원정보수정/재직상태' }
   if (pathname.startsWith('/client/staff/leave')) return { parent: '인사관리', child: '직원휴가관리' }
+  if (pathname.startsWith('/client/staff/approvals/documents')) return { parent: '인사관리', child: '결재 문서 승인' }
+  if (pathname.startsWith('/client/staff/approvals')) return { parent: '인사관리', child: '휴가 승인' }
   if (pathname.startsWith('/client/staff/organization')) return { parent: '인사관리', child: '권한/조직배치' }
   if (pathname.startsWith('/client/staff/attendance')) return { parent: '인사관리', child: '근태기록 조회' }
-  if (pathname.startsWith('/client/staff/leave-history')) return { parent: '인사관리', child: '휴가승인/반려 이력' }
   if (pathname.startsWith('/client/staff/account-security')) return { parent: '인사관리', child: '초기비밀번호 재설정/잠금해제' }
   if (pathname.startsWith('/client/staff')) return { parent: '인사관리', child: '직원목록/검색' }
   if (pathname.startsWith('/client/client-management/company-create')) return { parent: '클라이언트 관리', child: '클라이언트(업체) 등록' }
@@ -31,6 +36,9 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/create')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 등록' }
   if (pathname.startsWith('/client/client-management/list')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 목록' }
   if (pathname.startsWith('/client/client-management/templates')) return { parent: '클라이언트 관리', child: '샘플양식 업로드' }
+  if (pathname.startsWith('/client/client-management/blog/create')) return { parent: '클라이언트 관리', child: '블로그 작성' }
+  if (pathname.startsWith('/client/client-management/blog/list')) return { parent: '클라이언트 관리', child: '블로그 목록' }
+  if (pathname.startsWith('/client/client-management/blog/')) return { parent: '클라이언트 관리', child: '블로그 상세' }
   if (pathname.startsWith('/client/client-management')) return { parent: '클라이언트 관리' }
   if (pathname.startsWith('/client/setting/account')) return { parent: '설정', child: '비밀번호 변경' }
   if (pathname.startsWith('/client/setting/security')) return { parent: '설정', child: '로그/보안' }
@@ -45,7 +53,9 @@ export default function ClientHeader() {
   const title = child ? `${parent} > ${child}` : parent
   const backPath = (() => {
     if (pathname.startsWith('/client/companies/')) return '/client/companies'
-    if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return '/client/bookkeeping/debits/batches'
+    if (pathname.startsWith('/client/bookkeeping/debits/history/')) return '/client/bookkeeping/debits/history'
+    if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return '/client/bookkeeping/debits/history'
+    if (pathname.startsWith('/client/client-management/blog/')) return '/client/client-management/blog/list'
     return null
   })()
 

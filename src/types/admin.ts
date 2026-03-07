@@ -50,6 +50,7 @@ export interface CreateStaffRequest {
   client_id: number;
   hired_at?: string
   birth_date?: string
+  initial_remaining_days?: string
   profile_image_url?: string
   team_id?: number
   role_id?: number

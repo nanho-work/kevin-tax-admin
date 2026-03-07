@@ -1,12 +1,7 @@
-// ✅ 직원 상세 정보 모달
-// - 상세 보기 버튼 클릭 시 오픈
-// - 전달된 직원(Admin) 데이터를 보여주는 UI
-// - 수정폼 연동 또는 상태 토글 가능
-
 'use client'
 
 import { AdminOut } from '@/types/admin'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { updateClientStaff } from '@/services/client/clientStaffService'
 import { getRoles } from '@/services/client/roleService'
 import { getDepartments } from '@/services/client/departmentService'
@@ -15,16 +10,18 @@ import type { UpdateStaffRequest } from '@/types/admin'
 import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
-import { gsap } from 'gsap'
 
 type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
 
 interface Props {
   staff: AdminOut
   onClose: () => void
+  onSaved?: () => void | Promise<void>
 }
 
-export default function StaffDetailModal({ staff, onClose }: Props) {
+export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
+  const inputClass =
+    'w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -59,18 +56,6 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
     }
   }, [staff])
 
-  const modalRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (modalRef.current) {
-      gsap.fromTo(
-        modalRef.current,
-        { y: -50, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' }
-      )
-    }
-  }, [])
-
   useEffect(() => {
     async function loadOptions() {
       const [roleList, departmentList, teamList] = await Promise.all([
@@ -85,8 +70,6 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
     loadOptions()
   }, [])
 
-  console.log('초기 데이터:', staff);
-
   const handleSubmit = async () => {
     try {
       setLoading(true)
@@ -99,11 +82,13 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
       if (form.birth_date) formData.append('birth_date', form.birth_date)
       if (form.retired_at) formData.append('retired_at', form.retired_at)
       if (form.profile_image) {
-        formData.append('file', form.profile_image)  // 'profile_image' → 'file'
+        formData.append('file', form.profile_image)
       }
 
-      const result = await updateClientStaff(staff.id, formData)
+      await updateClientStaff(staff.id, formData)
       setSuccess('정보가 저장되었습니다.')
+      setError('')
+      await onSaved?.()
 
       if (form.profile_image) {
         const reader = new FileReader()
@@ -125,154 +110,169 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
   }
 
   return (
-    <div ref={modalRef} className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
-      <div className="bg-white p-4 rounded w-96 shadow-lg space-y-3">
-        <h2 className="text-lg font-bold mb-2">직원 상세 정보</h2>
-        <div className="flex flex-col items-center space-y-2">
-          <img
-            src={
-              form.profile_image_url
-                ? form.profile_image_url
-                : '/default-profile.png'
-            }
-            alt="사용자 이미지"
-            className="w-24 h-24 rounded-full object-cover border-2 border-white"
-          />
-          <div className="text-lg font-semibold">
-            {staff.name} {staff.role?.name || ''}님
+    <div className="fixed inset-0 z-50 bg-black/30">
+      <div className="absolute inset-y-0 right-0 w-full max-w-2xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-zinc-200 bg-white px-6 py-5">
+          <div className="flex items-center gap-4">
+            <img
+              src={form.profile_image_url || '/default-profile.png'}
+              alt="사용자 이미지"
+              className="h-16 w-16 rounded-full border border-zinc-200 object-cover"
+            />
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">{staff.name}</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                {staff.role?.name || '직급 미지정'}
+                {staff.email ? ` · ${staff.email}` : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="space-y-5 px-6 py-5">
+          {success ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</div> : null}
+          {error ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
+          {loading ? <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">처리 중입니다...</div> : null}
+
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">이메일</label>
+                <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800">{staff.email || '-'}</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">연락처</label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">직급</label>
+                {staff.role_id === 1 || staff.role_id === 2 ? (
+                  <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800">{staff.role?.name || '-'}</div>
+                ) : (
+                  <select
+                    value={form.role_id ?? ''}
+                    onChange={(e) => setForm((prev) => ({ ...prev, role_id: Number(e.target.value) as StaffRole }))}
+                    className={inputClass}
+                  >
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">팀</label>
+                <select
+                  value={form.team_id ?? ''}
+                  onChange={(e) => setForm((prev) => ({ ...prev, team_id: Number(e.target.value) || undefined }))}
+                  className={inputClass}
+                >
+                  <option value="">선택</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} {t.department?.name ? `(${t.department.name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">부서</label>
+                <select
+                  value={teams.find((t) => t.id === form.team_id)?.department?.id ?? ''}
+                  disabled
+                  className={`${inputClass} cursor-not-allowed bg-zinc-100 text-zinc-500`}
+                >
+                  <option value="">(자동 선택)</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">입사일</label>
+                <input
+                  type="date"
+                  value={form.hired_at}
+                  onChange={(e) => setForm((prev) => ({ ...prev, hired_at: e.target.value }))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">생일</label>
+                <input
+                  type="date"
+                  value={form.birth_date}
+                  onChange={(e) => setForm((prev) => ({ ...prev, birth_date: e.target.value }))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">퇴사일</label>
+                <input
+                  type="date"
+                  value={form.retired_at}
+                  onChange={(e) => setForm((prev) => ({ ...prev, retired_at: e.target.value }))}
+                  className={inputClass}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs text-zinc-600">프로필 이미지 변경</label>
+                <div className="flex items-end gap-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        profile_image: e.target.files?.[0] || null,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                  {form.profile_image ? (
+                    <img
+                      src={URL.createObjectURL(form.profile_image)}
+                      alt="프로필 미리보기"
+                      className="h-16 w-16 rounded-md border border-zinc-200 object-cover"
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {success && <p className="text-green-600 text-sm text-center">{success}</p>}
-        {error && <p className="text-red-600 text-sm text-center">{error}</p>}
-
-
-
-        <div>
-          <label className="block font-medium">이메일:</label>
-          <p>{staff.email}</p>
-        </div>
-
-        <div>
-          <label className="block font-medium">연락처:</label>
-          <input
-            type="text"
-            value={form.phone}
-            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-            className="border px-2 py-1 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block font-medium">직급:</label>
-          {staff.role_id === 1 || staff.role_id === 2 ? (
-            <p>{staff.role?.name || ''}</p>
-          ) : (
-            <select
-              value={form.role_id ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, role_id: Number(e.target.value) }))}
-              className="border px-2 py-1 w-full rounded"
-            >
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div>
-          <label className="block font-medium">팀:</label>
-          <select
-            value={form.team_id ?? ''}
-            onChange={(e) => setForm((prev) => ({ ...prev, team_id: Number(e.target.value) }))}
-            className="border px-2 py-1 w-full rounded"
-          >
-            <option value="">선택</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} {t.department?.name ? `(${t.department.name})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-medium">부서:</label>
-          <select
-            value={
-              teams.find((t) => t.id === form.team_id)?.department?.id ?? ''
-            }
-            disabled
-            className="border px-2 py-1 w-full rounded bg-gray-100 cursor-not-allowed"
-          >
-            <option value="">(자동 선택)</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-medium">입사일:</label>
-          <input
-            type="date"
-            value={form.hired_at}
-            onChange={(e) => setForm((prev) => ({ ...prev, hired_at: e.target.value }))}
-            className="border px-2 py-1 w-full rounded"
-          />
-        </div>
-        <div>
-          <label className="block font-medium">생일:</label>
-          <input
-            type="date"
-            value={form.birth_date}
-            onChange={(e) => setForm((prev) => ({ ...prev, birth_date: e.target.value }))}
-            className="border px-2 py-1 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block font-medium">퇴사일:</label>
-          <input
-            type="date"
-            value={form.retired_at}
-            onChange={(e) => setForm((prev) => ({ ...prev, retired_at: e.target.value }))}
-            className="border px-2 py-1 w-full rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block font-medium">프로필 이미지 변경:</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                profile_image: e.target.files?.[0] || null
-              }))
-            }
-            className="mt-1"
-          />
-        </div>
-
-        {loading && <p className="text-blue-600 text-sm text-center mb-2">처리 중입니다...</p>}
-
-        <div className="flex gap-2 mt-4">
+        <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
           <button
-            onClick={handleSubmit}
-            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            저장
-          </button>
-          <button
-            onClick={() => {
-              onClose()
-              location.reload()  // ✅ 페이지 리로드 추가
-            }}
-            className="flex-1 bg-gray-600 text-white px-4 py-2 rounded"
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
           >
             닫기
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? '저장 중...' : '저장'}
           </button>
         </div>
       </div>

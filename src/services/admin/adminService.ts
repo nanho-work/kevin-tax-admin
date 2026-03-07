@@ -83,3 +83,11 @@ export async function fetchAdminSession(): Promise<AdminSession> {
   const res = await http.get(`${ADMIN_AUTH_BASE}/session`, authHeader())
   return res.data
 }
+
+export async function changeAdminPassword(payload: {
+  current_password: string
+  new_password: string
+}): Promise<{ message: string }> {
+  const res = await http.patch<{ message: string }>(`${ADMIN_AUTH_BASE}/password`, payload, authHeader())
+  return res.data
+}
