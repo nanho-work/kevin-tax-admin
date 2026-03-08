@@ -6,13 +6,19 @@ import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
-  createCompanyAccount,
-  getCompanyAccounts,
-  updateCompanyAccountStatus,
+  createCompanyAccount as createAdminCompanyAccount,
+  getCompanyAccounts as getAdminCompanyAccounts,
+  updateCompanyAccountStatus as updateAdminCompanyAccountStatus,
 } from '@/services/admin/companyAccountService'
 import type { CompanyCreateRequest, CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
 import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
-import type { CompanyAccountOut, CompanyAccountStatus } from '@/types/companyAccount'
+import type {
+  CompanyAccountCreateRequest,
+  CompanyAccountListParams,
+  CompanyAccountListResponse,
+  CompanyAccountOut,
+  CompanyAccountStatus,
+} from '@/types/companyAccount'
 
 interface Props {
   company: CompanyDetailResponse
@@ -94,6 +100,9 @@ interface Props {
       ip?: string | null
     }>
   }>
+  createCompanyAccountFn?: (payload: CompanyAccountCreateRequest) => Promise<CompanyAccountOut>
+  listCompanyAccountsFn?: (params: CompanyAccountListParams) => Promise<CompanyAccountListResponse>
+  updateCompanyAccountStatusFn?: (account_id: number, status: CompanyAccountStatus) => Promise<CompanyAccountOut>
 }
 
 type LocalCustomDocument = {
@@ -188,6 +197,23 @@ function isImageFile(fileName?: string | null): boolean {
   )
 }
 
+async function forceBrowserDownload(url: string, fileName: string) {
+  const response = await fetch(url, { credentials: 'omit' })
+  if (!response.ok) {
+    throw new Error(`download failed: ${response.status}`)
+  }
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = fileName
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(objectUrl)
+}
+
 export default function CompanyDetailForm({
   company,
   mode = 'edit',
@@ -217,6 +243,9 @@ export default function CompanyDetailForm({
   patchHometaxCredentialActiveFn,
   revealHometaxCredentialPasswordFn,
   listHometaxCredentialLogsFn,
+  createCompanyAccountFn = createAdminCompanyAccount,
+  listCompanyAccountsFn = getAdminCompanyAccounts,
+  updateCompanyAccountStatusFn = updateAdminCompanyAccountStatus,
 }: Props) {
   const router = useRouter()
   const { id } = useParams()
@@ -231,6 +260,7 @@ export default function CompanyDetailForm({
     {}
   )
   const [activePreviewDocType, setActivePreviewDocType] = useState<string>(resolvedDocumentTypes[0].code)
+  const [previewCheckedDocCodes, setPreviewCheckedDocCodes] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(!isCreateMode)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(isCreateMode)
@@ -270,6 +300,8 @@ export default function CompanyDetailForm({
     Array<{ id: number; action: string; actor_type: string; created_at: string; ip?: string | null }>
   >([])
   const [loadingHometaxLogs, setLoadingHometaxLogs] = useState(false)
+  const [hometaxFetched, setHometaxFetched] = useState(false)
+  const [hometaxLogsFetched, setHometaxLogsFetched] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const customDocFileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -290,7 +322,12 @@ export default function CompanyDetailForm({
     [customDocuments]
   )
   const supportsHometax = !isCreateMode && Boolean(getHometaxCredentialFn)
-  const supportsCompanyAccount = !isCreateMode && hasValidCompanyId
+  const supportsCompanyAccount =
+    !isCreateMode &&
+    hasValidCompanyId &&
+    Boolean(createCompanyAccountFn) &&
+    Boolean(listCompanyAccountsFn) &&
+    Boolean(updateCompanyAccountStatusFn)
   const hasHometaxRegistered = Boolean(hometaxCredential?.password_set)
 
   const extractApiDetail = (error: unknown): string | null => {
@@ -349,21 +386,16 @@ export default function CompanyDetailForm({
     }
   }
 
-  const reloadAllDocumentPreviews = async () => {
-    const entries = await Promise.all(
-      resolvedDocumentTypes.map(async (item) => [item.code, await fetchPreviewByDocType(item.code)] as const)
-    )
-    setDocumentPreviews(Object.fromEntries(entries))
-  }
-
   useEffect(() => {
     if (!hasValidCompanyId || isCreateMode) return
     const initialMap: Record<string, CompanyDocumentPreviewResponse | null> = {}
+    const checked = new Set<string>()
     if (businessLicensePreview) {
       initialMap.business_license = businessLicensePreview
+      checked.add('business_license')
     }
     setDocumentPreviews(initialMap)
-    void reloadAllDocumentPreviews()
+    setPreviewCheckedDocCodes(checked)
   }, [companyId, businessLicensePreview, hasValidCompanyId, isCreateMode])
 
   const loadCustomDocuments = async () => {
@@ -420,7 +452,7 @@ export default function CompanyDetailForm({
     if (!supportsCompanyAccount) return
     try {
       setLoadingCompanyAccount(true)
-      const response = await getCompanyAccounts({
+      const response = await listCompanyAccountsFn({
         company_id: companyId,
         page: 1,
         limit: 1,
@@ -442,7 +474,16 @@ export default function CompanyDetailForm({
   }, [companyId, supportsCompanyAccount])
 
   useEffect(() => {
+    setHometaxFetched(false)
+    setHometaxLogsFetched(false)
+    setHometaxCredential(null)
+    setHometaxLogs([])
+    setRevealedCount(null)
+  }, [companyId])
+
+  useEffect(() => {
     if (!supportsHometax || !hasValidCompanyId || !getHometaxCredentialFn) return
+    if (!hometaxExpanded || hometaxFetched) return
     const loadHometax = async () => {
       try {
         setLoadingHometax(true)
@@ -466,13 +507,22 @@ export default function CompanyDetailForm({
         setHometaxCredential(null)
       } finally {
         setLoadingHometax(false)
+        setHometaxFetched(true)
       }
     }
     void loadHometax()
-  }, [companyId, getHometaxCredentialFn, hasValidCompanyId, supportsHometax])
+  }, [
+    companyId,
+    getHometaxCredentialFn,
+    hasValidCompanyId,
+    supportsHometax,
+    hometaxExpanded,
+    hometaxFetched,
+  ])
 
   useEffect(() => {
     if (!supportsHometax || !hasValidCompanyId || !listHometaxCredentialLogsFn) return
+    if (!hometaxExpanded || hometaxLogsFetched) return
     const loadHometaxLogs = async () => {
       try {
         setLoadingHometaxLogs(true)
@@ -486,10 +536,11 @@ export default function CompanyDetailForm({
         setHometaxLogs([])
       } finally {
         setLoadingHometaxLogs(false)
+        setHometaxLogsFetched(true)
       }
     }
     void loadHometaxLogs()
-  }, [companyId, hasValidCompanyId, listHometaxCredentialLogsFn, revealedCount, supportsHometax])
+  }, [companyId, hasValidCompanyId, listHometaxCredentialLogsFn, supportsHometax, hometaxExpanded, hometaxLogsFetched])
 
   const handleUpsertHometax = async () => {
     if (!upsertHometaxCredentialFn) {
@@ -525,6 +576,7 @@ export default function CompanyDetailForm({
       if (listHometaxCredentialLogsFn) {
         const logs = await listHometaxCredentialLogsFn(companyId, 50)
         setHometaxLogs(logs.items || [])
+        setHometaxLogsFetched(true)
       }
     } catch (error) {
       toast.error(extractApiDetail(error) || '홈택스 정보 저장에 실패했습니다.')
@@ -570,7 +622,10 @@ export default function CompanyDetailForm({
       }, 15000)
       if (listHometaxCredentialLogsFn) {
         const logs = await listHometaxCredentialLogsFn(companyId, 50)
-        setHometaxLogs(logs.items || [])
+        const items = logs.items || []
+        setHometaxLogs(items)
+        setHometaxLogsFetched(true)
+        setRevealedCount(items.filter((item) => item.action === 'reveal').length)
       }
     } catch (error) {
       toast.error(extractApiDetail(error) || '홈택스 정보 확인에 실패했습니다.')
@@ -597,8 +652,16 @@ export default function CompanyDetailForm({
         toast.error('선택한 문서이름의 업로드 API가 준비되지 않았습니다.')
         return
       }
-      await reloadAllDocumentPreviews()
-      setActivePreviewDocType(selectedUploadDocType)
+      const nextPreview = await fetchPreviewByDocType(selectedUploadDocType)
+      setDocumentPreviews((prev) => ({ ...prev, [selectedUploadDocType]: nextPreview }))
+      setPreviewCheckedDocCodes((prev) => {
+        const next = new Set(prev)
+        next.add(selectedUploadDocType)
+        return next
+      })
+      if (nextPreview?.preview_url) {
+        setActivePreviewDocType(selectedUploadDocType)
+      }
       toast.success('문서가 등록되었습니다.')
     } catch (error) {
       toast.error(extractApiDetail(error) || '문서 등록 중 오류가 발생했습니다.')
@@ -607,6 +670,28 @@ export default function CompanyDetailForm({
       setSelectedDocumentFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  const handleOpenDocumentPreview = async (docTypeCode: string) => {
+    let preview = documentPreviews[docTypeCode] ?? null
+    const isChecked = previewCheckedDocCodes.has(docTypeCode)
+
+    if (!isChecked) {
+      preview = await fetchPreviewByDocType(docTypeCode)
+      setDocumentPreviews((prev) => ({ ...prev, [docTypeCode]: preview }))
+      setPreviewCheckedDocCodes((prev) => {
+        const next = new Set(prev)
+        next.add(docTypeCode)
+        return next
+      })
+    }
+
+    if (!preview?.preview_url) {
+      toast.error('등록된 파일이 없습니다.')
+      return
+    }
+
+    setActivePreviewDocType(docTypeCode)
   }
 
   const handleDeleteDocument = async (docTypeCode: string) => {
@@ -685,14 +770,20 @@ export default function CompanyDetailForm({
         window.open(res.preview_url, '_blank', 'noopener,noreferrer')
       } else {
         const res = await getCustomDocumentDownloadUrlFn!(companyId, documentId)
-        const link = document.createElement('a')
-        link.href = res.download_url
-        link.download = fileName || res.file_name
-        link.target = '_blank'
-        link.rel = 'noreferrer'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        const resolvedFileName = fileName || res.file_name
+        try {
+          await forceBrowserDownload(res.download_url, resolvedFileName)
+        } catch {
+          const link = document.createElement('a')
+          link.href = res.download_url
+          link.download = resolvedFileName
+          link.target = '_blank'
+          link.rel = 'noreferrer'
+          link.style.display = 'none'
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+        }
         setCustomDocuments((prev) =>
           prev.map((doc) => (doc.id === documentId ? { ...doc, downloadCount: doc.downloadCount + 1 } : doc))
         )
@@ -727,7 +818,7 @@ export default function CompanyDetailForm({
 
     try {
       setSavingCompanyAccount(true)
-      await createCompanyAccount({
+      await createCompanyAccountFn({
         company_id: companyId,
         login_id: loginId,
         password,
@@ -747,7 +838,7 @@ export default function CompanyDetailForm({
     const nextStatus: CompanyAccountStatus = companyAccount.status === 'active' ? 'inactive' : 'active'
     try {
       setSavingCompanyAccount(true)
-      const updated = await updateCompanyAccountStatus(companyAccount.id, nextStatus)
+      const updated = await updateCompanyAccountStatusFn(companyAccount.id, nextStatus)
       setCompanyAccount(updated)
       toast.success(nextStatus === 'active' ? '계정이 활성화되었습니다.' : '계정이 비활성화되었습니다.')
     } catch (error) {
@@ -955,11 +1046,17 @@ export default function CompanyDetailForm({
                     <input className={`${inputClass} bg-zinc-100`} value={companyAccount.login_id} readOnly />
                   </Field>
                   <Field label="상태">
-                    <input
-                      className={`${inputClass} bg-zinc-100`}
-                      value={companyAccount.status === 'active' ? '활성' : '비활성'}
-                      readOnly
-                    />
+                    <div className="flex h-10 items-center rounded-lg border border-zinc-300 bg-zinc-100 px-3">
+                      {companyAccount.status === 'active' ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          활성
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                          비활성
+                        </span>
+                      )}
+                    </div>
                   </Field>
                   <Field label="마지막 로그인">
                     <input className={`${inputClass} bg-zinc-100`} value={toDateTime(companyAccount.last_login_at)} readOnly />
@@ -969,8 +1066,8 @@ export default function CompanyDetailForm({
                   </Field>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                     <Field label="로그인 아이디">
                       <input
                         className={inputClass}
@@ -992,7 +1089,7 @@ export default function CompanyDetailForm({
                       type="button"
                       onClick={handleCreateCompanyAccount}
                       disabled={savingCompanyAccount}
-                      className="h-10 rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                      className="h-10 rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60 md:min-w-[120px]"
                     >
                       {savingCompanyAccount ? '등록 중...' : '계정 생성'}
                     </button>
@@ -1394,30 +1491,29 @@ export default function CompanyDetailForm({
                       </thead>
                       <tbody className="divide-y divide-zinc-200">
                         {resolvedDocumentTypes.map((item) => {
+                          const checked = previewCheckedDocCodes.has(item.code)
                           const hasPreview = Boolean(documentPreviews[item.code]?.preview_url)
+                          const statusLabel = hasPreview ? '등록됨' : checked ? '미등록' : '확인 전'
+                          const statusClass = hasPreview
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : checked
+                              ? 'bg-zinc-100 text-zinc-500'
+                              : 'bg-blue-50 text-blue-700'
                           return (
                             <tr key={item.code}>
                               <td className="px-3 py-2 text-zinc-900">{item.label}</td>
                               <td className="px-3 py-2 text-center">
                                 <span
-                                  className={`rounded px-2 py-1 text-xs ${
-                                    hasPreview ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                                  }`}
+                                  className={`rounded px-2 py-1 text-xs ${statusClass}`}
                                 >
-                                  {hasPreview ? '등록됨' : '미등록'}
+                                  {statusLabel}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-center">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      if (!hasPreview) {
-                                        toast.error('등록된 파일이 없습니다.')
-                                        return
-                                      }
-                                      setActivePreviewDocType(item.code)
-                                    }}
+                                    onClick={() => void handleOpenDocumentPreview(item.code)}
                                     className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
                                   >
                                     미리보기

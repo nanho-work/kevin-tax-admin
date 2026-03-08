@@ -28,6 +28,11 @@ import {
   type ClientCompanyDocumentPreviewResponse,
   upsertClientHometaxCredential,
 } from '@/services/client/company'
+import {
+  createClientCompanyAccount,
+  getClientCompanyAccounts,
+  updateClientCompanyAccountStatus,
+} from '@/services/client/companyAccountService'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 
 export default function ClientCompanyDetailPage() {
@@ -104,6 +109,9 @@ export default function ClientCompanyDetailPage() {
       patchHometaxCredentialActiveFn={patchClientHometaxCredentialActive}
       revealHometaxCredentialPasswordFn={revealClientHometaxCredentialPassword}
       listHometaxCredentialLogsFn={listClientHometaxCredentialLogs}
+      createCompanyAccountFn={createClientCompanyAccount}
+      listCompanyAccountsFn={getClientCompanyAccounts}
+      updateCompanyAccountStatusFn={updateClientCompanyAccountStatus}
     />
   )
 }

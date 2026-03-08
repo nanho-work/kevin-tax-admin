@@ -19,7 +19,6 @@ const companyManagementMenus = [
 const staffManagementMenus = [
   { label: '직원목록/검색', href: '/client/staff' },
   { label: '직원휴가관리', href: '/client/staff/leave' },
-  { label: '휴가 승인', href: '/client/staff/approvals' },
   { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
   { label: '권한/조직배치', href: '/client/staff/organization' },
   { label: '근태기록 조회', href: '/client/staff/attendance' },
@@ -33,7 +32,6 @@ const clientManagementMenus = [
   { label: '클라이언트(관리자) 목록', href: '/client/client-management/list' },
   { label: '샘플양식 업로드', href: '/client/client-management/templates' },
   { label: '블로그 목록', href: '/client/client-management/blog/list' },
-  { label: '블로그 작성', href: '/client/client-management/blog/create' },
 ]
 
 const bookkeepingMenus = [
@@ -105,27 +103,35 @@ export default function ClientSidebar() {
   return (
     <aside className="h-full w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-5 py-4">
-        <p className="text-xs text-neutral-500">클라이언트 포털</p>
-        <p className="mt-1 text-sm font-semibold text-neutral-900">{profile.companyName || '고객사'} 관리자</p>
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-neutral-500">{profile.name ? `${profile.name}님 환영합니다` : '세션 확인 중...'}</p>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="h-6 rounded-md bg-neutral-900 px-2 text-[11px] font-medium text-white hover:bg-neutral-800"
-          >
-            로그아웃
-          </button>
-        </div>
+        <p className="text-xs text-neutral-500">{profile.companyName || '고객사'} 관리자</p>
+        {loading ? (
+          <>
+            <div className="mt-2 h-4 w-24 animate-pulse rounded bg-neutral-100" />
+            <div className="mt-2 h-3 w-40 animate-pulse rounded bg-neutral-100" />
+          </>
+        ) : (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-neutral-500">{profile.name ? `${profile.name}님` : '세션 확인 중...'}</p>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="h-6 rounded-md bg-neutral-900 px-2 text-[11px] font-medium text-white hover:bg-neutral-800"
+            >
+              로그아웃
+            </button>
+          </div>
+        )}
       </div>
-      <nav className="space-y-1 px-4 py-4">
+      <nav className="px-4 py-4">
+        <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
+        <div className="space-y-1">
         {menus.map((menu) => {
           const active = pathname === menu.href
           return (
             <Link key={menu.href} href={menu.href}>
               <div
                 className={`rounded-lg px-3 py-2 text-sm transition ${
-                  active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                  active ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                 }`}
               >
                 {menu.label}
@@ -134,19 +140,19 @@ export default function ClientSidebar() {
           )
         })}
 
-        <div className="pt-2">
+        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsCompanyManagementOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasCompanyManagementPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+              hasCompanyManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>거래처관리</span>
             <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isCompanyManagementOpen && (
-            <div className="mt-1 space-y-1 pl-3">
+            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
               {companyManagementMenus.map((menu) => {
                 const active =
                   menu.href === '/client/companies/new'
@@ -156,8 +162,8 @@ export default function ClientSidebar() {
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm transition ${
-                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
                       {menu.label}
@@ -169,26 +175,26 @@ export default function ClientSidebar() {
           )}
         </div>
 
-        <div className="pt-2">
+        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsStaffManagementOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasStaffManagementPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+              hasStaffManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>인사관리</span>
             <span aria-hidden>{isStaffManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isStaffManagementOpen && (
-            <div className="mt-1 space-y-1 pl-3">
+            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
               {staffManagementMenus.map((menu) => {
                 const active = pathname === menu.href
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm transition ${
-                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
                       {menu.label}
@@ -200,19 +206,19 @@ export default function ClientSidebar() {
           )}
         </div>
 
-        <div className="pt-2">
+        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsBookkeepingOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasBookkeepingPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+              hasBookkeepingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>기장 관리</span>
             <span aria-hidden>{isBookkeepingOpen ? '▾' : '▸'}</span>
           </button>
           {isBookkeepingOpen && (
-            <div className="mt-1 space-y-1 pl-3">
+            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
               {bookkeepingMenus.map((menu) => {
                 const active =
                   pathname === menu.href ||
@@ -220,8 +226,8 @@ export default function ClientSidebar() {
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm transition ${
-                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
                       {menu.label}
@@ -233,26 +239,26 @@ export default function ClientSidebar() {
           )}
         </div>
 
-        <div className="pt-2">
+        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsSettingOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasSettingPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+              hasSettingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>설정</span>
             <span aria-hidden>{isSettingOpen ? '▾' : '▸'}</span>
           </button>
           {isSettingOpen && (
-            <div className="mt-1 space-y-1 pl-3">
+            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
               {settingMenus.map((menu) => {
                 const active = pathname === menu.href
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm transition ${
-                        active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
                       {menu.label}
@@ -265,19 +271,19 @@ export default function ClientSidebar() {
         </div>
 
         {!loading && canManageClients ? (
-          <div className="pt-2">
+          <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
             <button
               type="button"
               onClick={() => setIsClientManagementOpen((prev) => !prev)}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                hasClientManagementPath ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                hasClientManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
               }`}
             >
               <span>클라이언트 관리</span>
               <span aria-hidden>{isClientManagementOpen ? '▾' : '▸'}</span>
             </button>
             {isClientManagementOpen && (
-              <div className="mt-1 space-y-1 pl-3">
+              <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
                 {clientManagementMenus.map((menu) => {
                   const active =
                     pathname === menu.href ||
@@ -287,8 +293,8 @@ export default function ClientSidebar() {
                   return (
                     <Link key={menu.href} href={menu.href}>
                       <div
-                        className={`rounded-lg px-3 py-2 text-sm transition ${
-                          active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                        className={`rounded-md px-3 py-2 text-xs transition ${
+                          active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                         }`}
                       >
                         {menu.label}
@@ -300,6 +306,7 @@ export default function ClientSidebar() {
             )}
           </div>
         ) : null}
+        </div>
       </nav>
     </aside>
   )

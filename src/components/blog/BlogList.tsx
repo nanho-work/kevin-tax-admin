@@ -79,60 +79,70 @@ export default function BlogList() {
   );
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">블로그 목록</h1>
+    <section className="space-y-4 p-4 md:p-6">
+      <div className="rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-zinc-900">블로그 목록</h2>
+            <Link
+              href="/client/client-management/blog/create"
+              className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800"
+            >
+              글 작성
+            </Link>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            value={q}
-            onChange={(e) => {
-              setPage(1);
-              setQ(e.target.value);
-            }}
-            placeholder="제목/요약 검색…"
-            className="border rounded px-3 py-2 text-sm w-60"
-          />
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPage(1);
-              setPageSize(Number(e.target.value));
-            }}
-            className="border rounded px-2 py-2 text-sm"
-          >
-            <option value={10}>10개</option>
-            <option value={20}>20개</option>
-            <option value={50}>50개</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+              placeholder="제목/요약 검색"
+              className="h-9 w-64 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+            />
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPage(1);
+                setPageSize(Number(e.target.value));
+              }}
+              className="h-9 rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-zinc-500"
+            >
+              <option value={10}>10개</option>
+              <option value={20}>20개</option>
+              <option value={50}>50개</option>
+            </select>
+          </div>
         </div>
+
+        {categoryId || keywordId ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            {categoryId ? (
+              <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+                카테고리 필터 #{categoryId}
+              </span>
+            ) : null}
+            {keywordId ? (
+              <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+                키워드 필터 #{keywordId}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => router.replace(pathname)}
+              className="rounded-md border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+            >
+              필터 해제
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      {categoryId || keywordId ? (
-        <div className="mb-4 flex items-center gap-2 text-sm">
-          {categoryId ? (
-            <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
-              카테고리 필터 #{categoryId}
-            </span>
-          ) : null}
-          {keywordId ? (
-            <span className="inline-flex rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
-              키워드 필터 #{keywordId}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => router.replace(pathname)}
-            className="rounded-md border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-          >
-            필터 해제
-          </button>
-        </div>
-      ) : null}
-
-      <div className="bg-white border rounded-md overflow-hidden">
+      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
+          <thead className="bg-zinc-50 text-xs text-zinc-600">
             <tr>
               {/* <th className="text-left font-medium px-4 py-3 w-16">ID</th> */}
               <th className="text-left font-medium px-4 py-3">카테고리</th>
@@ -144,24 +154,24 @@ export default function BlogList() {
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className="divide-y divide-zinc-200">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">불러오는 중…</td>
+                <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">불러오는 중...</td>
               </tr>
             ) : err ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-600">{err}</td>
+                <td colSpan={6} className="px-4 py-10 text-center text-rose-600">{err}</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">데이터가 없습니다.</td>
+                <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">데이터가 없습니다.</td>
               </tr>
             ) : (
               rows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-gray-50">
+                <tr key={r.id} className="hover:bg-zinc-50">
                   {/* <td className="px-4 py-3 text-gray-500">{r.id}</td> */}
-                  <td className="px-4 py-3 text-gray-700">
+                  <td className="px-4 py-3 text-zinc-700">
                     {/* 서버가 category 객체를 포함하면 name 우선, 없으면 id 표기 */}
                     {r.category?.name ?? (r as any).category_name ?? (r.category_id ? `#${r.category_id}` : '-')}
                   </td>
@@ -173,21 +183,21 @@ export default function BlogList() {
                       {r.title}
                     </Link>
                     {r.summary ? (
-                      <div className="text-gray-500 text-xs line-clamp-1">{r.summary}</div>
+                      <div className="line-clamp-1 text-xs text-zinc-500">{r.summary}</div>
                     ) : null}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border">
+                    <span className="inline-flex items-center rounded-full border border-zinc-300 px-2 py-0.5 text-xs text-zinc-700">
                       {r.status || 'draft'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-4 py-3 text-zinc-600">
                     {r.published_at ? new Date(r.published_at).toLocaleString() : '-'}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{r.author_name || '-'}</td>
+                  <td className="px-4 py-3 text-zinc-600">{r.author_name || '-'}</td>
                   <td className="px-4 py-3">
                     <button
-                      className="px-2.5 py-1 border rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      className="rounded border border-rose-300 px-2.5 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50"
                       onClick={() => handleDelete(r.id, r.title)}
                       disabled={deletingId === r.id || loading}
                       title="삭제"
@@ -202,21 +212,21 @@ export default function BlogList() {
         </table>
       </div>
 
-      <div className="flex items-center justify-between mt-4 text-sm text-gray-700">
-        <div>
+      <div className="flex items-center justify-between text-sm text-zinc-700">
+        <div className="px-1">
           총 {total.toLocaleString()}건 / 페이지 {page} / {totalPages}
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1.5 transition hover:bg-zinc-50 disabled:opacity-50"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
           >
             이전
           </button>
           <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1.5 transition hover:bg-zinc-50 disabled:opacity-50"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || loading}
           >
@@ -224,6 +234,6 @@ export default function BlogList() {
           </button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

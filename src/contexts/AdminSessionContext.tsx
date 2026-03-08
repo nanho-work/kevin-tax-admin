@@ -2,6 +2,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { checkAdminSession } from '@/services/admin/adminService'
+import {
+  clearAdminAccessToken,
+  getAdminAccessToken,
+  getAdminAccessTokenExpiryMs,
+} from '@/services/http'
 import type { AdminSession } from '@/types/admin'
 
 interface AdminSessionContextValue {
@@ -19,13 +24,25 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<unknown>(null)
 
   const refresh = useCallback(async () => {
+    const token = getAdminAccessToken()
+    if (!token) {
+      setSession(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
       const data = await checkAdminSession()
       setSession(data)
     } catch (err) {
-      setSession(null)
+      const status = (err as any)?.response?.status
+      if (status === 401) {
+        clearAdminAccessToken()
+        setSession(null)
+      }
       setError(err)
     } finally {
       setLoading(false)
@@ -35,6 +52,37 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void refresh()
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [refresh])
+
+  useEffect(() => {
+    if (!session) return
+    const checkTokenExpiry = () => {
+      const expiryMs = getAdminAccessTokenExpiryMs()
+      if (expiryMs && Date.now() >= expiryMs) {
+        clearAdminAccessToken()
+        setSession(null)
+      }
+    }
+    checkTokenExpiry()
+    const timer = window.setInterval(checkTokenExpiry, 30_000)
+    return () => window.clearInterval(timer)
+  }, [session])
 
   const value = useMemo<AdminSessionContextValue>(
     () => ({ session, loading, error, refresh }),
@@ -51,4 +99,3 @@ export function useAdminSessionContext() {
   }
   return context
 }
-

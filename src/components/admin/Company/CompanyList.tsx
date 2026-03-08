@@ -22,6 +22,7 @@ interface Props {
   pageSize?: number;
   createHref?: string;
   createLabel?: string;
+  showAccountStatus?: boolean;
 }
 
 export default function CompanyList({
@@ -29,9 +30,10 @@ export default function CompanyList({
   fetchList = fetchCompanyTaxList,
   deactivate,
   disableDelete = true,
-  pageSize = 9,
+  pageSize = 12,
   createHref,
   createLabel = '거래처등록',
+  showAccountStatus = true,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -128,6 +130,11 @@ export default function CompanyList({
   }, [allCompanies, page, pageSize]);
 
   useEffect(() => {
+    if (!showAccountStatus) {
+      setCompanyAccountIds(null)
+      return
+    }
+
     const loadCompanyAccounts = async () => {
       try {
         let nextPage = 1
@@ -168,7 +175,12 @@ export default function CompanyList({
     return () => {
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [])
+  }, [showAccountStatus])
+
+  const columns = showAccountStatus
+    ? ['번호', '구분', '회사명', '상세보기', '대표자', '사업자등록번호', '종목', '계정']
+    : ['번호', '구분', '회사명', '상세보기', '대표자', '사업자등록번호', '종목']
+  const columnCount = columns.length
 
   const handleDelete = async (companyId: number) => {
     if (!deactivate) {
@@ -254,7 +266,7 @@ export default function CompanyList({
             <table className="min-w-full table-auto text-sm">
               <thead className="bg-zinc-50 text-zinc-700">
                 <tr>
-                  {['번호', '구분', '회사명', '상세보기', '대표자', '사업자등록번호', '종목', '계정'].map((title) => (
+                  {columns.map((title) => (
                     <th key={title} className="h-10 border-b border-zinc-200 px-2 py-1 text-center whitespace-nowrap text-xs font-medium">
                       {title}
                     </th>
@@ -264,13 +276,13 @@ export default function CompanyList({
               <tbody className="divide-y divide-zinc-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-500">
+                    <td colSpan={columnCount} className="px-4 py-10 text-center text-sm text-zinc-500">
                       회사 목록을 불러오는 중입니다...
                     </td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-500">
+                    <td colSpan={columnCount} className="px-4 py-10 text-center text-sm text-zinc-500">
                       조회된 회사가 없습니다.
                     </td>
                   </tr>
@@ -301,19 +313,21 @@ export default function CompanyList({
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.owner_name}</td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.registration_number}</td>
                       <td className="h-10 px-2 text-center whitespace-nowrap">{c.business_type || '-'}</td>
-                      <td className="h-10 px-2 text-center whitespace-nowrap">
-                        {companyAccountIds === null ? (
-                          <span className="text-zinc-400">-</span>
-                        ) : companyAccountIds.has(c.id) ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                            있음
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">
-                            없음
-                          </span>
-                        )}
-                      </td>
+                      {showAccountStatus ? (
+                        <td className="h-10 px-2 text-center whitespace-nowrap">
+                          {companyAccountIds === null ? (
+                            <span className="text-zinc-400">-</span>
+                          ) : companyAccountIds.has(c.id) ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                              있음
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600">
+                              없음
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                     </tr>
                   ))
                 )}

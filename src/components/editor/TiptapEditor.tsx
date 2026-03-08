@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import { Table } from '@tiptap/extension-table'
@@ -11,18 +13,17 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Toolbar } from './TiptapToolbar';
-import { getAccessToken } from '@/services/http';
+import { getClientAccessToken } from '@/services/http';
 
 
-/** ⬇️ 관리자 서비스: upload-by-url 호출 */
 const BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/+$/, '');
 const UPLOAD_BY_URL_ENDPOINT = `${BASE_URL}/blog/posts/content-image-upload-by-url`;
+const THUMBNAIL_UPLOAD_ENDPOINT = `${BASE_URL}/blog/posts/thumbnail-upload`;
 
 /** 외부 URL을 서버에 전달 → 서버가 다운로드/S3 업로드 → { url } 반환 */
 async function uploadContentImageByUrl(imageUrl: string): Promise<string | null> {
   try {
-    // 토큰을 베어러로 보내야 한다면 여기에서 추가
-    const token = getAccessToken();
+    const token = getClientAccessToken();
 
     const res = await fetch(UPLOAD_BY_URL_ENDPOINT, {
       method: 'POST',
@@ -44,6 +45,35 @@ async function uploadContentImageByUrl(imageUrl: string): Promise<string | null>
 
     const data = (await res.json()) as { url?: string };
     return data?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function uploadImageFile(file: File): Promise<string | null> {
+  try {
+    const token = getClientAccessToken();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(THUMBNAIL_UPLOAD_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+      cache: 'no-store',
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '');
+      throw new Error(`image upload failed: ${res.status} ${res.statusText} ${msg}`);
+    }
+
+    const data = (await res.json()) as { thumbnail_url?: string };
+    return data?.thumbnail_url ?? null;
   } catch {
     return null;
   }
@@ -98,11 +128,18 @@ interface TiptapEditorProps {
 export default function TiptapEditor({ value, content, onChange }: TiptapEditorProps) {
   // value가 있으면 우선 사용, 없으면 content, 둘 다 없으면 빈 문자열
   const inputValue = value ?? content ?? '';
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const editor = useEditor({
     immediatelyRender: false, // SSR mismatch 방지
     extensions: [
       StarterKit,
+      Underline,
+      Link.configure({
+        openOnClick: true,
+        autolink: true,
+        defaultProtocol: 'https',
+      }),
       Image.configure({
         inline: false,
         allowBase64: true,
@@ -134,6 +171,22 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
         const cd = event.clipboardData;
         if (!cd) return false;
 
+        const imageItems = Array.from(cd.items || []).filter((item) => item.type.startsWith('image/'));
+        if (imageItems.length > 0) {
+          event.preventDefault();
+          const file = imageItems[0].getAsFile();
+          if (!file) return true;
+
+          (async () => {
+            const uploaded = await uploadImageFile(file);
+            if (uploaded) {
+              editor?.chain().focus().setImage({ src: uploaded }).run();
+            }
+          })();
+
+          return true;
+        }
+
         const html = cd.getData('text/html');
         if (!html) return false; // 평문이면 기본 동작
 
@@ -157,6 +210,12 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
     },
   });
 
+  const handleImageFileSelect = async (file: File) => {
+    const uploaded = await uploadImageFile(file)
+    if (!uploaded) return
+    editor?.chain().focus().setImage({ src: uploaded }).run()
+  }
+
   // ✅ 외부 값(value/content) 변경 시 에디터 내용을 동기화
   useEffect(() => {
     if (!editor) return;
@@ -173,11 +232,26 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
     <div className="border rounded-md">
       {/* Sticky toolbar: stays at the top while the page scrolls */}
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
-        <Toolbar editor={editor} />
+        <Toolbar
+          editor={editor}
+          onImageUpload={() => fileInputRef.current?.click()}
+        />
       </div>
 
       {/* Editor content */}
       <EditorContent editor={editor} className="min-h-[200px] p-3" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (event) => {
+          const file = event.target.files?.[0]
+          if (!file) return
+          await handleImageFileSelect(file)
+          event.target.value = ''
+        }}
+      />
     </div>
   );
 }

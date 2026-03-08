@@ -18,6 +18,35 @@ function processClientQueue(token: string | null) {
   pendingClientQueue = []
 }
 
+function parseJwtExpiryMs(token: string | null): number | null {
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    if (typeof atob !== 'function') return null
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+    const payload = JSON.parse(atob(padded)) as { exp?: number }
+    if (typeof payload.exp !== 'number') return null
+    return payload.exp * 1000
+  } catch {
+    return null
+  }
+}
+
+function handleAdminUnauthorized() {
+  clearAdminAccessToken()
+  if (typeof window === 'undefined') return
+  const path = window.location.pathname
+  if (path.startsWith('/admin')) {
+    window.location.href = '/login/staff'
+    return
+  }
+  if (path.startsWith('/company')) {
+    window.location.href = '/login/company'
+  }
+}
+
 export function setAdminAccessToken(token: string | null) {
   adminAccessToken = token
   if (typeof window !== 'undefined') {
@@ -31,6 +60,10 @@ export function getAdminAccessToken() {
     adminAccessToken = window.sessionStorage.getItem(ADMIN_ACCESS_TOKEN_KEY)
   }
   return adminAccessToken
+}
+
+export function getAdminAccessTokenExpiryMs() {
+  return parseJwtExpiryMs(getAdminAccessToken())
 }
 
 export function clearAdminAccessToken() {
@@ -53,6 +86,10 @@ export function getClientAccessToken() {
     clientAccessToken = window.sessionStorage.getItem(CLIENT_ACCESS_TOKEN_KEY)
   }
   return clientAccessToken
+}
+
+export function getClientAccessTokenExpiryMs() {
+  return parseJwtExpiryMs(getClientAccessToken())
 }
 
 export function clearClientAccessToken() {
@@ -86,6 +123,23 @@ adminHttp.interceptors.request.use((config) => {
   }
   return config
 })
+
+adminHttp.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const status = error.response?.status
+    const requestUrl = (error.config as RetryConfig | undefined)?.url || ''
+    const isAdminAuthEndpoint =
+      requestUrl.includes('/admin/login') ||
+      requestUrl.includes('/admin/logout')
+
+    if (status === 401 && !isAdminAuthEndpoint) {
+      handleAdminUnauthorized()
+    }
+
+    return Promise.reject(error)
+  }
+)
 
 export const clientHttp = axios.create({
   withCredentials: true,

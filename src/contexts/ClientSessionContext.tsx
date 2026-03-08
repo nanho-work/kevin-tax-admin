@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { checkClientSession } from '@/services/client/clientAuthService'
+import { clearClientAccessToken, getClientAccessTokenExpiryMs } from '@/services/http'
 import type { ClientSession } from '@/types/clientAuth'
 
 interface ClientSessionContextValue {
@@ -25,7 +26,11 @@ export function ClientSessionProvider({ children }: { children: React.ReactNode 
       const data = await checkClientSession()
       setSession(data)
     } catch (err) {
-      setSession(null)
+      const status = (err as any)?.response?.status
+      if (status === 401) {
+        clearClientAccessToken()
+        setSession(null)
+      }
       setError(err)
     } finally {
       setLoading(false)
@@ -35,6 +40,37 @@ export function ClientSessionProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void refresh()
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [refresh])
+
+  useEffect(() => {
+    if (!session) return
+    const checkTokenExpiry = () => {
+      const expiryMs = getClientAccessTokenExpiryMs()
+      if (expiryMs && Date.now() >= expiryMs) {
+        clearClientAccessToken()
+        setSession(null)
+      }
+    }
+    checkTokenExpiry()
+    const timer = window.setInterval(checkTokenExpiry, 30_000)
+    return () => window.clearInterval(timer)
+  }, [session])
 
   const value = useMemo<ClientSessionContextValue>(
     () => ({ session, loading, error, refresh }),

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'react-hot-toast'
 
 // 서비스 & 타입 임포트
 import { blogService } from '@/services/blogService'
@@ -24,10 +25,7 @@ const slugify = (s: string) =>
 
 export default function BlogCreateForm() {
   const router = useRouter()
-  // 폼 상태
   const [title, setTitle] = useState('')
-  const [subtitle, setSubtitle] = useState('')
-  const [summary, setSummary] = useState('')
   const [categoryId, setCategoryId] = useState<number | ''>('')
   const [keywordIds, setKeywordIds] = useState<number[]>([])
   const [thumbnailUrl, setThumbnailUrl] = useState('')
@@ -36,11 +34,12 @@ export default function BlogCreateForm() {
   // 보조 데이터
   const [categories, setCategories] = useState<BlogCategoryResponse[]>([])
   const [keywords, setKeywords] = useState<KeywordResponse[]>([])
+  const [newKeyword, setNewKeyword] = useState('')
 
-  // 진행 상태
-  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false)
+  const [creatingKeyword, setCreatingKeyword] = useState(false)
 
-  // 초기 로드: 카테고리/키워드 목록 불러오기
   useEffect(() => {
     (async () => {
       try {
@@ -62,13 +61,44 @@ export default function BlogCreateForm() {
     )
   }
 
-  // 썸네일 업로드 (S3)
-  // 기존 코드 일부
+  const handleCreateKeyword = async () => {
+    const name = newKeyword.trim()
+    if (!name) {
+      toast.error('키워드를 입력해 주세요.')
+      return
+    }
+
+    const existing = keywords.find((keyword) => keyword.name.trim().toLowerCase() === name.toLowerCase())
+    if (existing) {
+      setKeywordIds((prev) => (prev.includes(existing.id) ? prev : [...prev, existing.id]))
+      setNewKeyword('')
+      toast.success('기존 키워드를 선택했습니다.')
+      return
+    }
+
+    try {
+      setCreatingKeyword(true)
+      const created = await blogService.createKeyword({
+        name,
+        slug: slugify(name),
+      })
+      setKeywords((prev) => [...prev, created])
+      setKeywordIds((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]))
+      setNewKeyword('')
+      toast.success('키워드가 추가되었습니다.')
+    } catch (error: any) {
+      console.error('키워드 생성 실패:', error)
+      toast.error(error?.response?.data?.detail || '키워드 추가에 실패했습니다.')
+    } finally {
+      setCreatingKeyword(false)
+    }
+  }
+
   const handleThumbnailFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      setLoading(true)
+      setUploadingThumbnail(true)
 
       const oldUrl = thumbnailUrl; // 현재 썸네일 URL을 잠깐 보관
 
@@ -77,6 +107,7 @@ export default function BlogCreateForm() {
 
       // 2) 성공하면 상태 갱신
       setThumbnailUrl(res.thumbnail_url)
+      toast.success('썸네일 업로드 완료')
 
       // 3) 이전 파일이 있었다면 삭제 시도 (실패해도 UI는 계속 진행)
       if (oldUrl) {
@@ -88,50 +119,49 @@ export default function BlogCreateForm() {
       }
     } catch (err) {
       console.error('썸네일 업로드 실패:', err)
-      alert('썸네일 업로드에 실패했습니다.')
+      toast.error('썸네일 업로드에 실패했습니다.')
     } finally {
-      setLoading(false)
+      setUploadingThumbnail(false)
       e.target.value = ''
     }
   }
 
-  // 제출
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     if (!title.trim()) {
-      alert('제목을 입력하세요.')
+      toast.error('제목을 입력하세요.')
       return
     }
     if (!categoryId) {
-      alert('카테고리를 선택하세요.')
+      toast.error('카테고리를 선택하세요.')
+      return
+    }
+    if (!content.trim()) {
+      toast.error('본문을 입력하세요.')
       return
     }
 
     const payload: BlogPostCreate = {
       title,
-      subtitle: subtitle || null,
-      summary: summary || null,
       content_md: content,
       thumbnail_url: thumbnailUrl || null,
       category_id: Number(categoryId),
-      // 백엔드에서 자동 생성 로직이 있다면 빈 문자열로 넘기거나 제거 가능
       slug: slugify(title) || 'post',
       status: 'draft',
       published_at: null,
       keyword_ids: keywordIds,
-      // author_name은 서버에서 토큰 기반으로 주입되므로 보내지 않음
     }
 
     try {
-      setLoading(true)
+      setSaving(true)
       const created = await blogService.createPost(payload)
-      alert('블로그 글이 생성되었습니다.')
+      toast.success('블로그 글이 생성되었습니다.')
       router.push(created.slug ? `/client/client-management/blog/${created.slug}` : '/client/client-management/blog/list')
     } catch (err: any) {
       console.error('생성 실패:', err)
-      alert(err?.response?.data?.detail || err?.message || '생성 중 오류가 발생했습니다.')
+      toast.error(err?.response?.data?.detail || err?.message || '생성 중 오류가 발생했습니다.')
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
@@ -140,86 +170,144 @@ export default function BlogCreateForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* 카테고리 선택 (API 연동) */}
-      <select
-        name="category"
-        value={categoryId}
-        onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
-        className="border p-2 w-40"
-      >
-        <option value="">카테고리 선택</option>
-        {categories.map(cat => (
-          <option key={cat.id} value={cat.id}>
-            {cat.name}
-          </option>
-        ))}
-      </select>
-
-      <input
-        type="text"
-        name="title"
-        placeholder="제목을 입력하세요"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="border p-2 w-full"
-      />
-
-      {/* 썸네일: 파일 업로드 + URL 직접 입력 */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <input type="file" accept="image/*" onChange={handleThumbnailFile} />
-          {thumbnailUrl && (
-            <a href={thumbnailUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-sm">
-              업로드된 썸네일 보기
-            </a>
-          )}
-        </div>
-        <input
-          type="hidden"
-          name="thumbnailUrl"
-          placeholder="썸네일 이미지 URL (직접 입력시 업로드 URL을 덮어씁니다)"
-          value={thumbnailUrl}
-          onChange={(e) => setThumbnailUrl(e.target.value)}
-          className="border p-2 w-full"
-        />
-      </div>
-
-      {/* Tiptap 에디터 */}
-      <TiptapEditor value={content} onChange={setContent} />
-
-      {/* 키워드 선택 (체크박스) */}
-      {keywords.length > 0 && (
-        <div className="border p-3 rounded">
-          <div className="mb-2 text-sm text-gray-600">키워드 선택</div>
-          <div className="flex flex-wrap gap-3">
-            {keywords.map(kw => (
-              <label key={kw.id} className="flex items-center gap-2 text-sm">
+    <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-6">
+      <section className="rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-zinc-900">기본 정보</h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12">
+          <div className="md:col-span-3">
+            <label className="mb-1 block text-xs font-medium text-zinc-600">카테고리</label>
+            <select
+              name="category"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+              className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+            >
+              <option value="">카테고리 선택</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-9">
+            <label className="mb-1 block text-xs font-medium text-zinc-600">제목</label>
+            <input
+              type="text"
+              name="title"
+              placeholder="제목을 입력하세요"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+            />
+          </div>
+          <div className="md:col-span-12">
+            <label className="mb-1 block text-xs font-medium text-zinc-600">썸네일</label>
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3">
+              <label className="inline-flex h-9 cursor-pointer items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-100">
+                {uploadingThumbnail ? '업로드 중...' : '이미지 선택'}
                 <input
-                  type="checkbox"
-                  name={`keyword_${kw.id}`}
-                  checked={keywordIds.includes(kw.id)}
-                  onChange={() => handleToggleKeyword(kw.id)}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleThumbnailFile}
+                  disabled={uploadingThumbnail}
                 />
-                <span>#{kw.name}</span>
               </label>
-            ))}
+              {thumbnailUrl ? (
+                <>
+                  <a href={thumbnailUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
+                    업로드된 썸네일 보기
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setThumbnailUrl('')}
+                    className="text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-700"
+                  >
+                    썸네일 제거
+                  </button>
+                </>
+              ) : (
+                <span className="text-xs text-zinc-500">권장 비율 16:9</span>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </section>
 
-      <div className="flex gap-3">
+      <section className="rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-900">본문 작성</h2>
+          <span className="text-xs text-zinc-500">붙여넣기 이미지 자동 업로드 지원</span>
+        </div>
+        <TiptapEditor value={content} onChange={setContent} />
+      </section>
+
+      <section className="rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-900">키워드</h2>
+          <span className="text-xs text-zinc-500">선택됨 {keywordIds.length}개</span>
+        </div>
+        <div className="mb-3 flex gap-2">
+          <input
+            type="text"
+            value={newKeyword}
+            onChange={(e) => setNewKeyword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void handleCreateKeyword()
+              }
+            }}
+            placeholder="새 키워드 입력"
+            className="h-10 flex-1 rounded-md border border-zinc-300 px-3 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+          />
+          <button
+            type="button"
+            onClick={() => void handleCreateKeyword()}
+            disabled={creatingKeyword}
+            className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
+          >
+            {creatingKeyword ? '추가 중...' : '키워드 추가'}
+          </button>
+        </div>
+        {keywords.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {keywords.map((kw) => {
+              const selected = keywordIds.includes(kw.id)
+              return (
+                <button
+                  key={kw.id}
+                  type="button"
+                  onClick={() => handleToggleKeyword(kw.id)}
+                  className={`rounded-full border px-3 py-1 text-sm transition ${
+                    selected
+                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  #{kw.name}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">등록된 키워드가 없습니다. 새 키워드를 추가해 주세요.</p>
+        )}
+      </section>
+
+      <div className="flex justify-end gap-3">
         <button
           type="submit"
-          disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
+          disabled={saving || uploadingThumbnail}
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? '처리 중...' : '저장하기'}
+          {saving ? '저장 중...' : '저장하기'}
         </button>
         <button
           type="button"
           onClick={handleCancel}
-          className="bg-gray-300 text-black px-4 py-2 rounded"
+          className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
         >
           취소
         </button>

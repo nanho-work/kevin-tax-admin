@@ -19,3 +19,17 @@ const url = companyId
   });
   return response.data;
 }
+
+export async function updateTaxScheduleStatus(
+  scheduleId: number,
+  status: 'SCHEDULED' | 'COMPLETED'
+): Promise<TaxSchedule> {
+  const response = await http.patch<TaxSchedule>(
+    `${BASE}/tax-schedule/${scheduleId}/status`,
+    { status },
+    {
+      headers: authHeaders(),
+    }
+  )
+  return response.data
+}

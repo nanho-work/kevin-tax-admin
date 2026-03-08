@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import ClientLeaveApprovalsPanel from '@/components/client/staff/approvals/ClientLeaveApprovalsPanel'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
   fetchClientApprovalDocumentDetail,
@@ -58,6 +60,9 @@ const docTypeOptions: Array<{ value: ApprovalDocumentType | ''; label: string }>
 ]
 
 export default function ClientApprovalDocumentsPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [staffs, setStaffs] = useState<AdminOut[]>([])
   const [items, setItems] = useState<ApprovalDocument[]>([])
   const [status, setStatus] = useState<ApprovalDocumentStatus | ''>('pending')
@@ -77,6 +82,7 @@ export default function ClientApprovalDocumentsPage() {
   const [rejectedReason, setRejectedReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const activeTab = searchParams.get('tab') === 'leave' ? 'leave' : 'documents'
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
   const loadStaffs = async () => {
@@ -137,21 +143,35 @@ export default function ClientApprovalDocumentsPage() {
   }
 
   useEffect(() => {
+    if (activeTab !== 'documents') return
     loadStaffs()
-  }, [])
+  }, [activeTab])
 
   useEffect(() => {
+    if (activeTab !== 'documents') return
     loadDocuments()
-  }, [page, status, docType, writerAdminId, onlyMyPending])
+  }, [page, status, docType, writerAdminId, onlyMyPending, activeTab])
 
   useEffect(() => {
+    if (activeTab !== 'documents') return
     setPage(1)
-  }, [status, docType, writerAdminId, onlyMyPending])
+  }, [status, docType, writerAdminId, onlyMyPending, activeTab])
 
   useEffect(() => {
+    if (activeTab !== 'documents') return
     if (selectedId == null) return
     loadDetail(selectedId)
-  }, [selectedId])
+  }, [selectedId, activeTab])
+
+  useEffect(() => {
+    if (activeTab === 'documents') return
+    setSelectedId(null)
+    setDetail(null)
+    setReviewMode(null)
+    setComment('')
+    setSignatureText('')
+    setRejectedReason('')
+  }, [activeTab])
 
   const pendingCount = useMemo(() => items.filter((item) => item.status === 'pending').length, [items])
 
@@ -208,8 +228,51 @@ export default function ClientApprovalDocumentsPage() {
     }
   }
 
+  const handleTabChange = (tab: 'documents' | 'leave') => {
+    if (tab === activeTab) return
+    const params = new URLSearchParams(searchParams.toString())
+    if (tab === 'leave') {
+      params.set('tab', 'leave')
+    } else {
+      params.delete('tab')
+    }
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
+
   return (
     <section className="space-y-4">
+      <div className="rounded-xl border border-zinc-200 bg-white p-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleTabChange('documents')}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'documents'
+                ? 'bg-zinc-900 text-white'
+                : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+            }`}
+          >
+            결재 문서 승인
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTabChange('leave')}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'leave'
+                ? 'bg-zinc-900 text-white'
+                : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+            }`}
+          >
+            휴가 승인
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'leave' ? (
+        <ClientLeaveApprovalsPanel />
+      ) : (
+        <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-500">이번 페이지 문서 수</p>
@@ -522,6 +585,8 @@ export default function ClientApprovalDocumentsPage() {
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </section>
   )
 }

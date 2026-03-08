@@ -10,9 +10,10 @@ export default function ClientCompanyList() {
       fetchList={fetchClientCompanyTaxList}
       deactivate={deactivateClientCompany}
       disableDelete={false}
-      pageSize={15}
+      pageSize={12}
       createHref="/client/companies/new"
       createLabel="거래처등록"
+      showAccountStatus={false}
     />
   )
 }
