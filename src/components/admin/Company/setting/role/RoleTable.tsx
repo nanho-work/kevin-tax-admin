@@ -4,6 +4,7 @@ import RoleCreateForm from './RoleCreateForm';
 import RoleList from './RoleList';
 import { useMemo, useState } from 'react';
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext';
+import { getAdminRoleRank } from '@/utils/roleRank';
 
 function statusMessage(status?: number): string {
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
@@ -18,7 +19,7 @@ export default function RoleTable() {
   const [refreshKey, setRefreshKey] = useState(0);
   const adminLevel = useMemo(() => {
     if (!session) return null
-    const level = session.role_level ?? (session as any).role?.level
+    const level = getAdminRoleRank(session)
     return typeof level === 'number' ? level : null
   }, [session])
 

@@ -21,31 +21,19 @@ export async function getRoles(): Promise<RoleOut[]> {
   const response = await http.get(`${BASE}/`, authHeader());
   const rows = Array.isArray(response.data) ? response.data : []
   return rows.map((row) => {
-    const rank =
-      typeof row?.rank_order === 'number'
-        ? row.rank_order
-        : typeof row?.level === 'number'
-          ? row.level
-          : undefined
+    const rank = typeof row?.rank_order === 'number' ? row.rank_order : undefined
     return {
       ...row,
       rank_order: rank,
-      level: rank,
     } as RoleOut
   })
 }
 
 export async function createRole(data: RoleCreate): Promise<RoleOut> {
-  const rank =
-    typeof data.rank_order === 'number'
-      ? data.rank_order
-      : typeof data.level === 'number'
-        ? data.level
-        : undefined
   const payload = {
-    ...data,
-    rank_order: rank,
-    level: rank,
+    name: data.name,
+    rank_order: data.rank_order,
+    description: data.description,
   }
   const response = await http.post(`${BASE}/`, payload, authHeader());
   return response.data;

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getRoles } from '@/services/roleService';
 import type { RoleOut } from '@/types/role';
 import RoleDeleteButton from './RoleDeleteButton';
+import { getRoleRank } from '@/utils/roleRank';
 
 export default function RoleList() {
   const [roles, setRoles] = useState<RoleOut[]>([]);
@@ -23,7 +24,7 @@ export default function RoleList() {
         <tr className="bg-gray-100">
           <th className="p-2 border">ID</th>
           <th className="p-2 border">이름</th>
-          <th className="p-2 border">레벨</th>
+          <th className="p-2 border">순서</th>
           <th className="p-2 border">설명</th>
           <th className="p-2 border">삭제</th>
         </tr>
@@ -33,7 +34,7 @@ export default function RoleList() {
           <tr key={role.id}>
             <td className="p-2 border">{role.id}</td>
             <td className="p-2 border">{role.name}</td>
-            <td className="p-2 border">{role.level}</td>
+            <td className="p-2 border">{getRoleRank(role)}</td>
             <td className="p-2 border">{role.description}</td>
             <td className="p-2 border">
               <RoleDeleteButton roleId={role.id} onSuccess={fetchRoles} />

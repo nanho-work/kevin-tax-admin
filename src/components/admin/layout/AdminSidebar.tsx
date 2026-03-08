@@ -8,6 +8,7 @@ import { logoutAdmin } from '@/services/admin/adminService'
 import { format } from 'date-fns'
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { getAdminRoleRank } from '@/utils/roleRank'
 
 type MenuChild = { label: string; href: string }
 type MenuSection = {
@@ -132,7 +133,7 @@ export default function Sidebar() {
           ? (session as any).profile_image_url
           : undefined,
         roleName: (session as any).role_name ?? (session as any).role?.name,
-        roleLevel: session.role_level ?? (session as any).role?.level,
+        roleLevel: getAdminRoleRank(session),
         checkIn: undefined,
       })
 

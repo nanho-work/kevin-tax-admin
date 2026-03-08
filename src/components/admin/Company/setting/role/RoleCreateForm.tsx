@@ -30,13 +30,13 @@ export default function RoleCreateForm({ onSuccess, adminLevel }: { onSuccess: (
     e.preventDefault();
 
     if (adminLevel === 1 && level < 2) {
-      toast.error('1레벨 사용자는 2레벨 이상만 생성할 수 있습니다.');
+      toast.error('rank_order 1 사용자는 rank_order 2 이상만 생성할 수 있습니다.');
       return;
     }
 
     try {
       setSubmitting(true);
-      await createRole({ name, level, description });
+      await createRole({ name, rank_order: level, description });
       toast.success('직급이 등록되었습니다.');
       setName('');
       setLevel(adminLevel === 1 ? 2 : 1);

@@ -35,6 +35,7 @@ export interface AdminOut {
   team?: TeamOut | null
   role_id?: number
   role_level?: number
+  rank_order?: number
   role?: RoleOut | null
   client?: ClientOut | null
 }

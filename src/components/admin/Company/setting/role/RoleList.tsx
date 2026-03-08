@@ -48,7 +48,7 @@ export default function RoleList({ adminLevel }: { adminLevel: number }) {
           <tr>
             <th className="px-3 py-3 text-right">ID</th>
             <th className="px-3 py-3 text-left">이름</th>
-            <th className="px-3 py-3 text-right">레벨</th>
+            <th className="px-3 py-3 text-right">순서</th>
             <th className="px-3 py-3 text-left">설명</th>
             <th className="px-3 py-3 text-center">삭제</th>
           </tr>

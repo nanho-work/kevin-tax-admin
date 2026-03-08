@@ -7,31 +7,19 @@ export async function getRoles(): Promise<RoleOut[]> {
   const response = await clientHttp.get(`${BASE}/`)
   const rows = Array.isArray(response.data) ? response.data : []
   return rows.map((row) => {
-    const rank =
-      typeof row?.rank_order === 'number'
-        ? row.rank_order
-        : typeof row?.level === 'number'
-          ? row.level
-          : undefined
+    const rank = typeof row?.rank_order === 'number' ? row.rank_order : undefined
     return {
       ...row,
       rank_order: rank,
-      level: rank,
     } as RoleOut
   })
 }
 
 export async function createRole(data: RoleCreate): Promise<RoleOut> {
-  const rank =
-    typeof data.rank_order === 'number'
-      ? data.rank_order
-      : typeof data.level === 'number'
-        ? data.level
-        : undefined
   const payload = {
-    ...data,
-    rank_order: rank,
-    level: rank,
+    name: data.name,
+    rank_order: data.rank_order,
+    description: data.description,
   }
   const response = await clientHttp.post(`${BASE}/`, payload)
   return response.data

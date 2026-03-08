@@ -102,7 +102,7 @@ export default function ClientAclMatrixPage() {
   const [teamLines, setTeamLines] = useState<Record<string, { left: number; width: number }>>({})
 
   const [roleName, setRoleName] = useState('')
-  const [roleLevel, setRoleLevel] = useState('10')
+  const [roleRankOrder, setRoleRankOrder] = useState('10')
   const [roleDescription, setRoleDescription] = useState('')
   const [roleSubmitting, setRoleSubmitting] = useState(false)
 
@@ -733,7 +733,7 @@ export default function ClientAclMatrixPage() {
       toast.error('직위명을 입력해 주세요.')
       return
     }
-    const parsedRankOrder = Number(roleLevel)
+    const parsedRankOrder = Number(roleRankOrder)
     if (!Number.isFinite(parsedRankOrder)) {
       toast.error('순서는 숫자여야 합니다.')
       return
@@ -744,12 +744,11 @@ export default function ClientAclMatrixPage() {
       await createRole({
         name: roleName.trim(),
         rank_order: parsedRankOrder,
-        level: parsedRankOrder,
         description: roleDescription.trim() || undefined,
       })
       toast.success('직위를 생성했습니다.')
       setRoleName('')
-      setRoleLevel('10')
+      setRoleRankOrder('10')
       setRoleDescription('')
       closeDrawer()
       await loadOrganizationResources()
@@ -1378,8 +1377,8 @@ export default function ClientAclMatrixPage() {
                   />
                   <input
                     type="number"
-                    value={roleLevel}
-                    onChange={(e) => setRoleLevel(e.target.value)}
+                    value={roleRankOrder}
+                    onChange={(e) => setRoleRankOrder(e.target.value)}
                     placeholder="순서"
                     className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
                   />

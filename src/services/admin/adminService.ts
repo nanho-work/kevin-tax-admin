@@ -9,6 +9,30 @@ import type {
 const ADMIN_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin`
 const ADMIN_AUTH_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin`
 
+function getAdminRank(raw: any): number | null {
+  if (typeof raw?.rank_order === 'number') return raw.rank_order
+  if (typeof raw?.role_level === 'number') return raw.role_level
+  if (typeof raw?.role?.rank_order === 'number') return raw.role.rank_order
+  return null
+}
+
+function normalizeAdminSession<T extends Record<string, any>>(raw: T): T {
+  const rank = getAdminRank(raw)
+  const nextRole = raw?.role && typeof raw.role === 'object'
+    ? {
+        ...raw.role,
+        rank_order: typeof raw.role.rank_order === 'number' ? raw.role.rank_order : rank ?? undefined,
+      }
+    : raw?.role
+
+  return {
+    ...raw,
+    role: nextRole,
+    role_level: rank ?? raw?.role_level,
+    rank_order: rank ?? raw?.rank_order,
+  }
+}
+
 // 공통 인증 헤더 함수
 function authHeader() {
   const token = getAdminAccessToken()
@@ -32,7 +56,7 @@ export async function adminLogin(
 ): Promise<{ access_token: string; admin: Omit<LoginResponse, 'access_token' | 'token_type'> }> {
   const res = await http.post(`${ADMIN_AUTH_BASE}/login`, data)
   const { access_token, ...rest } = res.data as any
-  const adminInfo = rest?.admin ?? rest
+  const adminInfo = normalizeAdminSession(rest?.admin ?? rest)
   if (access_token) setAdminAccessToken(access_token)
   return { access_token, admin: adminInfo };
 }
@@ -59,7 +83,7 @@ export async function checkAdminSession(access_token?: string): Promise<AdminSes
       setAdminAccessToken(session.access_token)
     }
 
-    return session
+    return normalizeAdminSession(session)
   } catch (error) {
     console.warn("❌ 세션 확인 실패:", error)
     throw error
