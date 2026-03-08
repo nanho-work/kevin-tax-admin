@@ -19,11 +19,35 @@ function authHeader() {
 
 export async function getRoles(): Promise<RoleOut[]> {
   const response = await axios.get(`${BASE}/`, authHeader());
-  return response.data;
+  const rows = Array.isArray(response.data) ? response.data : []
+  return rows.map((row) => {
+    const rank =
+      typeof row?.rank_order === 'number'
+        ? row.rank_order
+        : typeof row?.level === 'number'
+          ? row.level
+          : undefined
+    return {
+      ...row,
+      rank_order: rank,
+      level: rank,
+    } as RoleOut
+  })
 }
 
 export async function createRole(data: RoleCreate): Promise<RoleOut> {
-  const response = await axios.post(`${BASE}/`, data);
+  const rank =
+    typeof data.rank_order === 'number'
+      ? data.rank_order
+      : typeof data.level === 'number'
+        ? data.level
+        : undefined
+  const payload = {
+    ...data,
+    rank_order: rank,
+    level: rank,
+  }
+  const response = await axios.post(`${BASE}/`, payload);
   return response.data;
 }
 

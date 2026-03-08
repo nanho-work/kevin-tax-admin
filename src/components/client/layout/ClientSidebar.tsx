@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { logoutClient } from '@/services/client/clientAuthService'
 import { clearClientAccessToken } from '@/services/http'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -62,7 +63,7 @@ export default function ClientSidebar() {
   const [isBookkeepingOpen, setIsBookkeepingOpen] = useState(hasBookkeepingPath)
   const [isSettingOpen, setIsSettingOpen] = useState(hasSettingPath)
   const { session, loading } = useClientSessionContext()
-  const canManageClients = session?.role_level === 0
+  const canManageClients = getClientRoleRank(session) === 0
   const profile = useMemo(
     () => ({
       name: session?.name || '',

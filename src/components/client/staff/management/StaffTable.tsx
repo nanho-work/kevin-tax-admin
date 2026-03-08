@@ -112,6 +112,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                             <th className="px-3 py-3 text-center">생일</th>
                             <th className="px-3 py-3 text-center">연락처</th>
                             <th className="px-3 py-3 text-center">직급</th>
+                            <th className="px-3 py-3 text-center">소속 팀</th>
                             <th className="px-3 py-3 text-center">입사일</th>
                             <th className="px-3 py-3 text-center">재직여부</th>
                         </tr>
@@ -119,7 +120,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                     <tbody className="divide-y divide-zinc-200">
                         {visibleStaffs.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="px-3 py-10 text-center text-zinc-500">
+                                <td colSpan={9} className="px-3 py-10 text-center text-zinc-500">
                                     {showInactive ? '퇴사한 직원이 없습니다.' : '재직 중인 직원이 없습니다.'}
                                 </td>
                             </tr>
@@ -156,6 +157,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                                         <td className="px-3 py-3 text-center">{staff.birth_date || '-'}</td>
                                         <td className="px-3 py-3 text-center">{staff.phone || '-'}</td>
                                         <td className="px-3 py-3 text-center">{staff.role?.name ?? '-'}</td>
+                                        <td className="px-3 py-3 text-center">{staff.team?.name ?? '-'}</td>
                                         <td className="px-3 py-3 text-center">{staff.hired_at || '-'}</td>
                                         <td className="px-3 py-3 text-center">
                                             {canManage ? (

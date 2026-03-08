@@ -11,6 +11,7 @@ export interface ClientSession {
   is_active: boolean
   role_template_id: number
   role_code: string
-  role_level: number
+  role_level?: number
+  rank_order?: number
   role_name?: string | null
 }

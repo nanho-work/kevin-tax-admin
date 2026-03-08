@@ -11,6 +11,7 @@ import {
 } from '@/services/client/clientAnnualLeaveRequestService'
 import type { AdminOut } from '@/types/admin'
 import type { AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -38,7 +39,7 @@ function getStatusMeta(status: AnnualLeaveRequestStatus) {
 
 export default function ClientLeaveApprovalsPanel() {
   const { session, loading: sessionLoading } = useClientSessionContext()
-  const canManage = (session?.role_level ?? 999) <= 10
+  const canManage = getClientRoleRank(session) <= 10
 
   const [staffs, setStaffs] = useState<AdminOut[]>([])
   const [items, setItems] = useState<AnnualLeaveRequest[]>([])

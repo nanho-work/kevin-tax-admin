@@ -2,7 +2,7 @@
 
 import { AdminOut } from '@/types/admin'
 import { useEffect, useState } from 'react'
-import { updateClientStaff } from '@/services/client/clientStaffService'
+import { patchClientStaffTeam, updateClientStaff } from '@/services/client/clientStaffService'
 import { getRoles } from '@/services/client/roleService'
 import { getDepartments } from '@/services/client/departmentService'
 import { getTeams } from '@/services/client/teamService'
@@ -17,6 +17,16 @@ interface Props {
   staff: AdminOut
   onClose: () => void
   onSaved?: () => void | Promise<void>
+}
+
+function getErrorMessage(error: any, fallback: string) {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim().length > 0) return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0]
+    if (typeof first?.msg === 'string') return first.msg
+  }
+  return fallback
 }
 
 export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
@@ -37,7 +47,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
     hired_at: staff.hired_at || '',
     birth_date: staff.birth_date || '',
     retired_at: staff.retired_at || '',
-    team_id: staff.team_id || undefined,
+    team_id: staff.team_id ?? staff.team?.id ?? null,
     role_id: staff.role_id || undefined,
   })
   useEffect(() => {
@@ -50,7 +60,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
         hired_at: staff.hired_at || '',
         birth_date: staff.birth_date || '',
         retired_at: staff.retired_at || '',
-        team_id: staff.team_id || undefined,
+        team_id: staff.team_id ?? staff.team?.id ?? null,
         role_id: staff.role_id || undefined,
       })
     }
@@ -73,19 +83,62 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
   const handleSubmit = async () => {
     try {
       setLoading(true)
+      const prevTeamId = staff.team_id ?? staff.team?.id ?? null
+      const nextTeamId = form.team_id ?? null
+      const teamChanged = prevTeamId !== nextTeamId
+
+      const nameChanged = form.name !== (staff.name || '')
+      const phoneChanged = form.phone !== (staff.phone || '')
+      const roleChanged = (form.role_id ?? null) !== (staff.role_id ?? null)
+      const hiredAtChanged = form.hired_at !== (staff.hired_at || '')
+      const birthDateChanged = form.birth_date !== (staff.birth_date || '')
+      const retiredAtChanged = form.retired_at !== (staff.retired_at || '')
+
       const formData = new FormData()
-      if (form.name) formData.append('name', form.name)
-      if (form.phone) formData.append('phone', form.phone)
-      if (form.role_id !== undefined) formData.append('role_id', String(form.role_id))
-      if (form.team_id !== undefined) formData.append('team_id', String(form.team_id))
-      if (form.hired_at) formData.append('hired_at', form.hired_at)
-      if (form.birth_date) formData.append('birth_date', form.birth_date)
-      if (form.retired_at) formData.append('retired_at', form.retired_at)
+      let hasGeneralChanges = false
+      if (nameChanged && form.name) {
+        formData.append('name', form.name)
+        hasGeneralChanges = true
+      }
+      if (phoneChanged && form.phone) {
+        formData.append('phone', form.phone)
+        hasGeneralChanges = true
+      }
+      if (roleChanged && form.role_id !== undefined) {
+        formData.append('role_id', String(form.role_id))
+        hasGeneralChanges = true
+      }
+      if (hiredAtChanged && form.hired_at) {
+        formData.append('hired_at', form.hired_at)
+        hasGeneralChanges = true
+      }
+      if (birthDateChanged && form.birth_date) {
+        formData.append('birth_date', form.birth_date)
+        hasGeneralChanges = true
+      }
+      if (retiredAtChanged && form.retired_at) {
+        formData.append('retired_at', form.retired_at)
+        hasGeneralChanges = true
+      }
       if (form.profile_image) {
         formData.append('file', form.profile_image)
+        hasGeneralChanges = true
       }
 
-      await updateClientStaff(staff.id, formData)
+      if (!hasGeneralChanges && !teamChanged) {
+        setSuccess('변경된 내용이 없습니다.')
+        setError('')
+        return
+      }
+
+      if (hasGeneralChanges) {
+        await updateClientStaff(staff.id, formData)
+      }
+
+      if (teamChanged) {
+        await patchClientStaffTeam(staff.id, nextTeamId)
+      }
+
       setSuccess('정보가 저장되었습니다.')
       setError('')
       await onSaved?.()
@@ -103,7 +156,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
       }
     } catch (err) {
       console.error(err)
-      setError('저장 실패')
+      setError(getErrorMessage(err, '저장 실패'))
     } finally {
       setLoading(false)
     }
@@ -178,10 +231,15 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
                 <label className="mb-1 block text-xs text-zinc-600">팀</label>
                 <select
                   value={form.team_id ?? ''}
-                  onChange={(e) => setForm((prev) => ({ ...prev, team_id: Number(e.target.value) || undefined }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      team_id: e.target.value ? Number(e.target.value) : null,
+                    }))
+                  }
                   className={inputClass}
                 >
-                  <option value="">선택</option>
+                  <option value="">선택 안함</option>
                   {teams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} {t.department?.name ? `(${t.department.name})` : ''}

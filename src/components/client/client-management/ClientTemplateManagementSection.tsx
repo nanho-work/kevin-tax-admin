@@ -11,6 +11,7 @@ import {
 import type { SupervisorTemplateCodeOut } from '@/types/clientTemplate'
 import TemplateDownloadButton from '@/components/client/templates/TemplateDownloadButton'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
@@ -25,7 +26,7 @@ export default function ClientTemplateManagementSection() {
   const [rows, setRows] = useState<SupervisorTemplateCodeOut[]>([])
   const [loading, setLoading] = useState(false)
   const { session, loading: checkingRole } = useClientSessionContext()
-  const isSuperManager = session?.role_level === 0
+  const isSuperManager = getClientRoleRank(session) === 0
   const [fileMap, setFileMap] = useState<Record<string, File | null>>({})
   const [uploadingCode, setUploadingCode] = useState<string | null>(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
@@ -183,7 +184,7 @@ export default function ClientTemplateManagementSection() {
           </button>
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          다운로드는 모든 클라이언트 세션에서 가능하며, 업로드는 슈퍼관리자(level 0)만 가능합니다.
+          다운로드는 모든 클라이언트 세션에서 가능하며, 업로드는 슈퍼관리자(rank_order 0)만 가능합니다.
         </p>
       </div>
 

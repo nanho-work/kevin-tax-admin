@@ -19,11 +19,35 @@ function authHeader() {
 
 export async function getRoles(): Promise<RoleOut[]> {
   const response = await http.get(`${BASE}/`, authHeader());
-  return response.data;
+  const rows = Array.isArray(response.data) ? response.data : []
+  return rows.map((row) => {
+    const rank =
+      typeof row?.rank_order === 'number'
+        ? row.rank_order
+        : typeof row?.level === 'number'
+          ? row.level
+          : undefined
+    return {
+      ...row,
+      rank_order: rank,
+      level: rank,
+    } as RoleOut
+  })
 }
 
 export async function createRole(data: RoleCreate): Promise<RoleOut> {
-  const response = await http.post(`${BASE}/`, data, authHeader());
+  const rank =
+    typeof data.rank_order === 'number'
+      ? data.rank_order
+      : typeof data.level === 'number'
+        ? data.level
+        : undefined
+  const payload = {
+    ...data,
+    rank_order: rank,
+    level: rank,
+  }
+  const response = await http.post(`${BASE}/`, payload, authHeader());
   return response.data;
 }
 

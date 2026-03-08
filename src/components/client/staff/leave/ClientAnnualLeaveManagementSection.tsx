@@ -12,6 +12,7 @@ import {
 } from '@/services/client/clientAnnualLeaveService'
 import type { AdminOut } from '@/types/admin'
 import type { AnnualLeave } from '@/types/annualLeave'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 type ActionMode = 'use' | 'adjust'
 
@@ -105,7 +106,7 @@ function getLeaveStatusMeta(row: { remaining_days: number; expired_at: string | 
 
 export default function ClientAnnualLeaveManagementSection() {
   const { session, loading: sessionLoading } = useClientSessionContext()
-  const canManage = (session?.role_level ?? 999) <= 10
+  const canManage = getClientRoleRank(session) <= 10
 
   const [items, setItems] = useState<AnnualLeave[]>([])
   const [staffs, setStaffs] = useState<AdminOut[]>([])

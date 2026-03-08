@@ -1,23 +1,38 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { getClientStaffs } from '@/services/client/clientStaffService'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import {
+  createDepartment,
+  deleteDepartment,
+  getDepartments,
+  reorderDepartments,
+  updateDepartment,
+} from '@/services/client/departmentService'
 import {
   getPermissionCodes,
   getStaffPermissions,
   updateStaffPermissions,
 } from '@/services/client/clientPermissionService'
+import { getClientStaffs } from '@/services/client/clientStaffService'
+import { createRole, deleteRole, getRoles } from '@/services/client/roleService'
+import { createTeam, deleteTeam, getTeams, reorderTeams, updateTeam } from '@/services/client/teamService'
 import type { AdminOut } from '@/types/admin'
 import type { PermissionCodeOut } from '@/types/clientPermission'
+import type { DepartmentOut } from '@/types/department'
+import type { RoleOut } from '@/types/role'
+import type { TeamOut } from '@/types/team'
+import { getRoleRank } from '@/utils/roleRank'
 
 type StaffPermissionRow = {
   staff: AdminOut
   values: Record<string, boolean>
   baseline: Record<string, boolean>
-  loading: boolean
   saving: boolean
 }
+
+type DrawerType = 'department' | 'team' | 'role' | null
 
 function buildCodeMap(codes: PermissionCodeOut[], source?: { code: string; is_allowed: boolean }[]) {
   const map: Record<string, boolean> = {}
@@ -32,11 +47,64 @@ function hasChanges(row: StaffPermissionRow, codes: PermissionCodeOut[]) {
   return codes.some((code) => row.values[code.code] !== row.baseline[code.code])
 }
 
+function getErrorMessage(error: any, fallback: string) {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim().length > 0) return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0]
+    if (typeof first?.msg === 'string') return first.msg
+  }
+  return fallback
+}
+
 export default function ClientAclMatrixPage() {
+  const { session } = useClientSessionContext()
+  const companyName = (session as any)?.client_company_name || `회사 ${session?.client_id ?? ''}`.trim()
+  const ownerName = session?.name || '관리자'
+  const [activeTab, setActiveTab] = useState<'org' | 'acl'>('org')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerType, setDrawerType] = useState<DrawerType>(null)
+
   const [codes, setCodes] = useState<PermissionCodeOut[]>([])
   const [rows, setRows] = useState<StaffPermissionRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [aclLoading, setAclLoading] = useState(true)
+  const [aclError, setAclError] = useState<string | null>(null)
+
+  const [departments, setDepartments] = useState<DepartmentOut[]>([])
+  const [teams, setTeams] = useState<TeamOut[]>([])
+  const [roles, setRoles] = useState<RoleOut[]>([])
+  const [orgStaffs, setOrgStaffs] = useState<AdminOut[]>([])
+  const [orgLoading, setOrgLoading] = useState(true)
+
+  const [departmentName, setDepartmentName] = useState('')
+  const [departmentDescription, setDepartmentDescription] = useState('')
+  const [departmentSubmitting, setDepartmentSubmitting] = useState(false)
+  const [departmentReordering, setDepartmentReordering] = useState(false)
+  const [draggingDepartmentId, setDraggingDepartmentId] = useState<number | null>(null)
+  const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null)
+  const [editingDepartmentName, setEditingDepartmentName] = useState('')
+  const [editingDepartmentSaving, setEditingDepartmentSaving] = useState(false)
+
+  const [teamName, setTeamName] = useState('')
+  const [teamDescription, setTeamDescription] = useState('')
+  const [teamDepartmentId, setTeamDepartmentId] = useState<number | ''>('')
+  const [teamSubmitting, setTeamSubmitting] = useState(false)
+  const [teamReordering, setTeamReordering] = useState(false)
+  const [draggingTeamId, setDraggingTeamId] = useState<number | null>(null)
+  const [editingTeamId, setEditingTeamId] = useState<number | null>(null)
+  const [editingTeamName, setEditingTeamName] = useState('')
+  const [editingTeamSaving, setEditingTeamSaving] = useState(false)
+  const departmentRowRef = useRef<HTMLDivElement | null>(null)
+  const departmentNodeRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const teamRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const teamNodeRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const [departmentLine, setDepartmentLine] = useState({ left: 0, width: 0 })
+  const [teamLines, setTeamLines] = useState<Record<string, { left: number; width: number }>>({})
+
+  const [roleName, setRoleName] = useState('')
+  const [roleLevel, setRoleLevel] = useState('10')
+  const [roleDescription, setRoleDescription] = useState('')
+  const [roleSubmitting, setRoleSubmitting] = useState(false)
 
   const groupedCodes = useMemo(() => {
     const grouped = new Map<string, PermissionCodeOut[]>()
@@ -48,15 +116,98 @@ export default function ClientAclMatrixPage() {
     return [...grouped.entries()]
   }, [codes])
 
+  const staffByTeamId = useMemo(() => {
+    const map = new Map<number, AdminOut[]>()
+    orgStaffs.forEach((staff) => {
+      const teamId = staff.team_id ?? staff.team?.id
+      if (!teamId) return
+      const prev = map.get(teamId) || []
+      prev.push(staff)
+      map.set(teamId, prev)
+    })
+    return map
+  }, [orgStaffs])
+
+  const teamsByDepartmentId = useMemo(() => {
+    const map = new Map<number, TeamOut[]>()
+    teams.forEach((team) => {
+      if (!team.department_id) return
+      const prev = map.get(team.department_id) || []
+      prev.push(team)
+      map.set(team.department_id, prev)
+    })
+    return map
+  }, [teams])
+
+  const unassignedTeams = useMemo(() => teams.filter((team) => !team.department_id), [teams])
+
+  const roleNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    roles.forEach((role) => {
+      map.set(role.id, role.name)
+    })
+    return map
+  }, [roles])
+
+  const loadAllClientStaffs = async () => {
+    const limit = 200
+    let pageCursor = 1
+    let total = 0
+    const merged: AdminOut[] = []
+    do {
+      const res = await getClientStaffs(pageCursor, limit)
+      merged.push(...(res.items || []))
+      total = res.total || 0
+      pageCursor += 1
+    } while (merged.length < total)
+    return (merged || []).filter((staff) => staff.is_active)
+  }
+
+  const loadOrganizationResources = async () => {
+    try {
+      setOrgLoading(true)
+      const [departmentItems, teamItems, roleItems, staffItems] = await Promise.all([
+        getDepartments(),
+        getTeams(),
+        getRoles(),
+        loadAllClientStaffs(),
+      ])
+      setDepartments((departmentItems || []).slice().sort((a, b) => a.sort_order - b.sort_order || a.id - b.id))
+      setTeams(
+        (teamItems || [])
+          .slice()
+          .sort((a, b) => {
+            const depA = a.department_id ?? Number.MAX_SAFE_INTEGER
+            const depB = b.department_id ?? Number.MAX_SAFE_INTEGER
+            if (depA !== depB) return depA - depB
+            if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+            return a.id - b.id
+          })
+      )
+      setRoles((roleItems || []).slice().sort((a, b) => getRoleRank(a) - getRoleRank(b) || a.name.localeCompare(b.name, 'ko')))
+      setOrgStaffs((staffItems || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')))
+    } catch (error) {
+      toast.error(getErrorMessage(error, '조직 정보를 불러오지 못했습니다.'))
+      setDepartments([])
+      setTeams([])
+      setRoles([])
+      setOrgStaffs([])
+    } finally {
+      setOrgLoading(false)
+    }
+  }
+
   useEffect(() => {
-    const load = async () => {
+    void loadOrganizationResources()
+  }, [])
+
+  useEffect(() => {
+    const loadAcl = async () => {
       try {
-        setLoading(true)
-        setError(null)
-        const [codeRes, staffRes] = await Promise.all([
-          getPermissionCodes(true),
-          getClientStaffs(1, 50),
-        ])
+        setAclLoading(true)
+        setAclError(null)
+
+        const [codeRes, staffRes] = await Promise.all([getPermissionCodes(true), getClientStaffs(1, 100)])
         const codeItems = codeRes.items || []
         const staffItems = (staffRes.items || []).filter((staff) => staff.is_active)
 
@@ -65,15 +216,15 @@ export default function ClientAclMatrixPage() {
             try {
               const res = await getStaffPermissions(staff.id)
               return { staff, items: res.items, error: null as any }
-            } catch (e: any) {
-              return { staff, items: [], error: e }
+            } catch (error) {
+              return { staff, items: [], error }
             }
           })
         )
 
         const forbidden = permissionResponses.find((item) => item.error?.response?.status === 403)
         if (forbidden) {
-          setError('권한 없음')
+          setAclError('ACL 권한 조회 권한이 없습니다.')
           setCodes(codeItems)
           setRows([])
           return
@@ -85,27 +236,112 @@ export default function ClientAclMatrixPage() {
             staff,
             values: { ...baseline },
             baseline,
-            loading: false,
             saving: false,
           }
         })
 
         setCodes(codeItems)
         setRows(nextRows)
-      } catch (e: any) {
-        const status = e?.response?.status
-        if (status === 403) {
-          setError('권한 없음')
+      } catch (error: any) {
+        if (error?.response?.status === 403) {
+          setAclError('ACL 권한 조회 권한이 없습니다.')
         } else {
-          setError('권한 정보를 불러오지 못했습니다.')
+          setAclError('ACL 권한 정보를 불러오지 못했습니다.')
         }
       } finally {
-        setLoading(false)
+        setAclLoading(false)
       }
     }
 
-    void load()
+    void loadAcl()
   }, [])
+
+  useLayoutEffect(() => {
+    if (activeTab !== 'org' || orgLoading || departments.length < 2) {
+      setDepartmentLine({ left: 0, width: 0 })
+      return
+    }
+
+    const updateLine = () => {
+      const row = departmentRowRef.current
+      const firstDepartmentId = departments[0]?.id
+      const lastDepartmentId = departments[departments.length - 1]?.id
+      const firstNode = firstDepartmentId ? departmentNodeRefs.current[firstDepartmentId] : null
+      const lastNode = lastDepartmentId ? departmentNodeRefs.current[lastDepartmentId] : null
+      if (!row || !firstNode || !lastNode) {
+        setDepartmentLine({ left: 0, width: 0 })
+        return
+      }
+
+      const rowRect = row.getBoundingClientRect()
+      const firstRect = firstNode.getBoundingClientRect()
+      const lastRect = lastNode.getBoundingClientRect()
+      const left = firstRect.left + firstRect.width / 2 - rowRect.left
+      const right = lastRect.left + lastRect.width / 2 - rowRect.left
+      setDepartmentLine({
+        left: Math.max(0, left),
+        width: Math.max(0, right - left),
+      })
+    }
+
+    updateLine()
+    window.addEventListener('resize', updateLine)
+    return () => window.removeEventListener('resize', updateLine)
+  }, [activeTab, orgLoading, departments, teams])
+
+  useLayoutEffect(() => {
+    if (activeTab !== 'org' || orgLoading) {
+      setTeamLines({})
+      return
+    }
+
+    const updateTeamLines = () => {
+      const next: Record<string, { left: number; width: number }> = {}
+      const groups: Array<{ key: string; teamIds: number[] }> = [
+        ...departments.map((department) => ({
+          key: `dep-${department.id}`,
+          teamIds: (teamsByDepartmentId.get(department.id) || []).map((team) => team.id),
+        })),
+      ]
+      if (unassignedTeams.length > 0) {
+        groups.push({ key: 'dep-none', teamIds: unassignedTeams.map((team) => team.id) })
+      }
+
+      groups.forEach((group) => {
+        if (group.teamIds.length < 2) return
+        const row = teamRowRefs.current[group.key]
+        const firstNode = teamNodeRefs.current[group.teamIds[0]]
+        const lastNode = teamNodeRefs.current[group.teamIds[group.teamIds.length - 1]]
+        if (!row || !firstNode || !lastNode) return
+
+        const rowRect = row.getBoundingClientRect()
+        const firstRect = firstNode.getBoundingClientRect()
+        const lastRect = lastNode.getBoundingClientRect()
+        const left = firstRect.left + firstRect.width / 2 - rowRect.left
+        const right = lastRect.left + lastRect.width / 2 - rowRect.left
+        next[group.key] = {
+          left: Math.max(0, left),
+          width: Math.max(0, right - left),
+        }
+      })
+
+      setTeamLines(next)
+    }
+
+    updateTeamLines()
+    window.addEventListener('resize', updateTeamLines)
+    return () => window.removeEventListener('resize', updateTeamLines)
+  }, [activeTab, orgLoading, departments, teamsByDepartmentId, unassignedTeams])
+
+  const openCreateDrawer = (type: Exclude<DrawerType, null>) => {
+    setDrawerType(type)
+    setDrawerOpen(true)
+  }
+
+  const closeDrawer = () => {
+    setDrawerOpen(false)
+    setDrawerType(null)
+  }
 
   const handleToggle = (staffId: number, code: string, checked: boolean) => {
     setRows((prev) =>
@@ -133,7 +369,7 @@ export default function ClientAclMatrixPage() {
     )
   }
 
-  const handleSave = async (staffId: number) => {
+  const handleSaveAcl = async (staffId: number) => {
     const row = rows.find((item) => item.staff.id === staffId)
     if (!row) return
 
@@ -148,8 +384,8 @@ export default function ClientAclMatrixPage() {
 
     try {
       setRows((prev) => prev.map((item) => (item.staff.id === staffId ? { ...item, saving: true } : item)))
-      const res = await updateStaffPermissions(staffId, { items: changedItems })
-      toast.success(res.message || '권한이 저장되었습니다.')
+      const response = await updateStaffPermissions(staffId, { items: changedItems })
+      toast.success(response.message || '권한이 저장되었습니다.')
       setRows((prev) =>
         prev.map((item) =>
           item.staff.id === staffId
@@ -161,111 +397,1034 @@ export default function ClientAclMatrixPage() {
             : item
         )
       )
-    } catch (e: any) {
+    } catch (error: any) {
       setRows((prev) => prev.map((item) => (item.staff.id === staffId ? { ...item, saving: false } : item)))
-      const status = e?.response?.status
-      if (status === 403) {
-        toast.error('권한 없음')
+      if (error?.response?.status === 403) {
+        toast.error('권한이 없습니다.')
       } else {
-        toast.error(e?.response?.data?.detail || '권한 저장 중 오류가 발생했습니다.')
+        toast.error(getErrorMessage(error, '권한 저장 중 오류가 발생했습니다.'))
       }
     }
   }
 
-  if (loading) {
-    return (
-      <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
-        ACL 권한 정보를 불러오는 중...
-      </section>
-    )
+  const handleCreateDepartment = async () => {
+    if (!departmentName.trim()) {
+      toast.error('부서명을 입력해 주세요.')
+      return
+    }
+
+    try {
+      setDepartmentSubmitting(true)
+      await createDepartment({
+        name: departmentName.trim(),
+        description: departmentDescription.trim() || undefined,
+      })
+      toast.success('부서를 생성했습니다.')
+      setDepartmentName('')
+      setDepartmentDescription('')
+      closeDrawer()
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '부서 생성에 실패했습니다.'))
+    } finally {
+      setDepartmentSubmitting(false)
+    }
   }
 
-  if (error) {
+  const handleDeleteDepartment = async (departmentId: number) => {
+    if (!window.confirm('해당 부서를 삭제하시겠습니까?')) return
+    try {
+      await deleteDepartment(departmentId)
+      toast.success('부서를 삭제했습니다.')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '부서 삭제에 실패했습니다.'))
+    }
+  }
+
+  const handleMoveDepartment = async (departmentId: number, direction: 'up' | 'down') => {
+    const currentIndex = departments.findIndex((department) => department.id === departmentId)
+    if (currentIndex < 0) return
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= departments.length) return
+
+    const reordered = [...departments]
+    const [target] = reordered.splice(currentIndex, 1)
+    reordered.splice(nextIndex, 0, target)
+
+    try {
+      setDepartmentReordering(true)
+      await reorderDepartments({
+        items: reordered.map((department, index) => ({
+          department_id: department.id,
+          sort_order: index + 1,
+        })),
+      })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '부서 순서 변경에 실패했습니다.'))
+    } finally {
+      setDepartmentReordering(false)
+    }
+  }
+
+  const handleDropDepartment = async (targetDepartmentId: number) => {
+    if (!draggingDepartmentId || draggingDepartmentId === targetDepartmentId) {
+      setDraggingDepartmentId(null)
+      return
+    }
+    const currentIndex = departments.findIndex((department) => department.id === draggingDepartmentId)
+    const targetIndex = departments.findIndex((department) => department.id === targetDepartmentId)
+    if (currentIndex < 0 || targetIndex < 0) {
+      setDraggingDepartmentId(null)
+      return
+    }
+
+    const reordered = [...departments]
+    const [dragged] = reordered.splice(currentIndex, 1)
+    reordered.splice(targetIndex, 0, dragged)
+
+    try {
+      setDepartmentReordering(true)
+      await reorderDepartments({
+        items: reordered.map((department, index) => ({
+          department_id: department.id,
+          sort_order: index + 1,
+        })),
+      })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '부서 순서 변경에 실패했습니다.'))
+    } finally {
+      setDepartmentReordering(false)
+      setDraggingDepartmentId(null)
+    }
+  }
+
+  const handleStartEditDepartment = (department: DepartmentOut) => {
+    setEditingDepartmentId(department.id)
+    setEditingDepartmentName(department.name)
+  }
+
+  const handleSaveDepartmentName = async () => {
+    if (!editingDepartmentId) return
+    if (!editingDepartmentName.trim()) {
+      toast.error('부서명을 입력해 주세요.')
+      return
+    }
+    try {
+      setEditingDepartmentSaving(true)
+      await updateDepartment(editingDepartmentId, { name: editingDepartmentName.trim() })
+      toast.success('부서명이 수정되었습니다.')
+      setEditingDepartmentId(null)
+      setEditingDepartmentName('')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '부서명 수정에 실패했습니다.'))
+    } finally {
+      setEditingDepartmentSaving(false)
+    }
+  }
+
+  const handleCreateTeam = async () => {
+    if (!teamName.trim()) {
+      toast.error('팀명을 입력해 주세요.')
+      return
+    }
+
+    try {
+      setTeamSubmitting(true)
+      await createTeam({
+        name: teamName.trim(),
+        department_id: typeof teamDepartmentId === 'number' ? teamDepartmentId : undefined,
+        description: teamDescription.trim() || undefined,
+      })
+      toast.success('팀을 생성했습니다.')
+      setTeamName('')
+      setTeamDescription('')
+      setTeamDepartmentId('')
+      closeDrawer()
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀 생성에 실패했습니다.'))
+    } finally {
+      setTeamSubmitting(false)
+    }
+  }
+
+  const handleDeleteTeam = async (teamId: number) => {
+    if (!window.confirm('해당 팀을 삭제하시겠습니까?')) return
+    try {
+      await deleteTeam(teamId)
+      toast.success('팀을 삭제했습니다.')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀 삭제에 실패했습니다.'))
+    }
+  }
+
+  const handleMoveTeam = async (teamId: number, direction: 'up' | 'down') => {
+    const currentTeam = teams.find((team) => team.id === teamId)
+    if (!currentTeam) return
+    const departmentId = currentTeam.department_id ?? null
+    const siblingTeams = teams.filter((team) => (team.department_id ?? null) === departmentId)
+    const currentIndex = siblingTeams.findIndex((team) => team.id === teamId)
+    if (currentIndex < 0) return
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= siblingTeams.length) return
+
+    const reordered = [...siblingTeams]
+    const [target] = reordered.splice(currentIndex, 1)
+    reordered.splice(nextIndex, 0, target)
+
+    try {
+      setTeamReordering(true)
+      await reorderTeams({
+        items: reordered.map((team, index) => ({
+          team_id: team.id,
+          sort_order: index + 1,
+          department_id: team.department_id,
+        })),
+      })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀 순서 변경에 실패했습니다.'))
+    } finally {
+      setTeamReordering(false)
+    }
+  }
+
+  const handleDropTeam = async (targetTeamId: number, targetDepartmentId: number | null) => {
+    if (!draggingTeamId) return
+    const draggedTeam = teams.find((team) => team.id === draggingTeamId)
+    if (!draggedTeam || draggingTeamId === targetTeamId) {
+      setDraggingTeamId(null)
+      return
+    }
+
+    const sourceDepartmentId = draggedTeam.department_id ?? null
+    const targetDepartment = targetDepartmentId ?? null
+
+    const sourceTeams = teams.filter((team) => (team.department_id ?? null) === sourceDepartmentId && team.id !== draggingTeamId)
+    const targetTeamsBase =
+      sourceDepartmentId === targetDepartment
+        ? sourceTeams
+        : teams.filter((team) => (team.department_id ?? null) === targetDepartment)
+    const targetIndex = targetTeamsBase.findIndex((team) => team.id === targetTeamId)
+    if (targetIndex < 0) {
+      setDraggingTeamId(null)
+      return
+    }
+
+    const nextDragged: TeamOut = { ...draggedTeam, department_id: targetDepartment ?? undefined }
+    const targetTeams = [...targetTeamsBase]
+    targetTeams.splice(targetIndex, 0, nextDragged)
+
+    const payloadItems =
+      sourceDepartmentId === targetDepartment
+        ? targetTeams.map((team, index) => ({
+            team_id: team.id,
+            sort_order: index + 1,
+            department_id: team.department_id,
+          }))
+        : [
+            ...sourceTeams.map((team, index) => ({
+              team_id: team.id,
+              sort_order: index + 1,
+              department_id: sourceDepartmentId ?? undefined,
+            })),
+            ...targetTeams.map((team, index) => ({
+              team_id: team.id,
+              sort_order: index + 1,
+              department_id: targetDepartment ?? undefined,
+            })),
+          ]
+
+    try {
+      setTeamReordering(true)
+      await reorderTeams({ items: payloadItems })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀 순서 변경에 실패했습니다.'))
+    } finally {
+      setTeamReordering(false)
+      setDraggingTeamId(null)
+    }
+  }
+
+  const handleDropTeamToDepartmentEnd = async (targetDepartmentId: number | null) => {
+    if (!draggingTeamId) return
+    const draggedTeam = teams.find((team) => team.id === draggingTeamId)
+    if (!draggedTeam) {
+      setDraggingTeamId(null)
+      return
+    }
+
+    const sourceDepartmentId = draggedTeam.department_id ?? null
+    const targetDepartment = targetDepartmentId ?? null
+
+    const sourceTeams = teams.filter((team) => (team.department_id ?? null) === sourceDepartmentId && team.id !== draggingTeamId)
+    const targetTeamsBase =
+      sourceDepartmentId === targetDepartment
+        ? sourceTeams
+        : teams.filter((team) => (team.department_id ?? null) === targetDepartment)
+    const nextDragged: TeamOut = { ...draggedTeam, department_id: targetDepartment ?? undefined }
+    const targetTeams = [...targetTeamsBase, nextDragged]
+
+    const payloadItems =
+      sourceDepartmentId === targetDepartment
+        ? targetTeams.map((team, index) => ({
+            team_id: team.id,
+            sort_order: index + 1,
+            department_id: team.department_id,
+          }))
+        : [
+            ...sourceTeams.map((team, index) => ({
+              team_id: team.id,
+              sort_order: index + 1,
+              department_id: sourceDepartmentId ?? undefined,
+            })),
+            ...targetTeams.map((team, index) => ({
+              team_id: team.id,
+              sort_order: index + 1,
+              department_id: targetDepartment ?? undefined,
+            })),
+          ]
+
+    try {
+      setTeamReordering(true)
+      await reorderTeams({ items: payloadItems })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀 순서 변경에 실패했습니다.'))
+    } finally {
+      setTeamReordering(false)
+      setDraggingTeamId(null)
+    }
+  }
+
+  const handleStartEditTeam = (team: TeamOut) => {
+    setEditingTeamId(team.id)
+    setEditingTeamName(team.name)
+  }
+
+  const handleSaveTeamName = async () => {
+    if (!editingTeamId) return
+    if (!editingTeamName.trim()) {
+      toast.error('팀명을 입력해 주세요.')
+      return
+    }
+    try {
+      setEditingTeamSaving(true)
+      await updateTeam(editingTeamId, { name: editingTeamName.trim() })
+      toast.success('팀명이 수정되었습니다.')
+      setEditingTeamId(null)
+      setEditingTeamName('')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '팀명 수정에 실패했습니다.'))
+    } finally {
+      setEditingTeamSaving(false)
+    }
+  }
+
+  const handleCreateRole = async () => {
+    if (!roleName.trim()) {
+      toast.error('직위명을 입력해 주세요.')
+      return
+    }
+    const parsedRankOrder = Number(roleLevel)
+    if (!Number.isFinite(parsedRankOrder)) {
+      toast.error('순서는 숫자여야 합니다.')
+      return
+    }
+
+    try {
+      setRoleSubmitting(true)
+      await createRole({
+        name: roleName.trim(),
+        rank_order: parsedRankOrder,
+        level: parsedRankOrder,
+        description: roleDescription.trim() || undefined,
+      })
+      toast.success('직위를 생성했습니다.')
+      setRoleName('')
+      setRoleLevel('10')
+      setRoleDescription('')
+      closeDrawer()
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '직위 생성에 실패했습니다.'))
+    } finally {
+      setRoleSubmitting(false)
+    }
+  }
+
+  const handleDeleteRole = async (roleId: number) => {
+    if (!window.confirm('해당 직위를 삭제하시겠습니까?')) return
+    try {
+      await deleteRole(roleId)
+      toast.success('직위를 삭제했습니다.')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '직위 삭제에 실패했습니다.'))
+    }
+  }
+
+  const renderTeamNode = (team: TeamOut, departmentId: number | null) => {
+    const members = staffByTeamId.get(team.id) || []
     return (
-      <section className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">
-        {error}
-      </section>
+      <div
+        key={team.id}
+        className="flex shrink-0 flex-col items-center px-1.5"
+        ref={(node) => {
+          teamNodeRefs.current[team.id] = node
+        }}
+        onDragOver={(event) => {
+          if (!draggingTeamId) return
+          event.preventDefault()
+        }}
+        onDrop={(event) => {
+          if (!draggingTeamId) return
+          event.preventDefault()
+          void handleDropTeam(team.id, departmentId)
+        }}
+      >
+        <div className="h-3 w-[2px] bg-zinc-300" />
+        <div
+          draggable
+          onDragStart={() => setDraggingTeamId(team.id)}
+          onDragEnd={() => setDraggingTeamId(null)}
+          className="w-fit max-w-[320px] cursor-move rounded-md border border-zinc-200 bg-white px-3 py-2"
+        >
+          <p className="text-center text-sm font-semibold text-zinc-900">{team.name}</p>
+        </div>
+        <div className="h-3 w-px bg-zinc-300" />
+        <div className="w-fit max-w-[320px] rounded-md border border-zinc-200 bg-transparent p-2">
+          {members.length === 0 ? (
+            <p className="text-xs text-zinc-400">소속 직원 없음</p>
+          ) : (
+            <ul className="space-y-1">
+              {members.map((member) => (
+                <li key={member.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate text-zinc-700">{member.name}</span>
+                  <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">
+                    {member.role_id ? roleNameById.get(member.role_id) || '직위미정' : '직위미정'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     )
   }
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-900">ACL 권한 관리</h2>
-        <p className="mt-1 text-xs text-zinc-500">직원별 권한 매트릭스(행=직원, 열=권한)에서 전체/개별 체크 후 저장합니다.</p>
+    <section className="space-y-4">
+      <div className="rounded-lg border border-zinc-200 bg-white p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('org')}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'org'
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
+            >
+              조직도
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('acl')}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'acl'
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+              }`}
+            >
+              ACL 권한
+            </button>
+          </div>
+          {activeTab === 'org' ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openCreateDrawer('department')}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                부서관리
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateDrawer('team')}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                팀관리
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateDrawer('role')}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                직급관리
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-        <table className="min-w-[1100px] w-full border-collapse text-xs">
-          <thead>
-            <tr className="bg-zinc-50 text-zinc-700">
-              <th className="border border-zinc-200 px-3 py-2 text-left" rowSpan={2}>
-                직원
-              </th>
-              <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
-                전체
-              </th>
-              {groupedCodes.map(([group, groupCodes]) => (
-                <th key={group} className="border border-zinc-200 px-3 py-2 text-center" colSpan={groupCodes.length}>
-                  {group}
+      {activeTab === 'org' ? (
+        <section className="space-y-4">
+          <div className="flex justify-center">
+            <div className="inline-flex w-fit flex-col rounded-lg border border-zinc-200 bg-white px-4 py-3 text-center shadow-sm">
+              <p className="text-base font-semibold text-zinc-900">{companyName}</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                대표 <span className="font-medium text-zinc-900">{ownerName}</span>
+              </p>
+            </div>
+          </div>
+
+          {orgLoading ? (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-12 text-center text-sm text-zinc-500">조직도 조회 중...</div>
+          ) : departments.length === 0 && unassignedTeams.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-zinc-300 bg-white px-4 py-12 text-center">
+              <p className="text-sm font-medium text-zinc-700">아직 조직도가 없습니다.</p>
+              <p className="mt-1 text-xs text-zinc-500">상단 + 버튼으로 부서 또는 팀을 먼저 생성해 주세요.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {departments.length > 0 ? (
+                <div className="flex flex-col items-center">
+                  <div className="h-4 w-px bg-zinc-300" />
+                  <div className="relative inline-flex flex-col items-center">
+                    {departmentLine.width > 0 ? (
+                      <div
+                        className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                        style={{ left: `${departmentLine.left}px`, width: `${departmentLine.width}px` }}
+                      />
+                    ) : null}
+                    <div ref={departmentRowRef} className="flex flex-nowrap items-start gap-0">
+                      {departments.map((department) => {
+                        const departmentTeams = teamsByDepartmentId.get(department.id) || []
+                        return (
+                          <div
+                            key={department.id}
+                            className="flex shrink-0 flex-col items-center px-3"
+                            ref={(node) => {
+                              departmentNodeRefs.current[department.id] = node
+                            }}
+                            onDragOver={(event) => {
+                              if (!draggingDepartmentId && !draggingTeamId) return
+                              event.preventDefault()
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault()
+                              if (draggingDepartmentId) {
+                                void handleDropDepartment(department.id)
+                                return
+                              }
+                              if (draggingTeamId) {
+                                void handleDropTeamToDepartmentEnd(department.id)
+                              }
+                            }}
+                          >
+                            <div className="h-4 w-[2px] bg-zinc-300" />
+                            <div
+                              draggable
+                              onDragStart={() => setDraggingDepartmentId(department.id)}
+                              onDragEnd={() => setDraggingDepartmentId(null)}
+                              className="cursor-move rounded-md border border-zinc-200 bg-white px-4 py-2"
+                            >
+                              <p className="text-sm font-semibold text-zinc-900">{department.name}</p>
+                            </div>
+                            <div className="h-3 w-px bg-zinc-300" />
+                            {departmentTeams.length === 0 ? (
+                              <button
+                                type="button"
+                                className="rounded border border-dashed border-zinc-300 px-3 py-1 text-xs text-zinc-500"
+                                onDragOver={(event) => {
+                                  if (!draggingTeamId) return
+                                  event.preventDefault()
+                                }}
+                                onDrop={(event) => {
+                                  if (!draggingTeamId) return
+                                  event.preventDefault()
+                                  void handleDropTeamToDepartmentEnd(department.id)
+                                }}
+                              >
+                                부서 내 팀 없음
+                              </button>
+                            ) : (
+                              <div className="inline-flex flex-col items-center">
+                                <div
+                                  className="relative"
+                                  ref={(node) => {
+                                    teamRowRefs.current[`dep-${department.id}`] = node
+                                  }}
+                                  onDragOver={(event) => {
+                                    if (!draggingTeamId) return
+                                    event.preventDefault()
+                                  }}
+                                  onDrop={(event) => {
+                                    if (!draggingTeamId) return
+                                    event.preventDefault()
+                                    void handleDropTeamToDepartmentEnd(department.id)
+                                  }}
+                                >
+                                  {teamLines[`dep-${department.id}`]?.width ? (
+                                    <div
+                                      className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                                      style={{
+                                        left: `${teamLines[`dep-${department.id}`].left}px`,
+                                        width: `${teamLines[`dep-${department.id}`].width}px`,
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div className="flex flex-nowrap items-start gap-0">
+                                    {departmentTeams.map((team) => renderTeamNode(team, department.id))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {unassignedTeams.length > 0 ? (
+                <div className="pt-2">
+                  <p className="text-sm font-semibold text-zinc-900">미분류 팀</p>
+                  <div className="mt-3">
+                    <div
+                      className="relative flex flex-nowrap items-start gap-0"
+                      ref={(node) => {
+                        teamRowRefs.current['dep-none'] = node
+                      }}
+                      onDragOver={(event) => {
+                        if (!draggingTeamId) return
+                        event.preventDefault()
+                      }}
+                      onDrop={(event) => {
+                        if (!draggingTeamId) return
+                        event.preventDefault()
+                        void handleDropTeamToDepartmentEnd(null)
+                      }}
+                    >
+                      {teamLines['dep-none']?.width ? (
+                        <div
+                          className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                          style={{ left: `${teamLines['dep-none'].left}px`, width: `${teamLines['dep-none'].width}px` }}
+                        />
+                      ) : null}
+                      {unassignedTeams.map((team) => renderTeamNode(team, null))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+        </section>
+      ) : aclLoading ? (
+        <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
+          ACL 권한 정보를 불러오는 중...
+        </section>
+      ) : aclError ? (
+        <section className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">
+          {aclError}
+        </section>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+          <table className="min-w-[1100px] w-full border-collapse text-xs">
+            <thead>
+              <tr className="bg-zinc-50 text-zinc-700">
+                <th className="border border-zinc-200 px-3 py-2 text-left" rowSpan={2}>
+                  직원
                 </th>
-              ))}
-              <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
-                저장
-              </th>
-            </tr>
-            <tr className="bg-zinc-50 text-zinc-500">
-              {groupedCodes.flatMap(([_, groupCodes]) =>
-                groupCodes.map((code) => (
-                  <th key={code.code} className="border border-zinc-200 px-2 py-2 text-center whitespace-nowrap">
-                    {code.action_name}
+                <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
+                  전체
+                </th>
+                {groupedCodes.map(([group, groupCodes]) => (
+                  <th key={group} className="border border-zinc-200 px-3 py-2 text-center" colSpan={groupCodes.length}>
+                    {group}
                   </th>
-                ))
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const allChecked = codes.length > 0 && codes.every((code) => row.values[code.code])
-              const changed = hasChanges(row, codes)
-              return (
-                <tr key={row.staff.id} className="even:bg-zinc-50/50">
-                  <td className="border border-zinc-200 px-3 py-2 text-left text-zinc-800">
-                    {row.staff.name}
-                    <span className="ml-2 text-zinc-400">({row.staff.birth_date || '생일 미등록'})</span>
-                  </td>
-                  <td className="border border-zinc-200 px-3 py-2 text-center">
-                    <input
-                      type="checkbox"
-                      checked={allChecked}
-                      onChange={(e) => handleToggleAll(row.staff.id, e.target.checked)}
-                    />
-                  </td>
-                  {codes.map((code) => (
-                    <td key={`${row.staff.id}-${code.code}`} className="border border-zinc-200 px-2 py-2 text-center">
+                ))}
+                <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
+                  저장
+                </th>
+              </tr>
+              <tr className="bg-zinc-50 text-zinc-500">
+                {groupedCodes.flatMap(([_, groupCodes]) =>
+                  groupCodes.map((code) => (
+                    <th key={code.code} className="border border-zinc-200 px-2 py-2 text-center whitespace-nowrap">
+                      {code.action_name}
+                    </th>
+                  ))
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const allChecked = codes.length > 0 && codes.every((code) => row.values[code.code])
+                const changed = hasChanges(row, codes)
+                return (
+                  <tr key={row.staff.id} className="even:bg-zinc-50/50">
+                    <td className="border border-zinc-200 px-3 py-2 text-left text-zinc-800">
+                      {row.staff.name}
+                      <span className="ml-2 text-zinc-400">({row.staff.birth_date || '생일 미등록'})</span>
+                    </td>
+                    <td className="border border-zinc-200 px-3 py-2 text-center">
                       <input
                         type="checkbox"
-                        checked={Boolean(row.values[code.code])}
-                        onChange={(e) => handleToggle(row.staff.id, code.code, e.target.checked)}
+                        checked={allChecked}
+                        onChange={(e) => handleToggleAll(row.staff.id, e.target.checked)}
                       />
                     </td>
-                  ))}
-                  <td className="border border-zinc-200 px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      disabled={!changed || row.saving}
-                      onClick={() => void handleSave(row.staff.id)}
-                      className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-                    >
-                      {row.saving ? '저장중...' : '저장'}
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                    {codes.map((code) => (
+                      <td key={`${row.staff.id}-${code.code}`} className="border border-zinc-200 px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(row.values[code.code])}
+                          onChange={(e) => handleToggle(row.staff.id, code.code, e.target.checked)}
+                        />
+                      </td>
+                    ))}
+                    <td className="border border-zinc-200 px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        disabled={!changed || row.saving}
+                        onClick={() => void handleSaveAcl(row.staff.id)}
+                        className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                      >
+                        {row.saving ? '저장중...' : '저장'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {drawerOpen ? (
+        <div className="fixed inset-0 z-40 bg-black/25">
+          <div className="absolute inset-y-0 left-0 w-full max-w-md overflow-y-auto border-r border-zinc-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">
+                  {drawerType === 'department'
+                    ? '부서 관리'
+                    : drawerType === 'team'
+                      ? '팀 관리'
+                      : drawerType === 'role'
+                        ? '직급 관리'
+                        : '조직도 추가'}
+                </p>
+                <p className="text-xs text-zinc-500">입력 후 바로 아래 리스트에서 현재 항목을 확인하고 삭제할 수 있습니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDrawer}
+                className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              {drawerType === 'department' ? (
+                <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                  <p className="text-sm font-medium text-zinc-800">부서 관리</p>
+                  <input
+                    value={departmentName}
+                    onChange={(e) => setDepartmentName(e.target.value)}
+                    placeholder="부서명"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <input
+                    value={departmentDescription}
+                    onChange={(e) => setDepartmentDescription(e.target.value)}
+                    placeholder="설명(선택)"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateDepartment}
+                    disabled={departmentSubmitting}
+                    className="h-9 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    {departmentSubmitting ? '생성 중...' : '부서 생성'}
+                  </button>
+                  <div className="mt-3 rounded-md border border-zinc-200 bg-white">
+                    <ul className="max-h-64 divide-y divide-zinc-200 overflow-y-auto">
+                      {departments.length === 0 ? (
+                        <li className="px-3 py-4 text-center text-xs text-zinc-500">등록된 부서가 없습니다.</li>
+                      ) : (
+                        departments.map((department, index) => (
+                          <li key={department.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            {editingDepartmentId === department.id ? (
+                              <>
+                                <input
+                                  value={editingDepartmentName}
+                                  onChange={(e) => setEditingDepartmentName(e.target.value)}
+                                  className="h-8 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+                                />
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={editingDepartmentSaving}
+                                    onClick={handleSaveDepartmentName}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={editingDepartmentSaving}
+                                    onClick={() => {
+                                      setEditingDepartmentId(null)
+                                      setEditingDepartmentName('')
+                                    }}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="truncate text-xs text-zinc-700">{department.name}</span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={departmentReordering || index === 0}
+                                    onClick={() => handleMoveDepartment(department.id, 'up')}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={departmentReordering || index === departments.length - 1}
+                                    onClick={() => handleMoveDepartment(department.id, 'down')}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditDepartment(department)}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDepartment(department.id)}
+                                    className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+
+              {drawerType === 'team' ? (
+                <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                  <p className="text-sm font-medium text-zinc-800">팀 관리</p>
+                  <input
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="팀명"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <select
+                    value={teamDepartmentId}
+                    onChange={(e) => setTeamDepartmentId(e.target.value ? Number(e.target.value) : '')}
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  >
+                    <option value="">부서 미지정</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={teamDescription}
+                    onChange={(e) => setTeamDescription(e.target.value)}
+                    placeholder="설명(선택)"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateTeam}
+                    disabled={teamSubmitting}
+                    className="h-9 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    {teamSubmitting ? '생성 중...' : '팀 생성'}
+                  </button>
+                  <div className="mt-3 rounded-md border border-zinc-200 bg-white">
+                    <ul className="max-h-64 divide-y divide-zinc-200 overflow-y-auto">
+                      {teams.length === 0 ? (
+                        <li className="px-3 py-4 text-center text-xs text-zinc-500">등록된 팀이 없습니다.</li>
+                      ) : (
+                        teams.map((team) => {
+                          const siblingTeams = teams.filter(
+                            (item) => (item.department_id ?? null) === (team.department_id ?? null)
+                          )
+                          const siblingIndex = siblingTeams.findIndex((item) => item.id === team.id)
+                          return (
+                          <li key={team.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            {editingTeamId === team.id ? (
+                              <>
+                                <input
+                                  value={editingTeamName}
+                                  onChange={(e) => setEditingTeamName(e.target.value)}
+                                  className="h-8 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+                                />
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={editingTeamSaving}
+                                    onClick={handleSaveTeamName}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={editingTeamSaving}
+                                    onClick={() => {
+                                      setEditingTeamId(null)
+                                      setEditingTeamName('')
+                                    }}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="truncate text-xs text-zinc-700">
+                                  {team.name}
+                                  {team.department?.name ? ` (${team.department.name})` : ''}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={teamReordering || siblingIndex === 0}
+                                    onClick={() => handleMoveTeam(team.id, 'up')}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={teamReordering || siblingIndex === siblingTeams.length - 1}
+                                    onClick={() => handleMoveTeam(team.id, 'down')}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditTeam(team)}
+                                    className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTeam(team.id)}
+                                    className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        )})
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+
+              {drawerType === 'role' ? (
+                <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                  <p className="text-sm font-medium text-zinc-800">직위 관리</p>
+                  <input
+                    value={roleName}
+                    onChange={(e) => setRoleName(e.target.value)}
+                    placeholder="직위명"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <input
+                    type="number"
+                    value={roleLevel}
+                    onChange={(e) => setRoleLevel(e.target.value)}
+                    placeholder="순서"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <input
+                    value={roleDescription}
+                    onChange={(e) => setRoleDescription(e.target.value)}
+                    placeholder="설명(선택)"
+                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateRole}
+                    disabled={roleSubmitting}
+                    className="h-9 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    {roleSubmitting ? '생성 중...' : '직위 생성'}
+                  </button>
+                  <div className="mt-3 rounded-md border border-zinc-200 bg-white">
+                    <ul className="max-h-64 divide-y divide-zinc-200 overflow-y-auto">
+                      {roles.length === 0 ? (
+                        <li className="px-3 py-4 text-center text-xs text-zinc-500">등록된 직급이 없습니다.</li>
+                      ) : (
+                        roles.map((role) => (
+                          <li key={role.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            <span className="truncate text-xs text-zinc-700">
+                              {role.name} (순서 {getRoleRank(role)})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRole(role.id)}
+                              className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                            >
+                              삭제
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 export default function ClientManagementLayout({
   children,
@@ -11,7 +12,7 @@ export default function ClientManagementLayout({
 }) {
   const router = useRouter()
   const { session, loading } = useClientSessionContext()
-  const allowed = session?.role_level === 0
+  const allowed = getClientRoleRank(session) === 0
 
   useEffect(() => {
     if (loading) return

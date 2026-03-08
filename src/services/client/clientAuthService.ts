@@ -5,6 +5,13 @@ const CLIENT_AUTH_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/auth`
 
 function parseClientSession(data: unknown): ClientSession {
   const session = data as Partial<ClientSession> | null
+  const rankOrder =
+    typeof session?.rank_order === 'number'
+      ? session.rank_order
+      : typeof session?.role_level === 'number'
+        ? session.role_level
+        : null
+
   if (
     !session ||
     typeof session.account_id !== 'number' ||
@@ -14,7 +21,7 @@ function parseClientSession(data: unknown): ClientSession {
     typeof session.is_active !== 'boolean' ||
     typeof session.role_template_id !== 'number' ||
     typeof session.role_code !== 'string' ||
-    typeof session.role_level !== 'number'
+    typeof rankOrder !== 'number'
   ) {
     throw new Error('클라이언트 세션 응답 형식이 올바르지 않습니다.')
   }
@@ -25,7 +32,11 @@ function parseClientSession(data: unknown): ClientSession {
   ) {
     throw new Error('클라이언트 세션 응답 형식이 올바르지 않습니다.')
   }
-  return session as ClientSession
+  return {
+    ...(session as ClientSession),
+    role_level: rankOrder,
+    rank_order: rankOrder,
+  }
 }
 
 export async function clientLogin(data: ClientLoginRequest): Promise<{ access_token: string; session?: ClientSession }> {

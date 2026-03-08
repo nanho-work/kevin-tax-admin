@@ -8,6 +8,12 @@ import type { ClientAccountOut } from '@/types/clientAccount'
 import { inputClass, statusMessage } from './constants'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 
+function getRankOrder(row: ClientAccountOut): number | null {
+  if (typeof row.rank_order === 'number') return row.rank_order
+  if (typeof row.role_level === 'number') return row.role_level
+  return null
+}
+
 export default function ClientAccountListSection() {
   const [rows, setRows] = useState<ClientAccountOut[]>([])
   const [clientNameMap, setClientNameMap] = useState<Record<number, string>>({})
@@ -100,7 +106,7 @@ export default function ClientAccountListSection() {
               <th className="px-3 py-3 text-left">login_id</th>
               <th className="px-3 py-3 text-left">name</th>
               <th className="px-3 py-3 text-left">role_code</th>
-              <th className="px-3 py-3 text-right">role_level</th>
+              <th className="px-3 py-3 text-right">rank_order</th>
               <th className="px-3 py-3 text-center">활성</th>
               <th className="px-3 py-3 text-center">작업</th>
             </tr>
@@ -125,7 +131,7 @@ export default function ClientAccountListSection() {
                   <td className="px-3 py-3 text-left">{row.login_id}</td>
                   <td className="px-3 py-3 text-left">{row.name}</td>
                   <td className="px-3 py-3 text-left">{row.role_code}</td>
-                  <td className="px-3 py-3 text-right">{row.role_level ?? '-'}</td>
+                  <td className="px-3 py-3 text-right">{getRankOrder(row) ?? '-'}</td>
                   <td className="px-3 py-3 text-center">{row.is_active ? '활성' : '비활성'}</td>
                   <td className="px-3 py-3 text-center">
                     {row.is_active ? (

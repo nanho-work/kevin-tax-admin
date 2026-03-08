@@ -46,6 +46,23 @@ export async function updateClientStaff(
   return res.data
 }
 
+export async function patchClientStaffTeam(
+  adminId: number,
+  teamId: number | null
+): Promise<{ message: string }> {
+  const res = await clientHttp.patch(`${CLIENT_STAFF_BASE}/${adminId}/team`, {
+    team_id: teamId,
+  })
+  return res.data
+}
+
+export async function patchClientStaffTeamsBulk(
+  items: Array<{ admin_id: number; team_id: number | null }>
+): Promise<{ message: string }> {
+  const res = await clientHttp.patch(`${CLIENT_STAFF_BASE}/teams/bulk`, { items })
+  return res.data
+}
+
 export async function deactivateClientStaff(
   id: number
 ): Promise<{ message: string }> {

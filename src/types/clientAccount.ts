@@ -5,6 +5,7 @@ export interface ClientAccountOut {
   role_template_id: number;
   role_code: string;
   role_level?: number;
+  rank_order?: number;
   role_name?: string;
   name: string;
   email?: string | null;

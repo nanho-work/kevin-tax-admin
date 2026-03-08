@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getRoles } from '@/services/client/roleService';
 import type { RoleOut } from '@/types/role';
 import RoleDeleteButton from './RoleDeleteButton';
+import { getRoleRank } from '@/utils/roleRank';
 
 function statusMessage(status?: number): string {
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
@@ -63,12 +64,13 @@ export default function RoleList({ adminLevel }: { adminLevel: number }) {
             </tr>
           ) : (
             roles.map((role) => {
-              const canDelete = role.level >= 2 && (adminLevel === 0 || adminLevel === 1);
+              const rank = getRoleRank(role);
+              const canDelete = rank >= 2 && (adminLevel === 0 || adminLevel === 1);
               return (
                 <tr key={role.id}>
                   <td className="px-3 py-3 text-right">{role.id}</td>
                   <td className="px-3 py-3 text-left">{role.name}</td>
-                  <td className="px-3 py-3 text-right">{role.level}</td>
+                  <td className="px-3 py-3 text-right">{rank}</td>
                   <td className="px-3 py-3 text-left">{role.description || '-'}</td>
                   <td className="px-3 py-3 text-center">
                     {canDelete ? (
