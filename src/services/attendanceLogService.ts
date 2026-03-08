@@ -45,13 +45,13 @@ export async function getAttendanceLogs(params: {
   keyword?: string
 }): Promise <AttendanceLogListResponse> {
   const token = localStorage.getItem('admin_access_token')
+  const { admin_id: _ignoredAdminId, ...safeParams } = params
   const res = await axios.get(`${BASE}/logs`, {
-    params,
+    params: safeParams,
     headers: {
       Authorization: `Bearer ${token}`,
     },
   })
   return res.data
 }
-
 

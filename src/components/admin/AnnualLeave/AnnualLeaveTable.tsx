@@ -61,6 +61,10 @@ export default function AnnualLeaveTable() {
         })
         setLeaves(res.items || [])
         setTotal(res.total || 0)
+      } catch (error) {
+        console.error('연차 내역 조회 실패:', error)
+        setLeaves([])
+        setTotal(0)
       } finally {
         setLoading(false)
       }

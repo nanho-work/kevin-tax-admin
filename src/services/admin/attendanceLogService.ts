@@ -43,8 +43,9 @@ export async function getAttendanceLogs(params: {
   date_to?: string
   keyword?: string
 }): Promise <AttendanceLogListResponse> {
+  const { admin_id: _ignoredAdminId, ...safeParams } = params
   const res = await http.get(`${BASE}/logs`, {
-    params,
+    params: safeParams,
     headers: authHeaders(),
   })
   return res.data

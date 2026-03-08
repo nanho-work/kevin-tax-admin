@@ -137,7 +137,6 @@ export default function AdminAttendancePage() {
         const { startText, endText } = getMonthBounds(selectedMonth)
         const [attendanceRes, leaveRes] = await Promise.all([
           getAttendanceLogs({
-            admin_id: sessionAccountId,
             offset: 0,
             limit: 200,
             date_from: startText,

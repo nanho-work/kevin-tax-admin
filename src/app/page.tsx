@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { checkAdminSession } from '@/services/admin/adminService'
 import { checkClientSession } from '@/services/client/clientAuthService'
-import { clearAllAccessTokens } from '@/services/http'
+import { clearAllAccessTokens, getAdminAccessToken, getClientAccessToken } from '@/services/http'
 
 export default function Home() {
   const router = useRouter()
@@ -12,21 +12,25 @@ export default function Home() {
 
   useEffect(() => {
     const verify = async () => {
-      try {
-        await checkAdminSession()
-        router.replace('/admin/dashboard')
-        return
-      } catch {}
-
-      try {
-        await checkClientSession()
-        router.replace('/client/dashboard')
-      } catch {
-        clearAllAccessTokens()
-        router.replace('/login')
-      } finally {
-        setChecking(false)
+      if (getAdminAccessToken()) {
+        try {
+          await checkAdminSession()
+          router.replace('/admin/dashboard')
+          return
+        } catch {}
       }
+
+      if (getClientAccessToken()) {
+        try {
+          await checkClientSession()
+          router.replace('/client/dashboard')
+          return
+        } catch {}
+      }
+
+      clearAllAccessTokens()
+      router.replace('/login')
+      setChecking(false)
     }
 
     verify()

@@ -358,6 +358,11 @@ export default function AdminPersonalDocumentPage() {
     }
   }
 
+  const handleCancelProfileImagePreview = () => {
+    setProfileImageFile(null)
+    setProfileImagePreviewUrl((session as any)?.profile_image_url || '/default-profile.png')
+  }
+
   const handleSaveSensitiveProfile = async () => {
     try {
       setSavingSensitive(true)
@@ -391,45 +396,56 @@ export default function AdminPersonalDocumentPage() {
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-zinc-200 bg-white p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-zinc-900">프로필</h1>
-            <p className="mt-1 text-sm text-zinc-500">비밀번호 변경과 개인서류(신분증/통장사본) 관리를 한 곳에서 처리합니다.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsPasswordPanelOpen(true)}
-            className="inline-flex h-10 items-center rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 transition hover:bg-zinc-50"
-          >
-            비밀번호 변경
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-zinc-200 bg-white p-5">
-        {sessionLoading ? (
-          <p className="text-sm text-zinc-500">불러오는 중...</p>
-        ) : !session ? (
+        {!session ? (
           <p className="text-sm text-rose-600">세션 정보를 불러오지 못했습니다.</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[96px_1fr]">
             <div className="flex flex-col items-center gap-2 md:items-start">
-              <p className="text-xs font-medium text-zinc-500">기본정보</p>
               <div className="relative h-24 w-24">
                 <img
                   src={profileImagePreviewUrl}
                   alt="프로필"
                   className="h-24 w-24 rounded-full border border-zinc-200 object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => profileImageInputRef.current?.click()}
-                  disabled={isOptimizingImage}
-                  className="absolute -bottom-1 -right-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-[10px] text-zinc-700 shadow-sm hover:bg-zinc-50"
-                  aria-label="프로필 이미지 선택"
-                >
-                  <Camera size={14} />
-                </button>
+                {profileImageFile ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveProfileImage()}
+                      disabled={isOptimizingImage}
+                      className="absolute -bottom-1 -left-1 inline-flex h-7 items-center justify-center rounded-full border border-neutral-900 bg-neutral-900 px-2 text-[10px] font-medium text-white shadow-sm transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isOptimizingImage ? '저장중' : '등록'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelProfileImagePreview}
+                      disabled={isOptimizingImage}
+                      className="absolute -bottom-1 -right-1 inline-flex h-7 items-center justify-center rounded-full border border-zinc-300 bg-white px-2 text-[10px] font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      취소
+                    </button>
+                  </>
+                ) : (session as any)?.profile_image_url ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteProfileImage()}
+                    disabled={isOptimizingImage}
+                    className="absolute -bottom-1 -right-1 inline-flex h-7 items-center justify-center rounded-full border border-rose-300 bg-rose-50 px-2 text-[10px] font-medium text-rose-700 shadow-sm transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    삭제
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => profileImageInputRef.current?.click()}
+                    disabled={isOptimizingImage}
+                    className="absolute -bottom-1 -right-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-[10px] text-zinc-700 shadow-sm hover:bg-zinc-50"
+                    aria-label="프로필 이미지 선택"
+                  >
+                    <Camera size={14} />
+                  </button>
+                )}
                 <input
                   ref={profileImageInputRef}
                   type="file"
@@ -457,61 +473,49 @@ export default function AdminPersonalDocumentPage() {
                 />
               </div>
               {isOptimizingImage ? <p className="text-xs text-zinc-500">이미지를 최적화하는 중입니다...</p> : null}
-              {profileImageFile ? (
-                <>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div>
+                  <p className="text-xs text-zinc-500">이름</p>
+                  <p className="mt-1 text-sm text-zinc-900">{session.name || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500">이메일</p>
+                  <p className="mt-1 text-sm text-zinc-900">{session.email || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500">입사일</p>
+                  <p className="mt-1 text-sm text-zinc-900">{formatDate(session.hired_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500">부서/소속</p>
+                  <p className="mt-1 text-sm text-zinc-900">{session.team?.name || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500">직급</p>
+                  <p className="mt-1 text-sm text-zinc-900">{session.role?.name || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500">생년월일</p>
+                  <p className="mt-1 text-sm text-zinc-900">{formatDate(session.birth_date)}</p>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() => void handleSaveProfileImage()}
-                    disabled={isOptimizingImage}
-                    className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => setIsPasswordPanelOpen(true)}
+                    className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50"
                   >
-                    {isOptimizingImage ? '저장 중...' : '저장'}
+                    비밀번호 변경
                   </button>
-                  <p className="text-xs text-zinc-500">
-                    선택 파일: {profileImageFile.name} ({(profileImageFile.size / 1024).toFixed(0)}KB)
-                  </p>
-                </>
-              ) : null}
-              {!profileImageFile && (session as any)?.profile_image_url ? (
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteProfileImage()}
-                  className="inline-flex h-8 items-center rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
-                >
-                  이미지 삭제
-                </button>
-              ) : null}
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-zinc-500">이름</p>
-                <p className="mt-1 text-sm text-zinc-900">{session.name || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">이메일</p>
-                <p className="mt-1 text-sm text-zinc-900">{session.email || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">연락처</p>
-                <p className="mt-1 text-sm text-zinc-900">{session.phone || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">입사일</p>
-                <p className="mt-1 text-sm text-zinc-900">{formatDate(session.hired_at)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">생년월일</p>
-                <p className="mt-1 text-sm text-zinc-900">{formatDate(session.birth_date)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">소속 팀 / 직급</p>
-                <p className="mt-1 text-sm text-zinc-900">
-                  {session.team?.name || '-'} / {session.role?.name || '-'}
-                </p>
+                </div>
               </div>
             </div>
           </div>
         )}
+        {sessionLoading && session ? <p className="mt-3 text-xs text-zinc-400">세션 동기화 중...</p> : null}
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-5">

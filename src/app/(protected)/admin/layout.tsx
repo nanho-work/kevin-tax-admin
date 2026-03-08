@@ -44,7 +44,7 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, session, router])
 
-  if (loading || !session) {
+  if (!session) {
     return (
       <p className="text-center mt-20 text-gray-500">인증 확인 중...</p>
     )

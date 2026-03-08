@@ -1,8 +1,8 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { checkClientSession } from '@/services/client/clientAuthService'
-import { clearClientAccessToken, getClientAccessTokenExpiryMs } from '@/services/http'
+import { clearClientAccessToken, getClientAccessToken, getClientAccessTokenExpiryMs } from '@/services/http'
 import type { ClientSession } from '@/types/clientAuth'
 
 interface ClientSessionContextValue {
@@ -18,10 +18,21 @@ export function ClientSessionProvider({ children }: { children: React.ReactNode 
   const [session, setSession] = useState<ClientSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
+  const initializedRef = useRef(false)
 
   const refresh = useCallback(async () => {
+    const token = getClientAccessToken()
+    if (!token) {
+      setSession(null)
+      setError(null)
+      setLoading(false)
+      initializedRef.current = true
+      return
+    }
+
+    const shouldBlock = !initializedRef.current
     try {
-      setLoading(true)
+      if (shouldBlock) setLoading(true)
       setError(null)
       const data = await checkClientSession()
       setSession(data)
@@ -33,29 +44,15 @@ export function ClientSessionProvider({ children }: { children: React.ReactNode 
       }
       setError(err)
     } finally {
-      setLoading(false)
+      if (shouldBlock) {
+        setLoading(false)
+        initializedRef.current = true
+      }
     }
   }, [])
 
   useEffect(() => {
     refresh()
-  }, [refresh])
-
-  useEffect(() => {
-    const handleFocus = () => {
-      void refresh()
-    }
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void refresh()
-      }
-    }
-    window.addEventListener('focus', handleFocus)
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-      document.removeEventListener('visibilitychange', handleVisibility)
-    }
   }, [refresh])
 
   useEffect(() => {

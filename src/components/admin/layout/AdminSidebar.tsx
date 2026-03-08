@@ -120,7 +120,9 @@ export default function Sidebar() {
         return
       }
 
-      setLoading(true)
+      if (!user) {
+        setLoading(true)
+      }
       setErrorMessage(null)
       setUser({
         id: sessionAccountId,
@@ -139,7 +141,7 @@ export default function Sidebar() {
 
       try {
         const today = format(new Date(), 'yyyy-MM-dd')
-        const attendanceRes = await getAttendanceLogs({ admin_id: sessionAccountId, date_to: today })
+        const attendanceRes = await getAttendanceLogs({ date_to: today, limit: 1, offset: 0 })
         const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
 
         if (todayCheckIn) {
@@ -197,7 +199,7 @@ export default function Sidebar() {
     <aside className="h-full w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-5 py-4">
         <p className="text-xs text-neutral-500">{sidebarTitle}</p>
-        {loading ? (
+        {!user && loading ? (
           <>
             <div className="mt-2 h-4 w-36 animate-pulse rounded bg-neutral-100" />
             <div className="mt-2 h-3 w-40 animate-pulse rounded bg-neutral-100" />
