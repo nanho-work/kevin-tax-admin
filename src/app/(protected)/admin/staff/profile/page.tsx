@@ -1,5 +1,5 @@
 import AdminPersonalDocumentPage from '@/components/admin/staff/AdminPersonalDocumentPage'
 
-export default function AdminAccountPage() {
+export default function AdminStaffProfilePage() {
   return <AdminPersonalDocumentPage />
 }

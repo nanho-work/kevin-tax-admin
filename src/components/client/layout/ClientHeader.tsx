@@ -23,6 +23,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/bookkeeping/debits/upload')) return { parent: '기장 관리', child: '자동이체 업로드' }
   if (pathname.startsWith('/client/bookkeeping/debits')) return { parent: '기장 관리', child: '입금내역' }
   if (pathname.startsWith('/client/staff/register')) return { parent: '인사관리', child: '직원등록' }
+  if (pathname.startsWith('/client/staff/signup-requests')) return { parent: '인사관리', child: '직원가입신청' }
   if (pathname.startsWith('/client/staff/profile-status')) return { parent: '인사관리', child: '직원정보수정/재직상태' }
   if (pathname.startsWith('/client/staff/leave')) return { parent: '인사관리', child: '직원휴가관리' }
   if (pathname.startsWith('/client/staff/approvals/documents')) return { parent: '인사관리', child: '결재 문서 승인' }

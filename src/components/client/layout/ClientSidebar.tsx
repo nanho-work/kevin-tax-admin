@@ -19,6 +19,7 @@ const companyManagementMenus = [
 
 const staffManagementMenus = [
   { label: '직원목록/검색', href: '/client/staff' },
+  { label: '직원가입신청', href: '/client/staff/signup-requests' },
   { label: '직원휴가관리', href: '/client/staff/leave' },
   { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
   { label: '권한/조직배치', href: '/client/staff/organization' },

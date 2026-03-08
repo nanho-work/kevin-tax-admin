@@ -39,10 +39,10 @@ const menuSections: MenuSection[] = [
     label: '마이페이지',
     children: [
       { label: '내휴가관리', href: '/admin/staff/my-leave' },
+      { label: '프로필', href: '/admin/staff/profile' },
       { label: '내 결재문서', href: '/admin/staff/documents' },
       { label: '문서작성', href: '/admin/staff/documents/new' },
       { label: '출퇴근 관리', href: '/admin/staff/attendance' },
-      { label: '비밀번호 관리', href: '/admin/staff/account' },
     ],
   },
   {

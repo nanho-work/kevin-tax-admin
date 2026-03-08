@@ -8,7 +8,6 @@ import {
     deactivateClientStaff,
 } from '@/services/client/clientStaffService'
 import StaffDetailModal from './StaffDetailModal'
-import StaffForm from './StaffForm'
 
 export default function StaffTable({ canManage = false }: { canManage?: boolean }) {
     const inputClass =
@@ -22,7 +21,6 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
     const limit = 10
 
     const [selectedStaff, setSelectedStaff] = useState<AdminOut | null>(null)
-    const [showCreatePanel, setShowCreatePanel] = useState(false)
 
     const visibleStaffs = staffs.filter((staff) => (showInactive ? !staff.is_active : staff.is_active))
 
@@ -75,15 +73,6 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                     />
                     <div aria-hidden="true" />
                     <div className="flex items-center justify-end gap-2">
-                        {canManage ? (
-                            <button
-                                type="button"
-                                onClick={() => setShowCreatePanel(true)}
-                                className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
-                            >
-                                직원등록
-                            </button>
-                        ) : null}
                         <button
                             type="button"
                             onClick={() => {
@@ -239,22 +228,6 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                 }}
               />
             )}
-            {canManage && showCreatePanel ? (
-              <div className="fixed inset-0 z-40 bg-black/30">
-                <div className="absolute inset-y-0 right-0 w-full max-w-2xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 p-4 shadow-2xl">
-                  <StaffForm
-                    title="직원 등록"
-                    onCancel={() => setShowCreatePanel(false)}
-                    onSuccess={async () => {
-                      setShowCreatePanel(false)
-                      setShowInactive(false)
-                      setPage(1)
-                      await loadStaffs(1, keyword)
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
         </section>
     )
 }

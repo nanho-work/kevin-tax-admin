@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
@@ -141,6 +142,11 @@ export default function LoginForm() {
         {/* ✅ 안내 문구 */}
         <p className="text-xs text-center text-gray-500 mt-4">
           일반 직원 전용 페이지입니다
+        </p>
+        <p className="mt-2 text-center text-sm">
+          <Link href="/login/staff/signup" className="text-blue-700 hover:underline">
+            회원가입 신청
+          </Link>
         </p>
       </div>
     </section>

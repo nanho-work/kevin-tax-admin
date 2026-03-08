@@ -115,3 +115,21 @@ export async function changeAdminPassword(payload: {
   const res = await http.patch<{ message: string }>(`${ADMIN_AUTH_BASE}/password`, payload, authHeader())
   return res.data
 }
+
+export async function uploadMyProfileImage(file: File): Promise<{ message: string; profile_image_url?: string | null }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await http.put<{ message: string; profile_image_url?: string | null }>(`${ADMIN_AUTH_BASE}/me/profile-image`, formData, {
+    ...authHeader(),
+    headers: {
+      ...authHeader().headers,
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return res.data
+}
+
+export async function deleteMyProfileImage(): Promise<{ message: string }> {
+  const res = await http.delete<{ message: string }>(`${ADMIN_AUTH_BASE}/me/profile-image`, authHeader())
+  return res.data
+}
