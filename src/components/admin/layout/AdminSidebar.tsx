@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
+import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { logoutAdmin } from '@/services/admin/adminService'
 import { format } from 'date-fns'
 import { clearAdminAccessToken } from '@/services/http'
@@ -97,6 +98,10 @@ export default function Sidebar() {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [capabilities, setCapabilities] = useState({
+    canViewAttendance: true,
+    canViewLeave: true,
+  })
   const [currentTime, setCurrentTime] = useState<string>(() =>
     new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   )
@@ -108,6 +113,10 @@ export default function Sidebar() {
       if (!session) {
         setUser(null)
         setErrorMessage('사용자 정보를 불러오지 못했습니다.')
+        setCapabilities({
+          canViewAttendance: true,
+          canViewLeave: true,
+        })
         setLoading(false)
         return
       }
@@ -143,6 +152,7 @@ export default function Sidebar() {
         const today = format(new Date(), 'yyyy-MM-dd')
         const attendanceRes = await getAttendanceLogs({ date_to: today, limit: 1, offset: 0 })
         const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
+        setCapabilities((prev) => ({ ...prev, canViewAttendance: true }))
 
         if (todayCheckIn) {
           setUser((prev) =>
@@ -158,7 +168,25 @@ export default function Sidebar() {
           )
         }
       } catch (attendanceError) {
-        console.warn('근태 정보 조회 실패:', attendanceError)
+        const status = (attendanceError as any)?.response?.status
+        if (status === 403) {
+          setCapabilities((prev) => ({ ...prev, canViewAttendance: false }))
+        }
+        if (status !== 403) {
+          console.warn('근태 정보 조회 실패:', attendanceError)
+        }
+      }
+
+      try {
+        await fetchAnnualLeaves({ offset: 0, limit: 1 })
+        setCapabilities((prev) => ({ ...prev, canViewLeave: true }))
+      } catch (leaveError) {
+        const status = (leaveError as any)?.response?.status
+        if (status === 403) {
+          setCapabilities((prev) => ({ ...prev, canViewLeave: false }))
+        } else {
+          console.warn('연차 조회 권한 확인 실패:', leaveError)
+        }
       } finally {
         setLoading(false)
       }
@@ -260,6 +288,12 @@ export default function Sidebar() {
             const visibleChildren = section.children?.filter((child) => {
               if (child.href === '/admin/setting/role' && (user?.roleLevel ?? 99) >= 2) return false
               if (child.href === '/admin/companies/account' && !user) {
+                return false
+              }
+              if (child.href === '/admin/staff/attendance' && !capabilities.canViewAttendance) {
+                return false
+              }
+              if (child.href === '/admin/staff/my-leave' && !capabilities.canViewLeave) {
                 return false
               }
               return true

@@ -1,11 +1,42 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AnnualLeaveTable from '@/components/admin/AnnualLeave/AnnualLeaveTable'
 import AdminLeaveRequestPanel from '@/components/admin/staff/AdminLeaveRequestPanel'
+import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 
 export default function AdminMyLeavePage() {
   const [isRequestPanelOpen, setIsRequestPanelOpen] = useState(false)
+  const [leaveAccessStatus, setLeaveAccessStatus] = useState<'checking' | 'allowed' | 'forbidden'>('checking')
+
+  useEffect(() => {
+    const verifyLeaveAccess = async () => {
+      try {
+        await fetchAnnualLeaves({ offset: 0, limit: 1 })
+        setLeaveAccessStatus('allowed')
+      } catch (error) {
+        const status = (error as any)?.response?.status
+        setLeaveAccessStatus(status === 403 ? 'forbidden' : 'allowed')
+      }
+    }
+    void verifyLeaveAccess()
+  }, [])
+
+  if (leaveAccessStatus === 'checking') {
+    return (
+      <div className="rounded-xl border border-neutral-200 bg-white px-4 py-10 text-center text-sm text-neutral-500">
+        권한 확인 중...
+      </div>
+    )
+  }
+
+  if (leaveAccessStatus === 'forbidden') {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-10 text-center text-sm text-amber-700">
+        권한이 없습니다. 관리자에게 신청하세요.
+      </div>
+    )
+  }
 
   return (
     <section className="space-y-4">

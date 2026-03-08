@@ -111,6 +111,7 @@ export default function AdminAttendancePage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([])
   const [leaveRequests, setLeaveRequests] = useState<AnnualLeaveRequest[]>([])
   const [loading, setLoading] = useState(false)
+  const [attendanceForbidden, setAttendanceForbidden] = useState(false)
   const monthInputRef = useRef<HTMLInputElement | null>(null)
 
   const minMonth = useMemo(() => {
@@ -130,6 +131,7 @@ export default function AdminAttendancePage() {
 
   useEffect(() => {
     if (typeof sessionAccountId !== 'number') return
+    if (attendanceForbidden) return
 
     const fetchLogs = async () => {
       try {
@@ -154,6 +156,11 @@ export default function AdminAttendancePage() {
           (leaveRes.items || []).filter((request) => request.end_date >= startText && request.start_date <= endText)
         )
       } catch (error) {
+        const status = (error as any)?.response?.status
+        if (status === 403) {
+          setAttendanceForbidden(true)
+          return
+        }
         setLogs([])
         setLeaveRequests([])
         console.error('출퇴근 기록 조회 실패:', error)
@@ -163,7 +170,7 @@ export default function AdminAttendancePage() {
     }
 
     fetchLogs()
-  }, [selectedMonth, sessionAccountId])
+  }, [selectedMonth, sessionAccountId, attendanceForbidden])
 
   const logMap = useMemo(() => {
     return logs.reduce<Record<string, AttendanceLog>>((acc, log) => {
@@ -223,6 +230,14 @@ export default function AdminAttendancePage() {
 
   if (typeof sessionAccountId !== 'number') {
     return <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">사용자 정보를 확인할 수 없습니다.</div>
+  }
+
+  if (attendanceForbidden) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-10 text-center text-sm text-amber-700">
+        권한이 없습니다. 관리자에게 신청하세요.
+      </div>
+    )
   }
 
   return (

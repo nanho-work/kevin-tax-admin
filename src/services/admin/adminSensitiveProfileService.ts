@@ -1,6 +1,11 @@
 import type { AxiosError } from 'axios'
 import http, { getAdminAccessToken } from '@/services/http'
-import type { AdminSensitiveProfile, AdminSensitiveProfileUpsertPayload } from '@/types/adminSensitiveProfile'
+import type {
+  AdminSensitiveProfile,
+  AdminSensitiveProfileUpsertPayload,
+  AdminSensitiveRevealPayload,
+  AdminSensitiveRevealResponse,
+} from '@/types/adminSensitiveProfile'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/me/sensitive-profile`
 
@@ -34,5 +39,10 @@ export async function fetchMySensitiveProfile(): Promise<AdminSensitiveProfile> 
 
 export async function upsertMySensitiveProfile(payload: AdminSensitiveProfileUpsertPayload): Promise<AdminSensitiveProfile> {
   const res = await http.put<AdminSensitiveProfile>(BASE, payload, authHeader())
+  return res.data
+}
+
+export async function revealMySensitiveProfile(payload: AdminSensitiveRevealPayload): Promise<AdminSensitiveRevealResponse> {
+  const res = await http.post<AdminSensitiveRevealResponse>(`${BASE}/reveal`, payload, authHeader())
   return res.data
 }

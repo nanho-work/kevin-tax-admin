@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { changeAdminPassword, deleteMyProfileImage, uploadMyProfileImage } from '@/services/admin/adminService'
 import {
   fetchMySensitiveProfile,
   getAdminSensitiveProfileErrorMessage,
+  revealMySensitiveProfile,
   upsertMySensitiveProfile,
 } from '@/services/admin/adminSensitiveProfileService'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
@@ -145,6 +146,19 @@ export default function AdminPersonalDocumentPage() {
   const [sensitiveLoading, setSensitiveLoading] = useState(false)
   const [hasLoadedSensitive, setHasLoadedSensitive] = useState(false)
   const [savingSensitive, setSavingSensitive] = useState(false)
+  const [revealedSensitive, setRevealedSensitive] = useState<{
+    resident_number: string | null
+    account_number: string | null
+  }>({
+    resident_number: null,
+    account_number: null,
+  })
+  const [isSensitiveRevealPanelOpen, setIsSensitiveRevealPanelOpen] = useState(false)
+  const [sensitiveRevealTarget, setSensitiveRevealTarget] = useState<'resident_number' | 'account_number' | null>(null)
+  const [sensitiveRevealPassword, setSensitiveRevealPassword] = useState('')
+  const [sensitiveRevealReason, setSensitiveRevealReason] = useState('본인 확인')
+  const [showSensitiveRevealPassword, setShowSensitiveRevealPassword] = useState(false)
+  const [revealingSensitive, setRevealingSensitive] = useState(false)
   const [sensitiveForm, setSensitiveForm] = useState({
     resident_number: '',
     bank_name: '',
@@ -213,6 +227,10 @@ export default function AdminPersonalDocumentPage() {
       setSensitiveLoading(true)
       const profile = await fetchMySensitiveProfile()
       setSensitiveProfile(profile)
+      setRevealedSensitive({
+        resident_number: null,
+        account_number: null,
+      })
       setSensitiveForm((prev) => ({
         ...prev,
         bank_name: profile.bank_name || '',
@@ -379,6 +397,10 @@ export default function AdminPersonalDocumentPage() {
         reason: sensitiveForm.reason.trim() || undefined,
       })
       setSensitiveProfile(profile)
+      setRevealedSensitive({
+        resident_number: null,
+        account_number: null,
+      })
       setSensitiveForm((prev) => ({
         ...prev,
         resident_number: '',
@@ -392,6 +414,71 @@ export default function AdminPersonalDocumentPage() {
       setSavingSensitive(false)
     }
   }
+
+  const openSensitiveRevealPanel = (target: 'resident_number' | 'account_number') => {
+    setSensitiveRevealTarget(target)
+    setSensitiveRevealPassword('')
+    setSensitiveRevealReason('본인 확인')
+    setShowSensitiveRevealPassword(false)
+    setIsSensitiveRevealPanelOpen(true)
+  }
+
+  const closeSensitiveRevealPanel = () => {
+    setIsSensitiveRevealPanelOpen(false)
+    setSensitiveRevealTarget(null)
+    setSensitiveRevealPassword('')
+    setSensitiveRevealReason('본인 확인')
+    setShowSensitiveRevealPassword(false)
+  }
+
+  const hideRevealedSensitiveValue = (target: 'resident_number' | 'account_number') => {
+    setRevealedSensitive((prev) => ({ ...prev, [target]: null }))
+  }
+
+  const handleRevealSensitiveValue = async () => {
+    if (!sensitiveRevealTarget) {
+      toast.error('조회할 항목을 선택해 주세요.')
+      return
+    }
+    if (!sensitiveRevealPassword.trim()) {
+      toast.error('현재 비밀번호를 입력해 주세요.')
+      return
+    }
+
+    try {
+      setRevealingSensitive(true)
+      const result = await revealMySensitiveProfile({
+        account_password: sensitiveRevealPassword.trim(),
+        reason: sensitiveRevealReason.trim() || '본인 확인',
+        include_resident_number: sensitiveRevealTarget === 'resident_number',
+        include_account_number: sensitiveRevealTarget === 'account_number',
+      })
+
+      setRevealedSensitive((prev) => ({
+        ...prev,
+        resident_number:
+          sensitiveRevealTarget === 'resident_number'
+            ? result.resident_number || null
+            : prev.resident_number,
+        account_number:
+          sensitiveRevealTarget === 'account_number'
+            ? result.account_number || null
+            : prev.account_number,
+      }))
+
+      toast.success('평문 정보를 확인했습니다.')
+      closeSensitiveRevealPanel()
+    } catch (error) {
+      toast.error(getAdminSensitiveProfileErrorMessage(error))
+    } finally {
+      setRevealingSensitive(false)
+    }
+  }
+
+  const residentDisplayValue = revealedSensitive.resident_number || sensitiveProfile?.resident_number_masked || '-'
+  const accountDisplayValue = revealedSensitive.account_number || sensitiveProfile?.account_number_masked || '-'
+  const canRevealResident = Boolean(sensitiveProfile?.has_resident_number || sensitiveProfile?.resident_number_masked)
+  const canRevealAccount = Boolean(sensitiveProfile?.has_account_number || sensitiveProfile?.account_number_masked)
 
   return (
     <section className="space-y-4">
@@ -541,14 +628,54 @@ export default function AdminPersonalDocumentPage() {
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <p className="mb-1 text-xs text-zinc-500">주민번호(마스킹)</p>
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
-              {sensitiveProfile?.resident_number_masked || '-'}
+            <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+              <span>{residentDisplayValue}</span>
+              {revealedSensitive.resident_number ? (
+                <button
+                  type="button"
+                  onClick={() => hideRevealedSensitiveValue('resident_number')}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+                  aria-label="주민번호 가리기"
+                >
+                  <EyeOff size={14} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openSensitiveRevealPanel('resident_number')}
+                  disabled={!canRevealResident}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="주민번호 보기"
+                >
+                  <Eye size={14} />
+                </button>
+              )}
             </div>
           </div>
           <div>
             <p className="mb-1 text-xs text-zinc-500">계좌번호(마스킹)</p>
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
-              {sensitiveProfile?.account_number_masked || '-'}
+            <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+              <span>{accountDisplayValue}</span>
+              {revealedSensitive.account_number ? (
+                <button
+                  type="button"
+                  onClick={() => hideRevealedSensitiveValue('account_number')}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+                  aria-label="계좌번호 가리기"
+                >
+                  <EyeOff size={14} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openSensitiveRevealPanel('account_number')}
+                  disabled={!canRevealAccount}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="계좌번호 보기"
+                >
+                  <Eye size={14} />
+                </button>
+              )}
             </div>
           </div>
           <div>
@@ -733,6 +860,75 @@ export default function AdminPersonalDocumentPage() {
           </tbody>
         </table>
       </div>
+
+      {isSensitiveRevealPanelOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/30">
+          <div className="absolute inset-y-0 right-0 w-full max-w-md overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
+              <div>
+                <p className="text-base font-semibold text-zinc-900">민감정보 확인</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {sensitiveRevealTarget === 'resident_number' ? '주민번호' : '계좌번호'} 평문 조회를 위해 비밀번호를 입력해 주세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeSensitiveRevealPanel}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">현재 비밀번호</label>
+                <div className="relative">
+                  <input
+                    type={showSensitiveRevealPassword ? 'text' : 'password'}
+                    className={`${inputClass} pr-16`}
+                    value={sensitiveRevealPassword}
+                    onChange={(e) => setSensitiveRevealPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSensitiveRevealPassword((prev) => !prev)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50"
+                  >
+                    {showSensitiveRevealPassword ? '숨김' : '보기'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-600">조회 사유(선택)</label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={sensitiveRevealReason}
+                  onChange={(e) => setSensitiveRevealReason(e.target.value)}
+                  placeholder="본인 확인"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
+              <button
+                type="button"
+                onClick={closeSensitiveRevealPanel}
+                className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRevealSensitiveValue()}
+                disabled={revealingSensitive || !sensitiveRevealPassword.trim()}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
+              >
+                {revealingSensitive ? '확인 중...' : '확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isPasswordPanelOpen ? (
         <div className="fixed inset-0 z-50 bg-black/30">
