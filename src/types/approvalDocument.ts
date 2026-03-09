@@ -3,6 +3,7 @@ export type ApprovalDocumentType = 'leave' | 'equipment' | 'purchase' | 'report'
 
 export interface ApprovalDocument {
   id: number
+  document_no: string | null
   client_id: number
   writer_admin_id: number
   doc_type: ApprovalDocumentType | string
@@ -14,6 +15,8 @@ export interface ApprovalDocument {
   rejected_at: string | null
   canceled_at: string | null
   rejected_reason: string | null
+  locked_at: string | null
+  snapshot_file_key: string | null
   extra_json: Record<string, unknown> | null
   is_active: boolean
   created_at: string
@@ -34,11 +37,16 @@ export interface ApprovalApprover {
 
 export interface ApprovalAttachment {
   id: number
+  version_no: number
+  is_active: boolean
   file_name: string
   content_type: string | null
   file_size: number | null
+  uploaded_by_admin_id: number | null
   created_at: string
 }
+
+export type ApprovalAttachmentAction = 'download' | 'preview'
 
 export interface ApprovalDocumentDetail extends ApprovalDocument {
   approvers: ApprovalApprover[]

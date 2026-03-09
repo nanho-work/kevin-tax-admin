@@ -32,12 +32,14 @@ type UnifiedStatus = ApprovalDocumentStatus | AnnualLeaveRequestStatus
 type UnifiedApprovalItem = {
   source: 'document' | 'leave'
   id: number
+  document_no: string | null
   doc_type: string
   title: string
   status: UnifiedStatus
   submitted_at: string | null
   writer_admin_id: number
   created_at: string
+  locked_at: string | null
   rawDocument?: ApprovalDocument
   rawLeave?: AnnualLeaveRequest
 }
@@ -71,7 +73,19 @@ function getStatusMeta(status: UnifiedStatus) {
   if (status === 'rejected') return { label: '반려', className: 'bg-rose-100 text-rose-700' }
   if (status === 'canceled') return { label: '취소', className: 'bg-zinc-200 text-zinc-700' }
   if (status === 'draft') return { label: '임시저장', className: 'bg-zinc-100 text-zinc-700' }
-  return { label: '상신', className: 'bg-amber-100 text-amber-700' }
+  return { label: '제출', className: 'bg-amber-100 text-amber-700' }
+}
+
+function getApproverTypeLabel(type: string) {
+  return type === 'client' ? '클라이언트 결재' : '직원 결재'
+}
+
+function getApproverStatusLabel(status: string) {
+  if (status === 'approved') return '승인'
+  if (status === 'rejected') return '반려'
+  if (status === 'pending') return '대기'
+  if (status === 'skipped') return '건너뜀'
+  return status
 }
 
 function isLeaveStatus(value: ApprovalDocumentStatus | ''): value is AnnualLeaveRequestStatus {
@@ -90,6 +104,7 @@ const docTypeOptions: Array<{ value: ApprovalDocumentType | ''; label: string }>
 ]
 
 export default function ClientApprovalDocumentsPage() {
+  const [queueTab, setQueueTab] = useState<'my_pending' | 'processing'>('my_pending')
   const [staffs, setStaffs] = useState<AdminOut[]>([])
   const [allItems, setAllItems] = useState<UnifiedApprovalItem[]>([])
   const [status, setStatus] = useState<ApprovalDocumentStatus | ''>('pending')
@@ -194,24 +209,28 @@ export default function ClientApprovalDocumentsPage() {
       const unifiedDocuments: UnifiedApprovalItem[] = documents.map((doc) => ({
         source: 'document',
         id: doc.id,
+        document_no: doc.document_no,
         doc_type: doc.doc_type,
         title: doc.title,
         status: doc.status,
         submitted_at: doc.submitted_at ?? doc.created_at,
         writer_admin_id: doc.writer_admin_id,
         created_at: doc.created_at,
+        locked_at: doc.locked_at,
         rawDocument: doc,
       }))
 
       const unifiedLeaves: UnifiedApprovalItem[] = leaveRequests.map((leave) => ({
         source: 'leave',
         id: leave.id,
+        document_no: null,
         doc_type: 'leave',
         title: `휴가 신청 (${formatDate(leave.start_date)} ~ ${formatDate(leave.end_date)})`,
         status: leave.status,
         submitted_at: leave.created_at,
         writer_admin_id: leave.admin_id,
         created_at: leave.created_at,
+        locked_at: null,
         rawLeave: leave,
       }))
 
@@ -266,7 +285,27 @@ export default function ClientApprovalDocumentsPage() {
     void loadDetail(selectedItem.id)
   }, [selectedItem])
 
+  useEffect(() => {
+    if (queueTab === 'my_pending') {
+      setOnlyMyPending(true)
+      setStatus('pending')
+    } else {
+      setOnlyMyPending(false)
+      setStatus('pending')
+    }
+    setPage(1)
+  }, [queueTab])
+
   const pendingCount = useMemo(() => items.filter((item) => item.status === 'pending').length, [items])
+
+  const currentApprover = useMemo(() => {
+    if (!detail) return null
+    return (
+      [...detail.approvers]
+        .filter((approver) => approver.status === 'pending')
+        .sort((a, b) => a.step_order - b.step_order)[0] || null
+    )
+  }, [detail])
 
   const openReviewPanel = (item: UnifiedApprovalItem, mode: 'approved' | 'rejected') => {
     setSelectedItem(item)
@@ -286,10 +325,10 @@ export default function ClientApprovalDocumentsPage() {
     setRejectedReason('')
   }
 
-  const handleDownloadAttachment = async (attachmentId: number) => {
+  const handleOpenAttachment = async (attachmentId: number, action: 'download' | 'preview') => {
     if (!detail) return
     try {
-      const res = await getClientApprovalAttachmentDownloadUrl(detail.id, attachmentId)
+      const res = await getClientApprovalAttachmentDownloadUrl(detail.id, attachmentId, action)
       window.open(res.download_url, '_blank', 'noopener,noreferrer')
     } catch (error) {
       toast.error(getClientApprovalDocumentErrorMessage(error))
@@ -341,7 +380,7 @@ export default function ClientApprovalDocumentsPage() {
     <section className="space-y-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">이번 페이지 문서 수</p>
+          <p className="text-sm text-zinc-500">{queueTab === 'my_pending' ? '내 결재함 문서 수' : '처리중 문서 수'}</p>
           <p className="mt-2 text-3xl font-semibold text-zinc-900">{items.length}</p>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
@@ -349,21 +388,29 @@ export default function ClientApprovalDocumentsPage() {
           <p className="mt-2 text-3xl font-semibold text-amber-800">{pendingCount}</p>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">내 대기 문서만</p>
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">{onlyMyPending ? '예' : '아니오'}</p>
+          <p className="text-sm text-zinc-500">조회 모드</p>
+          <p className="mt-2 text-3xl font-semibold text-zinc-900">{queueTab === 'my_pending' ? '내 결재함' : '처리중'}</p>
         </div>
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px_180px_220px_auto]">
-          <select className={inputClass} value={status} onChange={(e) => setStatus((e.target.value as ApprovalDocumentStatus | '') || '')}>
-            <option value="">전체 상태</option>
-            <option value="pending">상신</option>
-            <option value="approved">승인</option>
-            <option value="rejected">반려</option>
-            <option value="canceled">취소</option>
-            <option value="draft">임시저장</option>
-          </select>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[260px_180px_220px_minmax(0,1fr)]">
+          <div className="inline-flex h-10 overflow-hidden rounded-md border border-zinc-300 bg-zinc-50">
+            <button
+              type="button"
+              onClick={() => setQueueTab('my_pending')}
+              className={`px-3 text-sm ${queueTab === 'my_pending' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
+            >
+              내 결재함
+            </button>
+            <button
+              type="button"
+              onClick={() => setQueueTab('processing')}
+              className={`px-3 text-sm ${queueTab === 'processing' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
+            >
+              처리중
+            </button>
+          </div>
           <select className={inputClass} value={docType} onChange={(e) => setDocType((e.target.value as ApprovalDocumentType | '') || '')}>
             {docTypeOptions.map((option) => (
               <option key={option.value || 'all'} value={option.value}>
@@ -383,10 +430,7 @@ export default function ClientApprovalDocumentsPage() {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700">
-            <input type="checkbox" checked={onlyMyPending} onChange={(e) => setOnlyMyPending(e.target.checked)} />
-            내 대기 문서만 보기
-          </label>
+          <div aria-hidden="true" />
         </div>
       </div>
 
@@ -398,7 +442,7 @@ export default function ClientApprovalDocumentsPage() {
               <th className="px-3 py-3 text-left">제목</th>
               <th className="px-3 py-3 text-left">작성자</th>
               <th className="px-3 py-3 text-center">상태</th>
-              <th className="px-3 py-3 text-center">상신일</th>
+              <th className="px-3 py-3 text-center">제출일</th>
               <th className="px-3 py-3 text-center">처리</th>
             </tr>
           </thead>
@@ -430,6 +474,12 @@ export default function ClientApprovalDocumentsPage() {
                       >
                         {item.title}
                       </button>
+                      {item.source === 'document' ? (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+                          <span>문서번호: {item.document_no || '-'}</span>
+                          {item.locked_at ? <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] text-zinc-700">잠금</span> : null}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3 text-left text-zinc-700">{writerName}</td>
                     <td className="px-3 py-3 text-center">
@@ -557,6 +607,10 @@ export default function ClientApprovalDocumentsPage() {
                   <div className="rounded-lg border border-zinc-200 bg-white p-4">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
+                        <p className="text-xs text-zinc-500">문서번호</p>
+                        <p className="mt-1 text-sm text-zinc-700">{detail.document_no || '-'}</p>
+                      </div>
+                      <div>
                         <p className="text-xs text-zinc-500">문서 종류</p>
                         <p className="mt-1 text-sm font-medium text-zinc-900">{docTypeLabels[detail.doc_type] || detail.doc_type}</p>
                       </div>
@@ -571,8 +625,16 @@ export default function ClientApprovalDocumentsPage() {
                         <p className="mt-1 text-sm text-zinc-700">{formatDateTime(detail.created_at)}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500">상신일</p>
+                        <p className="text-xs text-zinc-500">제출일</p>
                         <p className="mt-1 text-sm text-zinc-700">{formatDateTime(detail.submitted_at)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">잠금 시각</p>
+                        <p className="mt-1 text-sm text-zinc-700">{formatDateTime(detail.locked_at)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">승인본 스냅샷 키</p>
+                        <p className="mt-1 break-all text-sm text-zinc-700">{detail.snapshot_file_key || '-'}</p>
                       </div>
                     </div>
                   </div>
@@ -589,12 +651,33 @@ export default function ClientApprovalDocumentsPage() {
 
                   <div className="rounded-lg border border-zinc-200 bg-white p-4">
                     <p className="text-xs text-zinc-500">결재선</p>
+                    <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                      현재 단계:{' '}
+                      {currentApprover
+                        ? `${currentApprover.step_order}단계 · ${getApproverTypeLabel(currentApprover.approver_type)}`
+                        : detail.status === 'approved'
+                        ? '최종 승인 완료'
+                        : detail.status === 'rejected'
+                        ? '반려 완료'
+                        : detail.status === 'canceled'
+                        ? '취소 완료'
+                        : '대기 단계 없음'}
+                    </div>
                     <div className="mt-3 space-y-2">
                       {detail.approvers.map((approver) => (
                         <div key={approver.id} className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm">
                           <div className="flex items-center justify-between gap-3">
                             <span className="font-medium text-zinc-900">{approver.step_order}단계</span>
-                            <span className="text-zinc-600">{approver.status}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-zinc-600">{getApproverTypeLabel(approver.approver_type)}</span>
+                              {currentApprover?.id === approver.id ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700">현재 단계</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-500">
+                            상태: {getApproverStatusLabel(approver.status)}
+                            {approver.acted_at ? ` · 처리일 ${formatDateTime(approver.acted_at)}` : ''}
                           </div>
                           {approver.comment ? <div className="mt-1 text-xs text-zinc-600">의견: {approver.comment}</div> : null}
                         </div>
@@ -611,16 +694,32 @@ export default function ClientApprovalDocumentsPage() {
                         detail.attachments.map((attachment) => (
                           <div key={attachment.id} className="flex items-center justify-between gap-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3">
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-zinc-900">{attachment.file_name}</p>
-                              <p className="mt-1 text-xs text-zinc-500">{formatDateTime(attachment.created_at)}</p>
+                              <p className="truncate text-sm font-medium text-zinc-900">
+                                {attachment.file_name}
+                                {!attachment.is_active ? (
+                                  <span className="ml-2 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-normal text-zinc-700">이전 버전</span>
+                                ) : null}
+                              </p>
+                              <p className="mt-1 text-xs text-zinc-500">
+                                v{attachment.version_no} · 업로더 #{attachment.uploaded_by_admin_id ?? '-'} · {formatDateTime(attachment.created_at)}
+                              </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadAttachment(attachment.id)}
-                              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
-                            >
-                              다운로드
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAttachment(attachment.id, 'preview')}
+                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                              >
+                                미리보기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAttachment(attachment.id, 'download')}
+                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                              >
+                                다운로드
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}

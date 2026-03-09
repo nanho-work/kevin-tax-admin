@@ -1,6 +1,7 @@
 import type { AxiosError } from 'axios'
 import { clientHttp } from '@/services/http'
 import type {
+  ApprovalAttachmentAction,
   ApprovalAttachmentDownloadResponse,
   ApprovalDocument,
   ApprovalDocumentDetail,
@@ -25,6 +26,8 @@ export function getClientApprovalDocumentErrorMessage(error: unknown) {
   if (status === 401) return '로그인이 만료되었습니다.'
   if (status === 403) return detail || '현재 결재 단계의 결재자가 아닙니다.'
   if (status === 404) return detail || '문서를 찾을 수 없습니다.'
+  if (status === 409) return detail || '승인 완료 문서는 수정할 수 없습니다.'
+  if (status === 422) return detail || '결재선 입력값을 확인해 주세요.'
   return detail || '결재 문서 처리 중 오류가 발생했습니다.'
 }
 
@@ -64,10 +67,14 @@ export async function reviewClientApprovalDocument(
 
 export async function getClientApprovalAttachmentDownloadUrl(
   documentId: number,
-  attachmentId: number
+  attachmentId: number,
+  action: ApprovalAttachmentAction = 'download'
 ): Promise<ApprovalAttachmentDownloadResponse> {
   const res = await clientHttp.get<ApprovalAttachmentDownloadResponse>(
-    `${BASE}${documentId}/attachments/${attachmentId}/download-url`
+    `${BASE}${documentId}/attachments/${attachmentId}/download-url`,
+    {
+      params: { action },
+    }
   )
   return res.data
 }

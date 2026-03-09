@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { changeAdminPassword, deleteMyProfileImage, uploadMyProfileImage } from '@/services/admin/adminService'
@@ -124,6 +124,19 @@ function docTypeLabel(code: string) {
   return code
 }
 
+function FieldLabel({ label, registered }: { label: string; registered?: boolean }) {
+  return (
+    <div className="mb-1 flex items-center gap-2">
+      <p className="text-xs text-zinc-500">{label}</p>
+      {registered ? (
+        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">등록됨</span>
+      ) : null}
+    </div>
+  )
+}
+
+type ProfileTab = 'basic' | 'documents' | 'certificates'
+
 export default function AdminPersonalDocumentPage() {
   const { session, loading: sessionLoading, refresh } = useAdminSessionContext()
   const [statusItems, setStatusItems] = useState<PersonalDocumentStatusItem[]>([])
@@ -153,12 +166,21 @@ export default function AdminPersonalDocumentPage() {
     resident_number: null,
     account_number: null,
   })
+  const [sensitiveEditMode, setSensitiveEditMode] = useState<{
+    resident_number: boolean
+    account_number: boolean
+  }>({
+    resident_number: false,
+    account_number: false,
+  })
   const [isSensitiveRevealPanelOpen, setIsSensitiveRevealPanelOpen] = useState(false)
   const [sensitiveRevealTarget, setSensitiveRevealTarget] = useState<'resident_number' | 'account_number' | null>(null)
   const [sensitiveRevealPassword, setSensitiveRevealPassword] = useState('')
   const [sensitiveRevealReason, setSensitiveRevealReason] = useState('본인 확인')
   const [showSensitiveRevealPassword, setShowSensitiveRevealPassword] = useState(false)
   const [revealingSensitive, setRevealingSensitive] = useState(false)
+  const [activeTab, setActiveTab] = useState<ProfileTab>('basic')
+  const [certificateFiles, setCertificateFiles] = useState<File[]>([])
   const [sensitiveForm, setSensitiveForm] = useState({
     resident_number: '',
     bank_name: '',
@@ -222,7 +244,7 @@ export default function AdminPersonalDocumentPage() {
     void loadData()
   }, [])
 
-  const loadSensitiveProfile = async () => {
+  const loadSensitiveProfile = useCallback(async () => {
     try {
       setSensitiveLoading(true)
       const profile = await fetchMySensitiveProfile()
@@ -230,6 +252,10 @@ export default function AdminPersonalDocumentPage() {
       setRevealedSensitive({
         resident_number: null,
         account_number: null,
+      })
+      setSensitiveEditMode({
+        resident_number: false,
+        account_number: false,
       })
       setSensitiveForm((prev) => ({
         ...prev,
@@ -250,7 +276,13 @@ export default function AdminPersonalDocumentPage() {
       setHasLoadedSensitive(true)
       setSensitiveLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'basic') return
+    if (hasLoadedSensitive || sensitiveLoading) return
+    void loadSensitiveProfile()
+  }, [activeTab, hasLoadedSensitive, sensitiveLoading, loadSensitiveProfile])
 
   useEffect(() => {
     if (!profileImageFile) {
@@ -401,6 +433,10 @@ export default function AdminPersonalDocumentPage() {
         resident_number: null,
         account_number: null,
       })
+      setSensitiveEditMode({
+        resident_number: false,
+        account_number: false,
+      })
       setSensitiveForm((prev) => ({
         ...prev,
         resident_number: '',
@@ -433,6 +469,17 @@ export default function AdminPersonalDocumentPage() {
 
   const hideRevealedSensitiveValue = (target: 'resident_number' | 'account_number') => {
     setRevealedSensitive((prev) => ({ ...prev, [target]: null }))
+  }
+
+  const startSensitiveFieldEdit = (target: 'resident_number' | 'account_number') => {
+    setSensitiveEditMode((prev) => ({ ...prev, [target]: true }))
+    setRevealedSensitive((prev) => ({ ...prev, [target]: null }))
+    setSensitiveForm((prev) => ({ ...prev, [target]: '' }))
+  }
+
+  const cancelSensitiveFieldEdit = (target: 'resident_number' | 'account_number') => {
+    setSensitiveEditMode((prev) => ({ ...prev, [target]: false }))
+    setSensitiveForm((prev) => ({ ...prev, [target]: '' }))
   }
 
   const handleRevealSensitiveValue = async () => {
@@ -479,6 +526,29 @@ export default function AdminPersonalDocumentPage() {
   const accountDisplayValue = revealedSensitive.account_number || sensitiveProfile?.account_number_masked || '-'
   const canRevealResident = Boolean(sensitiveProfile?.has_resident_number || sensitiveProfile?.resident_number_masked)
   const canRevealAccount = Boolean(sensitiveProfile?.has_account_number || sensitiveProfile?.account_number_masked)
+  const sensitiveFieldRegistered = useMemo(
+    () => ({
+      resident_number: Boolean(sensitiveProfile?.has_resident_number || sensitiveProfile?.resident_number_masked),
+      account_number: Boolean(sensitiveProfile?.has_account_number || sensitiveProfile?.account_number_masked),
+      bank_name: Boolean(sensitiveProfile?.bank_name),
+      account_holder: Boolean(sensitiveProfile?.account_holder),
+      zip_code: Boolean(sensitiveProfile?.zip_code),
+      address1: Boolean(sensitiveProfile?.address1),
+      address2: Boolean(sensitiveProfile?.address2),
+      emergency_contact_name: Boolean(sensitiveProfile?.emergency_contact_name),
+      emergency_contact_phone: Boolean(sensitiveProfile?.emergency_contact_phone),
+    }),
+    [sensitiveProfile]
+  )
+  const residentRegistered = sensitiveFieldRegistered.resident_number
+  const accountRegistered = sensitiveFieldRegistered.account_number
+  const showResidentInput = !residentRegistered || sensitiveEditMode.resident_number
+  const showAccountInput = !accountRegistered || sensitiveEditMode.account_number
+
+  const handleCertificateFileSelect = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setCertificateFiles((prev) => [...prev, ...Array.from(files)])
+  }
 
   return (
     <section className="space-y-4">
@@ -588,277 +658,419 @@ export default function AdminPersonalDocumentPage() {
                   <p className="mt-1 text-sm text-zinc-900">{formatDate(session.birth_date)}</p>
                 </div>
               </div>
-              <div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setIsPasswordPanelOpen(true)}
-                    className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50"
-                  >
-                    비밀번호 변경
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}
         {sessionLoading && session ? <p className="mt-3 text-xs text-zinc-400">세션 동기화 중...</p> : null}
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-base font-semibold text-zinc-900">개인서류</h2>
-        <p className="mt-1 text-sm text-zinc-500">급여/4대보험 업무에 필요한 본인 신분증과 통장사본을 업로드하고 확인할 수 있습니다.</p>
-      </div>
-
-      <div className="rounded-xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-base font-semibold text-zinc-900">민감정보</h2>
-        <p className="mt-1 text-sm text-zinc-500">직원 본인 정보 입력/수정용입니다. 주민번호/계좌번호는 암호화 저장됩니다.</p>
-        {!hasLoadedSensitive ? (
-          <div className="mt-3">
+      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+        <div className="border-b border-zinc-200 bg-zinc-50 px-3 pt-3">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void loadSensitiveProfile()}
-              className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50"
+              onClick={() => setActiveTab('basic')}
+              className={`rounded-t-md px-3 py-2 text-sm font-medium transition ${
+                activeTab === 'basic'
+                  ? 'bg-white text-zinc-900 border border-zinc-200 border-b-white'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
             >
-              민감정보 불러오기
+              기본정보
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('documents')}
+              className={`rounded-t-md px-3 py-2 text-sm font-medium transition ${
+                activeTab === 'documents'
+                  ? 'bg-white text-zinc-900 border border-zinc-200 border-b-white'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              등록서류
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('certificates')}
+              className={`rounded-t-md px-3 py-2 text-sm font-medium transition ${
+                activeTab === 'certificates'
+                  ? 'bg-white text-zinc-900 border border-zinc-200 border-b-white'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              자격증
             </button>
           </div>
-        ) : null}
-        {sensitiveLoading ? <p className="mt-3 text-sm text-zinc-500">불러오는 중...</p> : null}
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">주민번호(마스킹)</p>
-            <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
-              <span>{residentDisplayValue}</span>
-              {revealedSensitive.resident_number ? (
-                <button
-                  type="button"
-                  onClick={() => hideRevealedSensitiveValue('resident_number')}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
-                  aria-label="주민번호 가리기"
-                >
-                  <EyeOff size={14} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openSensitiveRevealPanel('resident_number')}
-                  disabled={!canRevealResident}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="주민번호 보기"
-                >
-                  <Eye size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">계좌번호(마스킹)</p>
-            <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
-              <span>{accountDisplayValue}</span>
-              {revealedSensitive.account_number ? (
-                <button
-                  type="button"
-                  onClick={() => hideRevealedSensitiveValue('account_number')}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
-                  aria-label="계좌번호 가리기"
-                >
-                  <EyeOff size={14} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openSensitiveRevealPanel('account_number')}
-                  disabled={!canRevealAccount}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="계좌번호 보기"
-                >
-                  <Eye size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">주민번호 입력/변경</p>
-            <input
-              type="text"
-              value={sensitiveForm.resident_number}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, resident_number: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">계좌번호 입력/변경</p>
-            <input
-              type="text"
-              value={sensitiveForm.account_number}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_number: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">은행명</p>
-            <input
-              type="text"
-              value={sensitiveForm.bank_name}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, bank_name: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">예금주</p>
-            <input
-              type="text"
-              value={sensitiveForm.account_holder}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_holder: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">우편번호</p>
-            <input
-              type="text"
-              value={sensitiveForm.zip_code}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, zip_code: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">기본주소</p>
-            <input
-              type="text"
-              value={sensitiveForm.address1}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, address1: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">상세주소</p>
-            <input
-              type="text"
-              value={sensitiveForm.address2}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, address2: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">비상연락처 이름</p>
-            <input
-              type="text"
-              value={sensitiveForm.emergency_contact_name}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, emergency_contact_name: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-zinc-500">비상연락처 전화</p>
-            <input
-              type="text"
-              value={sensitiveForm.emergency_contact_phone}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, emergency_contact_phone: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          <div className="md:col-span-2">
-            <p className="mb-1 text-xs text-zinc-500">수정 사유(선택)</p>
-            <textarea
-              rows={2}
-              value={sensitiveForm.reason}
-              onChange={(e) => setSensitiveForm((prev) => ({ ...prev, reason: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
         </div>
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => void handleSaveSensitiveProfile()}
-            disabled={savingSensitive}
-            className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
-          >
-            {savingSensitive ? '저장 중...' : '민감정보 저장'}
-          </button>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {DOC_TYPES.map((docType) => {
-          const status = statusByType[docType.code]
-          const isRegistered = Boolean(status?.is_registered)
-          const isUploading = uploadingType === docType.code
-          const isPreviewing = previewingType === docType.code
-          return (
-            <div key={docType.code} className="rounded-xl border border-zinc-200 bg-white p-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-base font-semibold text-zinc-900">{docType.label}</p>
-                <span
-                  className={`rounded px-2 py-1 text-xs font-medium ${
-                    isRegistered ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'
-                  }`}
+        <div className="p-5">
+          {activeTab === 'basic' ? (
+            <div>
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordPanelOpen(true)}
+                  className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50"
                 >
-                  {isRegistered ? '등록됨' : '미등록'}
-                </span>
+                  비밀번호 변경
+                </button>
               </div>
-              <p className="mt-2 text-xs text-zinc-500">최종 업로드: {formatDateTime(status?.latest_uploaded_at)}</p>
+              {sensitiveLoading ? <p className="mt-3 text-sm text-zinc-500">불러오는 중...</p> : null}
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="md:col-span-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-zinc-500">주민번호(마스킹)</p>
+                      {sensitiveFieldRegistered.resident_number ? (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">등록됨</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {residentRegistered ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (sensitiveEditMode.resident_number) {
+                              cancelSensitiveFieldEdit('resident_number')
+                              return
+                            }
+                            startSensitiveFieldEdit('resident_number')
+                          }}
+                          className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                        >
+                          {sensitiveEditMode.resident_number ? '취소' : '수정'}
+                        </button>
+                      ) : null}
+                      {!showResidentInput ? (
+                        revealedSensitive.resident_number ? (
+                          <button
+                            type="button"
+                            onClick={() => hideRevealedSensitiveValue('resident_number')}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+                            aria-label="주민번호 가리기"
+                          >
+                            <EyeOff size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openSensitiveRevealPanel('resident_number')}
+                            disabled={!canRevealResident}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="주민번호 보기"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )
+                      ) : null}
+                    </div>
+                  </div>
+                  {showResidentInput ? (
+                    <input
+                      type="text"
+                      value={sensitiveForm.resident_number}
+                      onChange={(e) => setSensitiveForm((prev) => ({ ...prev, resident_number: e.target.value }))}
+                      className={inputClass}
+                    />
+                  ) : (
+                    <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                      {residentDisplayValue}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-zinc-500">계좌번호(마스킹)</p>
+                      {sensitiveFieldRegistered.account_number ? (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">등록됨</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {accountRegistered ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (sensitiveEditMode.account_number) {
+                              cancelSensitiveFieldEdit('account_number')
+                              return
+                            }
+                            startSensitiveFieldEdit('account_number')
+                          }}
+                          className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                        >
+                          {sensitiveEditMode.account_number ? '취소' : '수정'}
+                        </button>
+                      ) : null}
+                      {!showAccountInput ? (
+                        revealedSensitive.account_number ? (
+                          <button
+                            type="button"
+                            onClick={() => hideRevealedSensitiveValue('account_number')}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+                            aria-label="계좌번호 가리기"
+                          >
+                            <EyeOff size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openSensitiveRevealPanel('account_number')}
+                            disabled={!canRevealAccount}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="계좌번호 보기"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )
+                      ) : null}
+                    </div>
+                  </div>
+                  {showAccountInput ? (
+                    <input
+                      type="text"
+                      value={sensitiveForm.account_number}
+                      onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_number: e.target.value }))}
+                      className={inputClass}
+                    />
+                  ) : (
+                    <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                      {accountDisplayValue}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <FieldLabel label="은행명" registered={sensitiveFieldRegistered.bank_name} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.bank_name}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, bank_name: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="예금주" registered={sensitiveFieldRegistered.account_holder} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.account_holder}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_holder: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="우편번호" registered={sensitiveFieldRegistered.zip_code} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.zip_code}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, zip_code: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="기본주소" registered={sensitiveFieldRegistered.address1} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.address1}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, address1: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="상세주소" registered={sensitiveFieldRegistered.address2} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.address2}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, address2: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="비상연락처 이름" registered={sensitiveFieldRegistered.emergency_contact_name} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.emergency_contact_name}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, emergency_contact_name: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="비상연락처 전화" registered={sensitiveFieldRegistered.emergency_contact_phone} />
+                  <input
+                    type="text"
+                    value={sensitiveForm.emergency_contact_phone}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, emergency_contact_phone: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="md:col-span-4">
+                  <p className="mb-1 text-xs text-zinc-500">수정 사유(선택)</p>
+                  <textarea
+                    rows={2}
+                    value={sensitiveForm.reason}
+                    onChange={(e) => setSensitiveForm((prev) => ({ ...prev, reason: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleSaveSensitiveProfile()}
+                  disabled={savingSensitive}
+                  className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-60"
+                >
+                  {savingSensitive ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
-              <div className="mt-4 space-y-2">
+          {activeTab === 'documents' ? (
+            <div>
+              <h2 className="text-base font-semibold text-zinc-900">등록서류</h2>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {DOC_TYPES.map((docType) => {
+                  const status = statusByType[docType.code]
+                  const isRegistered = Boolean(status?.is_registered)
+                  const isUploading = uploadingType === docType.code
+                  const isPreviewing = previewingType === docType.code
+                  return (
+                    <div key={docType.code} className="rounded-xl border border-zinc-200 bg-white p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-base font-semibold text-zinc-900">{docType.label}</p>
+                        <span
+                          className={`rounded px-2 py-1 text-xs font-medium ${
+                            isRegistered ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'
+                          }`}
+                        >
+                          {isRegistered ? '등록됨' : '미등록'}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-zinc-500">최종 업로드: {formatDateTime(status?.latest_uploaded_at)}</p>
+
+                      <div className="mt-4 space-y-2">
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-zinc-600">파일 업로드</span>
+                          <input
+                            type="file"
+                            className={inputClass}
+                            disabled={isUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              void handleUploadFile(docType.code, file)
+                              e.currentTarget.value = ''
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handlePreview(docType.code)}
+                          disabled={isPreviewing}
+                          className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
+                        >
+                          {isPreviewing ? '미리보기 준비 중...' : '미리보기'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-zinc-50 text-xs text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-3 text-left">문서 종류</th>
+                      <th className="px-3 py-3 text-left">파일명</th>
+                      <th className="px-3 py-3 text-center">업로드일시</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">조회 중...</td>
+                      </tr>
+                    ) : documents.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">업로드된 개인서류가 없습니다.</td>
+                      </tr>
+                    ) : (
+                      documents.map((doc) => (
+                        <tr key={doc.id}>
+                          <td className="px-3 py-3 text-zinc-700">{docTypeLabel(doc.doc_type_code)}</td>
+                          <td className="px-3 py-3 text-zinc-700">{doc.file_name}</td>
+                          <td className="px-3 py-3 text-center text-zinc-700">{formatDateTime(doc.uploaded_at)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'certificates' ? (
+            <div>
+              <h2 className="text-base font-semibold text-zinc-900">자격증</h2>
+              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
                 <label className="block">
-                  <span className="mb-1 block text-xs text-zinc-600">파일 업로드</span>
+                  <span className="mb-1 block text-xs text-zinc-600">자격증 파일 업로드</span>
                   <input
                     type="file"
+                    multiple
+                    accept=".pdf,image/*"
                     className={inputClass}
-                    disabled={isUploading}
                     onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      void handleUploadFile(docType.code, file)
+                      handleCertificateFileSelect(e.target.files)
                       e.currentTarget.value = ''
                     }}
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => void handlePreview(docType.code)}
-                  disabled={isPreviewing}
-                  className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
-                >
-                  {isPreviewing ? '미리보기 준비 중...' : '미리보기'}
-                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-zinc-50 text-xs text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-3 text-left">파일명</th>
+                      <th className="px-3 py-3 text-center">형식</th>
+                      <th className="px-3 py-3 text-center">크기</th>
+                      <th className="px-3 py-3 text-center">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {certificateFiles.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-10 text-center text-zinc-500">등록된 자격증 파일이 없습니다.</td>
+                      </tr>
+                    ) : (
+                      certificateFiles.map((file) => (
+                        <tr key={`${file.name}-${file.lastModified}`}>
+                          <td className="px-3 py-3 text-zinc-700">{file.name}</td>
+                          <td className="px-3 py-3 text-center text-zinc-700">{file.type || '-'}</td>
+                          <td className="px-3 py-3 text-center text-zinc-700">{(file.size / 1024).toFixed(0)}KB</td>
+                          <td className="px-3 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCertificateFiles((prev) => prev.filter((item) => item !== file))
+                              }}
+                              className="inline-flex h-8 items-center rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+                            >
+                              제거
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )
-        })}
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs text-zinc-500">
-            <tr>
-              <th className="px-3 py-3 text-left">문서 종류</th>
-              <th className="px-3 py-3 text-left">파일명</th>
-              <th className="px-3 py-3 text-center">업로드일시</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-200">
-            {loading ? (
-              <tr>
-                <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">조회 중...</td>
-              </tr>
-            ) : documents.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">업로드된 개인서류가 없습니다.</td>
-              </tr>
-            ) : (
-              documents.map((doc) => (
-                <tr key={doc.id}>
-                  <td className="px-3 py-3 text-zinc-700">{docTypeLabel(doc.doc_type_code)}</td>
-                  <td className="px-3 py-3 text-zinc-700">{doc.file_name}</td>
-                  <td className="px-3 py-3 text-center text-zinc-700">{formatDateTime(doc.uploaded_at)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+          ) : null}
+        </div>
       </div>
 
       {isSensitiveRevealPanelOpen ? (
