@@ -16,10 +16,12 @@ export async function getRoles(): Promise<RoleOut[]> {
 }
 
 export async function createRole(data: RoleCreate): Promise<RoleOut> {
-  const payload = {
+  const payload: RoleCreate = {
     name: data.name,
-    rank_order: data.rank_order,
     description: data.description,
+  }
+  if (typeof data.rank_order === 'number') {
+    payload.rank_order = data.rank_order
   }
   const response = await clientHttp.post(`${BASE}/`, payload)
   return response.data
@@ -28,4 +30,9 @@ export async function createRole(data: RoleCreate): Promise<RoleOut> {
 export async function deleteRole(roleId: number): Promise<{ detail: string }> {
   const response = await clientHttp.delete(`${BASE}/${roleId}`)
   return response.data
+}
+
+export async function reorderRoles(payload: { items: Array<{ role_id: number; rank_order: number }> }): Promise<RoleOut[]> {
+  const response = await clientHttp.patch(`${BASE}/reorder`, payload)
+  return Array.isArray(response.data) ? response.data : []
 }

@@ -1,8 +1,10 @@
 import http, { getAdminAccessToken } from '@/services/http'
 import type {
   AnnualLeaveRequest,
+  AnnualLeaveCancelStatus,
   AnnualLeaveRequestListResponse,
   AnnualLeaveRequestStatus,
+  CancelAnnualLeaveRequestPayload,
   CreateAnnualLeaveRequestPayload,
 } from '@/types/annualLeaveRequest'
 
@@ -22,12 +24,14 @@ export async function createAnnualLeaveRequest(payload: CreateAnnualLeaveRequest
 
 export async function fetchMyAnnualLeaveRequests(params: {
   status?: AnnualLeaveRequestStatus | ''
+  cancel_status?: AnnualLeaveCancelStatus | ''
   offset?: number
   limit?: number
 }): Promise<AnnualLeaveRequestListResponse> {
   const res = await http.get(BASE, {
     params: {
       status: params.status || undefined,
+      cancel_status: params.cancel_status || undefined,
       offset: params.offset ?? 0,
       limit: params.limit ?? 20,
     },
@@ -38,5 +42,13 @@ export async function fetchMyAnnualLeaveRequests(params: {
 
 export async function cancelAnnualLeaveRequest(requestId: number): Promise<AnnualLeaveRequest> {
   const res = await http.patch(`${BASE}${requestId}/cancel`, {}, authHeader())
+  return res.data
+}
+
+export async function requestCancelAnnualLeaveRequest(
+  requestId: number,
+  payload: CancelAnnualLeaveRequestPayload
+): Promise<AnnualLeaveRequest> {
+  const res = await http.patch(`${BASE}${requestId}/cancel-request`, payload, authHeader())
   return res.data
 }

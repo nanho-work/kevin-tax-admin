@@ -2,8 +2,10 @@ import type { AxiosError } from 'axios'
 import { clientHttp } from '@/services/http'
 import type {
   AnnualLeaveRequest,
+  AnnualLeaveCancelStatus,
   AnnualLeaveRequestListResponse,
   AnnualLeaveRequestStatus,
+  CancelReviewAnnualLeaveRequestPayload,
   ReviewAnnualLeaveRequestPayload,
 } from '@/types/annualLeaveRequest'
 
@@ -27,6 +29,7 @@ export function getClientAnnualLeaveRequestErrorMessage(error: unknown) {
 
 export async function fetchClientAnnualLeaveRequests(params: {
   status?: AnnualLeaveRequestStatus | ''
+  cancel_status?: AnnualLeaveCancelStatus | ''
   admin_id?: number
   offset?: number
   limit?: number
@@ -34,6 +37,7 @@ export async function fetchClientAnnualLeaveRequests(params: {
   const res = await clientHttp.get<AnnualLeaveRequestListResponse>(BASE, {
     params: {
       status: params.status || undefined,
+      cancel_status: params.cancel_status || undefined,
       admin_id: params.admin_id,
       offset: params.offset ?? 0,
       limit: params.limit ?? 20,
@@ -47,5 +51,13 @@ export async function reviewClientAnnualLeaveRequest(
   payload: ReviewAnnualLeaveRequestPayload
 ): Promise<AnnualLeaveRequest> {
   const res = await clientHttp.patch<AnnualLeaveRequest>(`${BASE}${requestId}/review`, payload)
+  return res.data
+}
+
+export async function reviewClientAnnualLeaveCancelRequest(
+  requestId: number,
+  payload: CancelReviewAnnualLeaveRequestPayload
+): Promise<AnnualLeaveRequest> {
+  const res = await clientHttp.patch<AnnualLeaveRequest>(`${BASE}${requestId}/cancel-review`, payload)
   return res.data
 }

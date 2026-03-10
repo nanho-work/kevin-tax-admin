@@ -32,6 +32,7 @@ function formatDateTime(value?: string | null) {
 
 function getStatusMeta(status: AnnualLeaveRequestStatus) {
   if (status === 'approved') return { label: '승인', className: 'bg-emerald-100 text-emerald-700' }
+  if (status === 'approved_canceled') return { label: '승인취소', className: 'bg-sky-100 text-sky-700' }
   if (status === 'rejected') return { label: '반려', className: 'bg-rose-100 text-rose-700' }
   if (status === 'canceled') return { label: '취소', className: 'bg-zinc-200 text-zinc-700' }
   return { label: '대기', className: 'bg-amber-100 text-amber-700' }

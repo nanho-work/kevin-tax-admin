@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ClientHeader from '@/components/client/layout/ClientHeader'
 import ClientSidebar from '@/components/client/layout/ClientSidebar'
@@ -13,6 +13,16 @@ function ProtectedClientShell({
 }) {
   const router = useRouter()
   const { loading, session } = useClientSessionContext()
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('client_sidebar_collapsed')
+    if (saved === '1') setIsSidebarCollapsed(true)
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('client_sidebar_collapsed', isSidebarCollapsed ? '1' : '0')
+  }, [isSidebarCollapsed])
 
   useEffect(() => {
     if (!loading && !session) {
@@ -26,8 +36,11 @@ function ProtectedClientShell({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className="relative z-30 h-full">
-        <ClientSidebar />
+      <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${isSidebarCollapsed ? 'w-14' : 'w-[260px]'}`}>
+        <ClientSidebar
+          collapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+        />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <ClientHeader />

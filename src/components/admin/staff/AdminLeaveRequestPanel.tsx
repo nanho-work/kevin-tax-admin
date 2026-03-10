@@ -6,8 +6,9 @@ import {
   cancelAnnualLeaveRequest,
   createAnnualLeaveRequest,
   fetchMyAnnualLeaveRequests,
+  requestCancelAnnualLeaveRequest,
 } from '@/services/admin/annualLeaveRequestService'
-import type { AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
+import type { AnnualLeaveCancelStatus, AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -38,9 +39,35 @@ function calculateInclusiveDays(startDate: string, endDate: string) {
 
 function getStatusMeta(status: AnnualLeaveRequestStatus) {
   if (status === 'approved') return { label: '승인', className: 'bg-emerald-100 text-emerald-700' }
+  if (status === 'approved_canceled') return { label: '승인취소', className: 'bg-sky-100 text-sky-700' }
   if (status === 'rejected') return { label: '반려', className: 'bg-rose-100 text-rose-700' }
   if (status === 'canceled') return { label: '취소', className: 'bg-zinc-200 text-zinc-700' }
   return { label: '대기', className: 'bg-amber-100 text-amber-700' }
+}
+
+function getCancelStatusMeta(cancelStatus: AnnualLeaveCancelStatus) {
+  if (cancelStatus === 'pending') return { label: '취소요청중', className: 'bg-amber-100 text-amber-700' }
+  if (cancelStatus === 'approved') return { label: '취소승인', className: 'bg-emerald-100 text-emerald-700' }
+  if (cancelStatus === 'rejected') return { label: '취소반려', className: 'bg-rose-100 text-rose-700' }
+  return null
+}
+
+type RequestListTab = 'mine' | 'approved' | 'cancel_pending' | 'cancel_done'
+
+function getQueryByTab(tab: RequestListTab): {
+  status?: AnnualLeaveRequestStatus | ''
+  cancel_status?: AnnualLeaveCancelStatus | ''
+} {
+  if (tab === 'approved') {
+    return { status: 'approved', cancel_status: 'none' }
+  }
+  if (tab === 'cancel_pending') {
+    return { status: 'approved', cancel_status: 'pending' }
+  }
+  if (tab === 'cancel_done') {
+    return { status: 'approved_canceled', cancel_status: 'approved' }
+  }
+  return { status: '', cancel_status: '' }
 }
 
 type Props = {
@@ -50,13 +77,16 @@ type Props = {
 }
 
 export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmitted }: Props) {
-  const [status, setStatus] = useState<AnnualLeaveRequestStatus | ''>('')
+  const [listTab, setListTab] = useState<RequestListTab>('mine')
   const [page, setPage] = useState(1)
   const [limit] = useState(10)
   const [total, setTotal] = useState(0)
   const [items, setItems] = useState<AnnualLeaveRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [cancelRequestTarget, setCancelRequestTarget] = useState<AnnualLeaveRequest | null>(null)
+  const [cancelRequestReason, setCancelRequestReason] = useState('')
+  const [cancelRequestSubmitting, setCancelRequestSubmitting] = useState(false)
   const [form, setForm] = useState({
     is_half_day: false,
     start_date: '',
@@ -66,12 +96,14 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  const loadRequests = async (targetPage = page, targetStatus = status) => {
+  const loadRequests = async (targetPage = page, targetTab = listTab) => {
     try {
       setLoading(true)
       const offset = (targetPage - 1) * limit
+      const query = getQueryByTab(targetTab)
       const res = await fetchMyAnnualLeaveRequests({
-        status: targetStatus,
+        status: query.status,
+        cancel_status: query.cancel_status,
         offset,
         limit,
       })
@@ -87,12 +119,12 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
   }
 
   useEffect(() => {
-    loadRequests(page, status)
-  }, [page, status])
+    loadRequests(page, listTab)
+  }, [listTab, page])
 
   useEffect(() => {
     setPage(1)
-  }, [status])
+  }, [listTab])
 
   const calculatedDays = useMemo(() => {
     if (form.is_half_day) return form.start_date ? 0.5 : 0
@@ -132,7 +164,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
         reason: '',
       })
       setPage(1)
-      await loadRequests(1, status)
+      await loadRequests(1, listTab)
       await onSubmitted?.()
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || '휴가 신청 등록에 실패했습니다.')
@@ -145,10 +177,38 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
     try {
       await cancelAnnualLeaveRequest(requestId)
       toast.success('휴가 신청을 취소했습니다.')
-      await loadRequests(page, status)
+      await loadRequests(page, listTab)
       await onSubmitted?.()
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || '휴가 신청 취소에 실패했습니다.')
+    }
+  }
+
+  const handleOpenCancelRequest = (item: AnnualLeaveRequest) => {
+    setCancelRequestTarget(item)
+    setCancelRequestReason('')
+  }
+
+  const handleSubmitCancelRequest = async () => {
+    if (!cancelRequestTarget) return
+    const reason = cancelRequestReason.trim()
+    if (!reason) {
+      toast.error('승인취소 요청 사유를 입력해 주세요.')
+      return
+    }
+
+    try {
+      setCancelRequestSubmitting(true)
+      await requestCancelAnnualLeaveRequest(cancelRequestTarget.id, { reason })
+      toast.success('승인취소 요청을 등록했습니다.')
+      setCancelRequestTarget(null)
+      setCancelRequestReason('')
+      await loadRequests(page, listTab)
+      await onSubmitted?.()
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || '승인취소 요청 등록에 실패했습니다.')
+    } finally {
+      setCancelRequestSubmitting(false)
     }
   }
 
@@ -253,20 +313,37 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-zinc-900">내 신청 내역</h2>
-            <p className="mt-1 text-xs text-zinc-500">대기 상태일 때만 신청 취소가 가능합니다.</p>
+            <p className="mt-1 text-xs text-zinc-500">승인된 건은 승인취소 요청으로 처리됩니다.</p>
           </div>
-          <div className="w-full md:w-[180px]">
-            <select
-              className={inputClass}
-              value={status}
-              onChange={(e) => setStatus((e.target.value as AnnualLeaveRequestStatus | '') || '')}
+          <div className="inline-flex h-10 overflow-hidden rounded-md border border-zinc-300 bg-zinc-50">
+            <button
+              type="button"
+              onClick={() => setListTab('mine')}
+              className={`px-3 text-sm ${listTab === 'mine' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
             >
-              <option value="">전체 상태</option>
-              <option value="pending">대기</option>
-              <option value="approved">승인</option>
-              <option value="rejected">반려</option>
-              <option value="canceled">취소</option>
-            </select>
+              내 신청
+            </button>
+            <button
+              type="button"
+              onClick={() => setListTab('approved')}
+              className={`px-3 text-sm ${listTab === 'approved' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
+            >
+              승인
+            </button>
+            <button
+              type="button"
+              onClick={() => setListTab('cancel_pending')}
+              className={`px-3 text-sm ${listTab === 'cancel_pending' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
+            >
+              취소요청중
+            </button>
+            <button
+              type="button"
+              onClick={() => setListTab('cancel_done')}
+              className={`px-3 text-sm ${listTab === 'cancel_done' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'}`}
+            >
+              취소완료
+            </button>
           </div>
         </div>
 
@@ -294,6 +371,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
               ) : (
                 items.map((item) => {
                   const statusMeta = getStatusMeta(item.status)
+                  const cancelMeta = getCancelStatusMeta(item.cancel_status)
                   return (
                     <tr key={item.id}>
                       <td className="px-3 py-3 text-left text-zinc-600">{formatDateTime(item.created_at)}</td>
@@ -304,11 +382,22 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
                       <td className="px-3 py-3 text-left text-zinc-600">
                         <div>{item.reason || '-'}</div>
                         {item.reject_reason ? <div className="mt-1 text-xs text-rose-600">반려 사유: {item.reject_reason}</div> : null}
+                        {item.cancel_reason ? <div className="mt-1 text-xs text-amber-700">취소 요청 사유: {item.cancel_reason}</div> : null}
+                        {item.cancel_review_note ? (
+                          <div className="mt-1 text-xs text-zinc-600">검토 메모: {item.cancel_review_note}</div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3 text-center">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
-                          {statusMeta.label}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
+                            {statusMeta.label}
+                          </span>
+                          {cancelMeta ? (
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${cancelMeta.className}`}>
+                              {cancelMeta.label}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-center">
                         {item.status === 'pending' ? (
@@ -318,6 +407,14 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
                             className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
                           >
                             신청 취소
+                          </button>
+                        ) : item.status === 'approved' && (item.cancel_status === 'none' || item.cancel_status === 'rejected') ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCancelRequest(item)}
+                            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                          >
+                            {item.cancel_status === 'rejected' ? '취소 재요청' : '승인취소 요청'}
                           </button>
                         ) : (
                           <span className="text-zinc-400">-</span>
@@ -353,6 +450,65 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
           </button>
         </div>
       </div>
+
+      {cancelRequestTarget ? (
+        <div className="fixed inset-0 z-50 bg-black/30">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-5">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-900">승인취소 요청</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {formatDate(cancelRequestTarget.start_date)} ~ {formatDate(cancelRequestTarget.end_date)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cancelRequestSubmitting) return
+                  setCancelRequestTarget(null)
+                  setCancelRequestReason('')
+                }}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                <label className="mb-2 block text-xs text-zinc-600">요청 사유</label>
+                <textarea
+                  rows={6}
+                  value={cancelRequestReason}
+                  onChange={(e) => setCancelRequestReason(e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  placeholder="예: 일정 변경, 중복 신청, 실제 미사용"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (cancelRequestSubmitting) return
+                  setCancelRequestTarget(null)
+                  setCancelRequestReason('')
+                }}
+                className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitCancelRequest}
+                disabled={cancelRequestSubmitting}
+                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+              >
+                {cancelRequestSubmitting ? '요청 중...' : '요청 제출'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 

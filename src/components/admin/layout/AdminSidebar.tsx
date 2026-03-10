@@ -1,14 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
-import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { logoutAdmin } from '@/services/admin/adminService'
+import { listMailAccounts, listMailMessages } from '@/services/admin/mailService'
 import { format } from 'date-fns'
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { getAdminRoleRank } from '@/utils/roleRank'
 
 type MenuChild = { label: string; href: string }
@@ -19,8 +21,21 @@ type MenuSection = {
   children?: MenuChild[]
 }
 
+type AdminSidebarProps = {
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+}
+
 const menuSections: MenuSection[] = [
   { key: 'dashboard', label: '대시보드', href: '/admin/dashboard' },
+  {
+    key: 'mail',
+    label: '메일',
+    children: [
+      { label: '메일작성', href: '/admin/mail/compose' },
+      { label: '설정', href: '/admin/mail/accounts' },
+    ],
+  },
   {
     key: 'companies',
     label: '고객사 관리',
@@ -68,6 +83,7 @@ const menuSections: MenuSection[] = [
 ]
 
 function getActiveSection(pathname: string): string {
+  if (pathname.startsWith('/admin/mail')) return 'mail'
   if (pathname.startsWith('/admin/companies')) return 'companies'
   if (pathname.startsWith('/admin/tax-schedule')) return 'schedule'
   if (pathname.startsWith('/admin/staff')) return 'leave'
@@ -78,12 +94,22 @@ function getActiveSection(pathname: string): string {
   return ''
 }
 
-function isChildActive(pathname: string, href: string): boolean {
-  return pathname === href
+function isChildActive(pathname: string, searchParams: URLSearchParams, href: string): boolean {
+  const [targetPath, queryString] = href.split('?')
+  if (pathname !== targetPath) return false
+  if (!queryString) return true
+  const targetQuery = new URLSearchParams(queryString)
+  for (const [key, value] of targetQuery.entries()) {
+    if (searchParams.get(key) !== value) {
+      return false
+    }
+  }
+  return true
 }
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const { session, loading: sessionLoading } = useAdminSessionContext()
 
@@ -98,14 +124,21 @@ export default function Sidebar() {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [capabilities, setCapabilities] = useState({
-    canViewAttendance: true,
-    canViewLeave: true,
-  })
   const [currentTime, setCurrentTime] = useState<string>(() =>
     new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   )
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
+  const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
+  const [expandedMailAccounts, setExpandedMailAccounts] = useState<Record<number, boolean>>({})
+
+  const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
+    `/admin/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
+
+  const isMailAccountMenuActive = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
+    pathname === '/admin/mail/inbox' &&
+    searchParams.get('account_id') === String(accountId) &&
+    searchParams.get('mailbox') === mailbox
 
   useEffect(() => {
     async function fetchAttendance() {
@@ -113,10 +146,6 @@ export default function Sidebar() {
       if (!session) {
         setUser(null)
         setErrorMessage('사용자 정보를 불러오지 못했습니다.')
-        setCapabilities({
-          canViewAttendance: true,
-          canViewLeave: true,
-        })
         setLoading(false)
         return
       }
@@ -152,7 +181,6 @@ export default function Sidebar() {
         const today = format(new Date(), 'yyyy-MM-dd')
         const attendanceRes = await getAttendanceLogs({ date_to: today, limit: 1, offset: 0 })
         const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
-        setCapabilities((prev) => ({ ...prev, canViewAttendance: true }))
 
         if (todayCheckIn) {
           setUser((prev) =>
@@ -168,28 +196,9 @@ export default function Sidebar() {
           )
         }
       } catch (attendanceError) {
-        const status = (attendanceError as any)?.response?.status
-        if (status === 403) {
-          setCapabilities((prev) => ({ ...prev, canViewAttendance: false }))
-        }
-        if (status !== 403) {
-          console.warn('근태 정보 조회 실패:', attendanceError)
-        }
+        console.warn('근태 정보 조회 실패:', attendanceError)
       }
-
-      try {
-        await fetchAnnualLeaves({ offset: 0, limit: 1 })
-        setCapabilities((prev) => ({ ...prev, canViewLeave: true }))
-      } catch (leaveError) {
-        const status = (leaveError as any)?.response?.status
-        if (status === 403) {
-          setCapabilities((prev) => ({ ...prev, canViewLeave: false }))
-        } else {
-          console.warn('연차 조회 권한 확인 실패:', leaveError)
-        }
-      } finally {
-        setLoading(false)
-      }
+      setLoading(false)
     }
     fetchAttendance()
 
@@ -208,6 +217,57 @@ export default function Sidebar() {
     setExpanded((prev) => ({ ...prev, [activeKey]: true }))
   }, [pathname])
 
+  useEffect(() => {
+    const selectedAccountId = Number(searchParams.get('account_id') || '')
+    if (!Number.isFinite(selectedAccountId) || selectedAccountId <= 0) return
+    setExpandedMailAccounts((prev) => (prev[selectedAccountId] ? prev : { ...prev, [selectedAccountId]: true }))
+  }, [searchParams])
+
+  useEffect(() => {
+    if (sessionLoading || !session) return
+
+    const loadMailCounts = async () => {
+      try {
+        const accountRes = await listMailAccounts(true)
+        const visibleAccounts = filterAdminVisibleMailAccounts(accountRes.items || [], session.id)
+        const accounts = visibleAccounts.map((item) => ({
+          id: item.id,
+          email: item.email,
+          account_scope: item.account_scope || 'company',
+        }))
+        setMailAccounts(accounts)
+
+        const nextCounts: Record<number, { all: number; inboxUnread: number; sent: number; trash: number }> = {}
+        await Promise.all(
+          accounts.map(async (account) => {
+            try {
+              const [allRes, inboxUnreadRes, sentRes, trashRes] = await Promise.all([
+                listMailMessages({ page: 1, size: 1, mail_account_id: account.id }),
+                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, mailbox_type: 'inbox', is_read: false }),
+                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, direction: 'outbound' }),
+                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, include_trash: true }),
+              ])
+              nextCounts[account.id] = {
+                all: allRes.total ?? 0,
+                inboxUnread: inboxUnreadRes.total ?? 0,
+                sent: sentRes.total ?? 0,
+                trash: trashRes.total ?? 0,
+              }
+            } catch {
+              nextCounts[account.id] = { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
+            }
+          })
+        )
+        setMailAccountCounts(nextCounts)
+      } catch {
+        setMailAccounts([])
+        setMailAccountCounts({})
+      }
+    }
+
+    void loadMailCounts()
+  }, [session, sessionLoading, pathname, searchParams])
+
   const activeSection = getActiveSection(pathname)
   const sidebarTitle = user?.companyName ? `${user.companyName} 관리자` : '관리자'
 
@@ -223,10 +283,37 @@ export default function Sidebar() {
     router.push('/login/staff')
   }
 
+  if (collapsed) {
+    return (
+      <aside className="h-full w-full border-r border-neutral-200 bg-white">
+        <div className="flex items-center justify-center border-b border-neutral-200 px-2 py-4">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
+            aria-label="사이드바 열기"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="h-full w-[260px] min-w-[260px] flex-shrink-0 border-r border-neutral-200 bg-white">
+    <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-5 py-4">
-        <p className="text-xs text-neutral-500">{sidebarTitle}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-neutral-500">{sidebarTitle}</p>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
+            aria-label="사이드바 접기"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        </div>
         {!user && loading ? (
           <>
             <div className="mt-2 h-4 w-36 animate-pulse rounded bg-neutral-100" />
@@ -263,7 +350,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      <nav className="px-4 py-4">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
         <div className="space-y-1">
           {menuSections.map((section) => {
@@ -290,12 +377,6 @@ export default function Sidebar() {
               if (child.href === '/admin/companies/account' && !user) {
                 return false
               }
-              if (child.href === '/admin/staff/attendance' && !capabilities.canViewAttendance) {
-                return false
-              }
-              if (child.href === '/admin/staff/my-leave' && !capabilities.canViewLeave) {
-                return false
-              }
               return true
             }) ?? []
 
@@ -317,19 +398,174 @@ export default function Sidebar() {
                 </button>
                 {isOpen ? (
                   <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
-                    {visibleChildren.map((child) => (
-                      <Link key={child.href} href={child.href}>
-                        <div
-                          className={`rounded-md px-3 py-2 text-xs transition ${
-                            isChildActive(pathname, child.href)
-                              ? 'bg-neutral-100 font-medium text-neutral-900'
-                              : 'text-neutral-600 hover:bg-neutral-50'
-                          }`}
-                        >
-                          {child.label}
-                        </div>
-                      </Link>
-                    ))}
+                    {section.key === 'mail' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {visibleChildren.map((child) => (
+                          <Link key={child.href} href={child.href}>
+                            <div
+                              className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                                isChildActive(pathname, searchParams, child.href)
+                                  ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                                  : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                              }`}
+                            >
+                              {child.label}
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      visibleChildren.map((child) => (
+                        <Link key={child.href} href={child.href}>
+                          <div
+                            className={`rounded-md px-3 py-2 text-xs transition ${
+                              isChildActive(pathname, searchParams, child.href)
+                                ? 'bg-neutral-100 font-medium text-neutral-900'
+                                : 'text-neutral-600 hover:bg-neutral-50'
+                            }`}
+                          >
+                            {child.label}
+                          </div>
+                        </Link>
+                      ))
+                    )}
+                    {section.key === 'mail' ? (
+                      <>
+                        <div className="my-2 border-t border-neutral-200" />
+                        <p className="px-2 text-[10px] font-semibold text-neutral-500">법인계정</p>
+                        {mailAccounts.filter((account) => account.account_scope === 'company').map((account) => {
+                          const active = pathname === '/admin/mail/inbox' && searchParams.get('account_id') === String(account.id)
+                          const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                          const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
+                          return (
+                            <div key={`company-${account.id}`} className="rounded-md border border-neutral-200">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-[11px] transition ${
+                                  active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
+                                }`}
+                                title={account.email}
+                              >
+                                <span className="truncate">{account.email}</span>
+                                <div className="flex items-center gap-1">
+                                  {counts.inboxUnread > 0 ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
+                                      <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">0</span>
+                                  )}
+                                  <span className="text-[10px]">{isOpen ? '▾' : '▸'}</span>
+                                </div>
+                              </button>
+                              {isOpen ? (
+                                <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                                  <Link href={buildMailAccountHref(account.id, 'all')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>전체메일</span>
+                                      <span>{counts.all.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'inbox')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'inbox') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>받은메일함</span>
+                                      {counts.inboxUnread > 0 ? (
+                                        <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
+                                          <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
+                                          <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-neutral-500">0</span>
+                                      )}
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'sent')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>보낸메일함</span>
+                                      <span>{counts.sent.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'trash')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'trash') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>휴지통</span>
+                                      <span>{counts.trash.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                        <p className="mt-2 px-2 text-[10px] font-semibold text-neutral-500">개인계정</p>
+                        {mailAccounts.filter((account) => account.account_scope === 'personal').map((account) => {
+                          const active = pathname === '/admin/mail/inbox' && searchParams.get('account_id') === String(account.id)
+                          const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                          const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
+                          return (
+                            <div key={`personal-${account.id}`} className="rounded-md border border-neutral-200">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-[11px] transition ${
+                                  active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
+                                }`}
+                                title={account.email}
+                              >
+                                <span className="truncate">{account.email}</span>
+                                <div className="flex items-center gap-1">
+                                  {counts.inboxUnread > 0 ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
+                                      <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">0</span>
+                                  )}
+                                  <span className="text-[10px]">{isOpen ? '▾' : '▸'}</span>
+                                </div>
+                              </button>
+                              {isOpen ? (
+                                <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                                  <Link href={buildMailAccountHref(account.id, 'all')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>전체메일</span>
+                                      <span>{counts.all.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'inbox')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'inbox') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>받은메일함</span>
+                                      {counts.inboxUnread > 0 ? (
+                                        <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
+                                          <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
+                                          <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-neutral-500">0</span>
+                                      )}
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'sent')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>보낸메일함</span>
+                                      <span>{counts.sent.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                  <Link href={buildMailAccountHref(account.id, 'trash')}>
+                                    <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'trash') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                      <span>휴지통</span>
+                                      <span>{counts.trash.toLocaleString('ko-KR')}</span>
+                                    </div>
+                                  </Link>
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

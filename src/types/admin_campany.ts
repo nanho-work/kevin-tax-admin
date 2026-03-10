@@ -1,8 +1,3 @@
-// ------------------------------
-// 회사 정보 통합 조회 타입 (프론트용)
-// ------------------------------
-
-// 페이징 처리 ( 공통 )
 export interface PaginatedResponse<T> {
   items: T[]
   total: number
@@ -16,66 +11,420 @@ export interface CompanyTaxDetail {
   category?: string
   company_name: string
   owner_name: string
+  manager_name?: string
+  manager_phone?: string
+  manager_email?: string
+  manager_customer_id?: number
+  contact_method?: string
+  memo?: string
   registration_number: string
+  monthly_fee?: number
+  encrypted_hometax_id?: string
+  encrypted_hometax_pw?: string
+  contract_date?: string
+  industry_type?: string
   business_type?: string
+  cms_bank_account?: string
+  cms_account_number?: string
+  cms_transfer_day?: string
+  phone?: string
+  postal_code?: string
+  address1?: string
+  address2?: string
+  founded_date?: string
+  homepage_url?: string
+  info_agreed?: boolean
+  is_half_term?: boolean
+  salary_date?: string
+  salary_type?: string
+  w_memo?: string
+  is_export?: boolean
+  is_online?: boolean
+  v_note?: string
+  v_remark?: string
+  has_foreign_currency?: boolean
+  ct_note?: string
+  ct_remark?: string
   is_active: boolean
+  created_at?: string
+  updated_at?: string
 }
 
-// ------------------------------
-// 회사 상세 정보 응답 타입
-// ------------------------------
 export interface CompanyDetailResponse {
   id: number
   client_id?: number
   category?: string
   company_name: string
   owner_name: string
+  manager_name?: string
+  manager_phone?: string
+  manager_email?: string
+  manager_customer_id?: number
+  contact_method?: string
+  memo?: string
   registration_number?: string
+  monthly_fee?: number
+  encrypted_hometax_id?: string
+  encrypted_hometax_pw?: string
+  contract_date?: string
   industry_type?: string
   business_type?: string
+  cms_bank_account?: string
+  cms_account_number?: string
+  cms_transfer_day?: string
+  phone?: string
   postal_code?: string
   address1?: string
   address2?: string
+  founded_date?: string
+  homepage_url?: string
+  info_agreed?: boolean
   is_active: boolean
   created_at?: string
   updated_at?: string
+  is_half_term?: boolean
+  salary_date?: string
+  salary_type?: string
+  w_memo?: string
+  is_export?: boolean
+  is_online?: boolean
+  v_note?: string
+  v_remark?: string
+  has_foreign_currency?: boolean
+  ct_note?: string
+  ct_remark?: string
 }
 
 export interface CompanyUpdateRequest {
   category?: string
   company_name?: string
   owner_name?: string
+  manager_name?: string
+  manager_phone?: string
+  manager_email?: string
+  manager_customer_id?: number
+  contact_method?: string
+  memo?: string
   registration_number?: string
+  monthly_fee?: number
+  encrypted_hometax_id?: string
+  encrypted_hometax_pw?: string
+  contract_date?: string
   industry_type?: string
   business_type?: string
+  cms_bank_account?: string
+  cms_account_number?: string
+  cms_transfer_day?: string
+  phone?: string
   postal_code?: string
   address1?: string
   address2?: string
+  founded_date?: string
+  homepage_url?: string
+  info_agreed?: boolean
   is_active?: boolean
+  is_half_term?: boolean
+  salary_date?: string
+  salary_type?: string
+  w_memo?: string
+  is_export?: boolean
+  is_online?: boolean
+  v_note?: string
+  v_remark?: string
+  has_foreign_currency?: boolean
+  ct_note?: string
+  ct_remark?: string
 }
 
-// ------------------------------
-// 회사 등록 요청 타입
-// ------------------------------
 export interface CompanyCreateRequest {
   company_name: string
   owner_name: string
   registration_number: string
   category?: string
+  manager_name?: string
+  manager_phone?: string
+  manager_email?: string
+  manager_customer_id?: number
+  contact_method?: string
+  memo?: string
+  monthly_fee?: number
+  encrypted_hometax_id?: string
+  encrypted_hometax_pw?: string
+  contract_date?: string
   industry_type?: string
   business_type?: string
+  cms_bank_account?: string
+  cms_account_number?: string
+  cms_transfer_day?: string
+  phone?: string
   postal_code?: string
   address1?: string
   address2?: string
+  founded_date?: string
+  homepage_url?: string
+  info_agreed?: boolean
   is_active?: boolean
+  is_half_term?: boolean
+  salary_date?: string
+  salary_type?: string
+  w_memo?: string
+  is_export?: boolean
+  is_online?: boolean
+  v_note?: string
+  v_remark?: string
+  has_foreign_currency?: boolean
+  ct_note?: string
+  ct_remark?: string
 }
 
-// ------------------------------
-// 회사 등록 응답 타입 (Simple)
-// ------------------------------
 export interface CompanySimpleResponse {
   id: number
   company_name: string
   registration_number: string
   created_at: string
+}
+
+export interface FinancialStatementRequest {
+  company_id?: number
+  year?: string
+  open_date?: string
+  current_assets_cash?: number
+  accounts_receivable?: number
+  short_term_trade_receivables?: number
+  inventory?: number
+  current_assets?: number
+  tangible_assets?: number
+  intangible_assets?: number
+  other_non_current_assets?: number
+  non_current_assets?: number
+  total_assets?: number
+  short_term_trade_liabilities?: number
+  short_term_financial_liabilities?: number
+  current_liabilities?: number
+  long_term_financial_liabilities?: number
+  non_current_liabilities?: number
+  total_liabilities?: number
+  related_party_receivables?: number
+  related_party_payables?: number
+  capital_stock?: number
+  capital_surplus?: number
+  capital_adjustment?: number
+  retained_earnings?: number
+  total_equity?: number
+  total_liabilities_and_equity?: number
+  total_liabilities_and_equity_2?: number
+  revenue?: number
+  purchase_cost?: number
+  cost_of_goods_sold?: number
+  gross_profit?: number
+  sg_and_a?: number
+  depreciation?: number
+  amortization?: number
+  rent_expense?: number
+  operating_income?: number
+  non_operating_income?: number
+  non_operating_expense?: number
+  interest_expense?: number
+  income_before_tax?: number
+  corporate_tax?: number
+  net_income?: number
+  ebitda?: number
+}
+
+export interface FinancialStatementResponse {
+  id: number
+  company_id: number
+  company_name?: string
+  year: string
+  open_date?: string
+  current_assets_cash?: number
+  accounts_receivable?: number
+  short_term_trade_receivables?: number
+  inventory?: number
+  current_assets?: number
+  tangible_assets?: number
+  intangible_assets?: number
+  other_non_current_assets?: number
+  non_current_assets?: number
+  total_assets?: number
+  short_term_trade_liabilities?: number
+  short_term_financial_liabilities?: number
+  current_liabilities?: number
+  long_term_financial_liabilities?: number
+  non_current_liabilities?: number
+  total_liabilities?: number
+  related_party_receivables?: number
+  related_party_payables?: number
+  capital_stock?: number
+  capital_surplus?: number
+  capital_adjustment?: number
+  retained_earnings?: number
+  total_equity?: number
+  total_liabilities_and_equity?: number
+  total_liabilities_and_equity_2?: number
+  revenue?: number
+  purchase_cost?: number
+  cost_of_goods_sold?: number
+  gross_profit?: number
+  sg_and_a?: number
+  depreciation?: number
+  amortization?: number
+  rent_expense?: number
+  operating_income?: number
+  non_operating_income?: number
+  non_operating_expense?: number
+  interest_expense?: number
+  income_before_tax?: number
+  corporate_tax?: number
+  net_income?: number
+  ebitda?: number
+  created_at?: string
+}
+
+export interface WithholdingTaxDetailResponse {
+  id: number
+  company_id: number
+  company_name?: string
+  year: string
+  obligation?: string
+  salary_reported?: boolean
+  attribution_month?: string
+  payment_month?: string
+  employee_count?: number
+  employee_amount?: number
+  untaxed_submitted?: number
+  simple_employee?: number
+  daily_worker_count?: number
+  daily_worker_amount?: number
+  daily_worker_filed?: boolean
+  business_worker_count?: number
+  business_worker_amount?: number
+  simple_business?: boolean
+  etc_worker_count?: number
+  etc_worker_amount?: number
+  retirement_count?: number
+  retirement_amount?: number
+  created_at?: string
+}
+
+export interface WithholdingTaxDetailRequest {
+  company_id?: number
+  year?: string
+  obligation?: string
+  salary_reported?: boolean
+  attribution_month?: string
+  payment_month?: string
+  employee_count?: number
+  employee_amount?: number
+  untaxed_submitted?: number
+  simple_employee?: number
+  daily_worker_count?: number
+  daily_worker_amount?: number
+  daily_worker_filed?: boolean
+  business_worker_count?: number
+  business_worker_amount?: number
+  simple_business?: boolean
+  etc_worker_count?: number
+  etc_worker_amount?: number
+  retirement_count?: number
+  retirement_amount?: number
+}
+
+export interface CorporateTaxDetailResponse {
+  id: number
+  company_id: number
+  company_name?: string
+  year: string
+  net_income_reported?: number
+  income1?: string
+  income_amount1?: number
+  income2?: string
+  income_amount2?: number
+  income3?: string
+  income_amount3?: number
+  income4?: string
+  income_amount4?: number
+  income_total?: number
+  deduction1?: string
+  deduction_amount1?: number
+  deduction2?: string
+  deduction_amount2?: number
+  deduction3?: string
+  deduction_amount3?: number
+  deduction4?: string
+  deduction_amount4?: number
+  deduction_total?: number
+  adjusted_income?: number
+  donation_adjustment?: number
+  taxable_income?: number
+  loss_carried_forward?: number
+  tax_base?: number
+  tax_rate?: string
+  calculated_tax?: number
+  tax_credit_name1?: string
+  tax_credit_amount1?: number
+  tax_credit_name2?: string
+  tax_credit_amount2?: number
+  tax_credit_name3?: string
+  tax_credit_amount3?: number
+  tax_credit_name4?: string
+  tax_credit_amount4?: number
+  total_tax_credits?: number
+  additional_tax?: number
+  tax_adjusted?: number
+  prepaid_tax?: number
+  additional_tax_reduced?: number
+  total_tax_due?: number
+  minimum_tax?: number
+  local_tax?: number
+  rural_special_tax?: number
+  created_at?: string
+}
+
+export interface CorporateTaxDetailRequest {
+  company_id?: number
+  year?: string
+  net_income_reported?: number
+  income1?: string
+  income_amount1?: number
+  income2?: string
+  income_amount2?: number
+  income3?: string
+  income_amount3?: number
+  income4?: string
+  income_amount4?: number
+  income_total?: number
+  deduction1?: string
+  deduction_amount1?: number
+  deduction2?: string
+  deduction_amount2?: number
+  deduction3?: string
+  deduction_amount3?: number
+  deduction4?: string
+  deduction_amount4?: number
+  deduction_total?: number
+  adjusted_income?: number
+  donation_adjustment?: number
+  taxable_income?: number
+  loss_carried_forward?: number
+  tax_base?: number
+  tax_rate?: string
+  calculated_tax?: number
+  tax_credit_name1?: string
+  tax_credit_amount1?: number
+  tax_credit_name2?: string
+  tax_credit_amount2?: number
+  tax_credit_name3?: string
+  tax_credit_amount3?: number
+  tax_credit_name4?: string
+  tax_credit_amount4?: number
+  total_tax_credits?: number
+  additional_tax?: number
+  tax_adjusted?: number
+  prepaid_tax?: number
+  additional_tax_reduced?: number
+  total_tax_due?: number
+  minimum_tax?: number
+  local_tax?: number
+  rural_special_tax?: number
 }

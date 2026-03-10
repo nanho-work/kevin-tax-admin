@@ -10,7 +10,11 @@ import {
   getApprovalDocumentErrorMessage,
   reviewApprovalDocument,
 } from '@/services/admin/approvalDocumentService'
-import { cancelAnnualLeaveRequest, fetchMyAnnualLeaveRequests } from '@/services/admin/annualLeaveRequestService'
+import {
+  cancelAnnualLeaveRequest,
+  fetchMyAnnualLeaveRequests,
+  requestCancelAnnualLeaveRequest,
+} from '@/services/admin/annualLeaveRequestService'
 import type {
   ApprovalDocument,
   ApprovalDocumentDetail,
@@ -22,6 +26,7 @@ const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
 type UnifiedStatus = ApprovalDocumentStatus | AnnualLeaveRequestStatus
+type FilterableLeaveStatus = Exclude<AnnualLeaveRequestStatus, 'approved_canceled'>
 
 type UnifiedItem = {
   source: 'document' | 'leave'
@@ -63,10 +68,26 @@ function formatDateTime(value?: string | null) {
 
 function getStatusMeta(status: UnifiedStatus) {
   if (status === 'approved') return { label: '승인', className: 'bg-emerald-100 text-emerald-700' }
+  if (status === 'approved_canceled') return { label: '승인취소', className: 'bg-sky-100 text-sky-700' }
   if (status === 'rejected') return { label: '반려', className: 'bg-rose-100 text-rose-700' }
   if (status === 'canceled') return { label: '취소', className: 'bg-zinc-200 text-zinc-700' }
   if (status === 'draft') return { label: '임시저장', className: 'bg-zinc-100 text-zinc-700' }
   return { label: '제출', className: 'bg-amber-100 text-amber-700' }
+}
+
+function getUnifiedStatusMeta(item: UnifiedItem) {
+  if (item.source === 'leave' && item.rawLeave) {
+    if (item.rawLeave.cancel_status === 'pending') {
+      return { label: '취소요청', className: 'bg-amber-100 text-amber-700' }
+    }
+    if (item.rawLeave.cancel_status === 'approved' || item.rawLeave.status === 'approved_canceled') {
+      return { label: '취소완료', className: 'bg-sky-100 text-sky-700' }
+    }
+    if (item.rawLeave.cancel_status === 'rejected') {
+      return { label: '취소반려', className: 'bg-rose-100 text-rose-700' }
+    }
+  }
+  return getStatusMeta(item.status)
 }
 
 function getApproverTypeLabel(type: string) {
@@ -81,7 +102,7 @@ function getApproverStatusLabel(status: string) {
   return status
 }
 
-function isLeaveStatus(value: ApprovalDocumentStatus | ''): value is AnnualLeaveRequestStatus {
+function isLeaveStatus(value: string): value is FilterableLeaveStatus {
   return value === 'pending' || value === 'approved' || value === 'rejected' || value === 'canceled'
 }
 
@@ -89,6 +110,11 @@ function canCancel(item: UnifiedItem, viewMode: 'mine' | 'pending') {
   if (viewMode === 'pending') return false
   if (item.source === 'leave') return item.status === 'pending'
   return item.status === 'draft' || item.status === 'pending'
+}
+
+function canRequestLeaveCancel(item: UnifiedItem, viewMode: 'mine' | 'pending') {
+  if (viewMode !== 'mine' || item.source !== 'leave' || !item.rawLeave) return false
+  return item.rawLeave.status === 'approved' && (item.rawLeave.cancel_status === 'none' || item.rawLeave.cancel_status === 'rejected')
 }
 
 function canReview(item: UnifiedItem, viewMode: 'mine' | 'pending') {
@@ -106,6 +132,9 @@ export default function AdminMyDocumentsPage() {
   const [detail, setDetail] = useState<ApprovalDocumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [canceling, setCanceling] = useState(false)
+  const [leaveCancelRequestTarget, setLeaveCancelRequestTarget] = useState<UnifiedItem | null>(null)
+  const [leaveCancelReason, setLeaveCancelReason] = useState('')
+  const [leaveCancelSubmitting, setLeaveCancelSubmitting] = useState(false)
   const [reviewMode, setReviewMode] = useState<'approved' | 'rejected' | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [rejectedReason, setRejectedReason] = useState('')
@@ -241,6 +270,8 @@ export default function AdminMyDocumentsPage() {
     setReviewMode(null)
     setReviewComment('')
     setRejectedReason('')
+    setLeaveCancelRequestTarget(null)
+    setLeaveCancelReason('')
   }, [viewMode])
 
   useEffect(() => {
@@ -263,10 +294,11 @@ export default function AdminMyDocumentsPage() {
       setCanceling(true)
       if (item.source === 'leave') {
         await cancelAnnualLeaveRequest(item.id)
+        toast.success('휴가 신청을 취소했습니다.')
       } else {
         await cancelApprovalDocument(item.id)
+        toast.success('문서를 취소했습니다.')
       }
-      toast.success('문서를 취소했습니다.')
       await loadItems()
       if (selectedItem && selectedItem.source === item.source && selectedItem.id === item.id) {
         if (item.source === 'document') {
@@ -279,6 +311,36 @@ export default function AdminMyDocumentsPage() {
       toast.error(getApprovalDocumentErrorMessage(error))
     } finally {
       setCanceling(false)
+    }
+  }
+
+  const handleOpenLeaveCancelRequest = (item: UnifiedItem) => {
+    setLeaveCancelRequestTarget(item)
+    setLeaveCancelReason('')
+  }
+
+  const handleSubmitLeaveCancelRequest = async () => {
+    if (!leaveCancelRequestTarget) return
+    const reason = leaveCancelReason.trim()
+    if (!reason) {
+      toast.error('승인취소 요청 사유를 입력해 주세요.')
+      return
+    }
+
+    try {
+      setLeaveCancelSubmitting(true)
+      await requestCancelAnnualLeaveRequest(leaveCancelRequestTarget.id, { reason })
+      toast.success('승인취소 요청을 등록했습니다.')
+      setLeaveCancelRequestTarget(null)
+      setLeaveCancelReason('')
+      await loadItems()
+      if (selectedItem?.source === 'leave' && selectedItem.id === leaveCancelRequestTarget.id) {
+        setSelectedItem(null)
+      }
+    } catch (error) {
+      toast.error(getApprovalDocumentErrorMessage(error))
+    } finally {
+      setLeaveCancelSubmitting(false)
     }
   }
 
@@ -311,7 +373,12 @@ export default function AdminMyDocumentsPage() {
   }
 
   const draftOrPendingCount = useMemo(
-    () => items.filter((item) => (viewMode === 'pending' ? canReview(item, viewMode) : canCancel(item, viewMode))).length,
+    () =>
+      items.filter((item) =>
+        viewMode === 'pending'
+          ? canReview(item, viewMode)
+          : canCancel(item, viewMode) || canRequestLeaveCancel(item, viewMode)
+      ).length,
     [items, viewMode]
   )
 
@@ -394,7 +461,7 @@ export default function AdminMyDocumentsPage() {
               </tr>
             ) : (
               items.map((item) => {
-                const statusMeta = getStatusMeta(item.status)
+                const statusMeta = getUnifiedStatusMeta(item)
                 return (
                   <tr key={`${item.source}-${item.id}`}>
                     <td className="px-3 py-3 text-left text-zinc-700">{docTypeLabels[item.doc_type] || item.doc_type}</td>
@@ -438,6 +505,14 @@ export default function AdminMyDocumentsPage() {
                           className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
                         >
                           결재
+                        </button>
+                      ) : canRequestLeaveCancel(item, viewMode) ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLeaveCancelRequest(item)}
+                          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                        >
+                          승인취소 요청
                         </button>
                       ) : canCancel(item, viewMode) ? (
                         <button
@@ -517,8 +592,8 @@ export default function AdminMyDocumentsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-zinc-500">상태</p>
-                      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusMeta(selectedItem.status).className}`}>
-                        {getStatusMeta(selectedItem.status).label}
+                      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getUnifiedStatusMeta(selectedItem).className}`}>
+                        {getUnifiedStatusMeta(selectedItem).label}
                       </span>
                     </div>
                     <div>
@@ -548,7 +623,28 @@ export default function AdminMyDocumentsPage() {
                         반려 사유: {selectedItem.rawLeave.reject_reason}
                       </div>
                     ) : null}
+                    {selectedItem.rawLeave?.cancel_reason ? (
+                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                        취소 요청 사유: {selectedItem.rawLeave.cancel_reason}
+                      </div>
+                    ) : null}
+                    {selectedItem.rawLeave?.cancel_review_note ? (
+                      <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                        취소 검토 메모: {selectedItem.rawLeave.cancel_review_note}
+                      </div>
+                    ) : null}
                   </div>
+                  {canRequestLeaveCancel(selectedItem, viewMode) ? (
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLeaveCancelRequest(selectedItem)}
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                      >
+                        승인취소 요청
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : detailLoading || !detail ? (
                 <div className="rounded-lg border border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-500">상세 조회 중...</div>
@@ -756,6 +852,65 @@ export default function AdminMyDocumentsPage() {
                   ) : null}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {leaveCancelRequestTarget ? (
+        <div className="fixed inset-0 z-50 bg-black/30">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-5">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-900">승인취소 요청</h2>
+                <p className="mt-1 text-sm text-zinc-500">{leaveCancelRequestTarget.title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (leaveCancelSubmitting) return
+                  setLeaveCancelRequestTarget(null)
+                  setLeaveCancelReason('')
+                }}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                <label className="mb-2 block text-xs text-zinc-600">요청 사유</label>
+                <textarea
+                  rows={6}
+                  value={leaveCancelReason}
+                  onChange={(e) => setLeaveCancelReason(e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  placeholder="예: 일정 변경, 중복 신청, 실제 미사용"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (leaveCancelSubmitting) return
+                  setLeaveCancelRequestTarget(null)
+                  setLeaveCancelReason('')
+                }}
+                className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitLeaveCancelRequest}
+                disabled={leaveCancelSubmitting}
+                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+              >
+                {leaveCancelSubmitting ? '요청 중...' : '요청 제출'}
+              </button>
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
 import {
   fetchClientAnnualLeaveRequests,
   getClientAnnualLeaveRequestErrorMessage,
+  reviewClientAnnualLeaveCancelRequest,
   reviewClientAnnualLeaveRequest,
 } from '@/services/client/clientAnnualLeaveRequestService'
 import type { AdminOut } from '@/types/admin'
@@ -70,10 +71,26 @@ function formatDateTime(value?: string | null) {
 
 function getStatusMeta(status: UnifiedStatus) {
   if (status === 'approved') return { label: '승인', className: 'bg-emerald-100 text-emerald-700' }
+  if (status === 'approved_canceled') return { label: '승인취소', className: 'bg-sky-100 text-sky-700' }
   if (status === 'rejected') return { label: '반려', className: 'bg-rose-100 text-rose-700' }
   if (status === 'canceled') return { label: '취소', className: 'bg-zinc-200 text-zinc-700' }
   if (status === 'draft') return { label: '임시저장', className: 'bg-zinc-100 text-zinc-700' }
   return { label: '제출', className: 'bg-amber-100 text-amber-700' }
+}
+
+function getUnifiedStatusMeta(item: UnifiedApprovalItem) {
+  if (item.source === 'leave' && item.rawLeave) {
+    if (item.rawLeave.cancel_status === 'pending') {
+      return { label: '취소요청', className: 'bg-amber-100 text-amber-700' }
+    }
+    if (item.rawLeave.cancel_status === 'approved' || item.rawLeave.status === 'approved_canceled') {
+      return { label: '취소완료', className: 'bg-sky-100 text-sky-700' }
+    }
+    if (item.rawLeave.cancel_status === 'rejected') {
+      return { label: '취소반려', className: 'bg-rose-100 text-rose-700' }
+    }
+  }
+  return getStatusMeta(item.status)
 }
 
 function getApproverTypeLabel(type: string) {
@@ -88,8 +105,8 @@ function getApproverStatusLabel(status: string) {
   return status
 }
 
-function isLeaveStatus(value: ApprovalDocumentStatus | ''): value is AnnualLeaveRequestStatus {
-  return value === 'pending' || value === 'approved' || value === 'rejected' || value === 'canceled'
+function isLeaveStatus(value: string): value is AnnualLeaveRequestStatus {
+  return value === 'pending' || value === 'approved' || value === 'rejected' || value === 'canceled' || value === 'approved_canceled'
 }
 
 const docTypeOptions: Array<{ value: ApprovalDocumentType | ''; label: string }> = [
@@ -174,25 +191,46 @@ export default function ClientApprovalDocumentsPage() {
   const fetchAllLeaveRequests = async () => {
     if (status === 'draft') return []
 
-    const merged: AnnualLeaveRequest[] = []
     const pageLimit = 200
-    let offset = 0
-    let totalCount = 0
+    const adminIdFilter = typeof writerAdminId === 'number' ? writerAdminId : undefined
+
+    const fetchPaged = async (params: {
+      status?: AnnualLeaveRequestStatus | ''
+      cancel_status?: 'none' | 'pending' | 'approved' | 'rejected' | ''
+    }) => {
+      const merged: AnnualLeaveRequest[] = []
+      let offset = 0
+      let totalCount = 0
+
+      do {
+        const res = await fetchClientAnnualLeaveRequests({
+          status: params.status || '',
+          cancel_status: params.cancel_status || '',
+          admin_id: adminIdFilter,
+          offset,
+          limit: pageLimit,
+        })
+        merged.push(...(res.items || []))
+        totalCount = res.total || 0
+        offset += pageLimit
+      } while (merged.length < totalCount)
+
+      return merged
+    }
+
+    if (status === 'pending') {
+      const [pendingRequests, cancelPendingRequests] = await Promise.all([
+        fetchPaged({ status: 'pending' }),
+        fetchPaged({ status: '', cancel_status: 'pending' }),
+      ])
+      const deduped = new Map<number, AnnualLeaveRequest>()
+      pendingRequests.forEach((item) => deduped.set(item.id, item))
+      cancelPendingRequests.forEach((item) => deduped.set(item.id, item))
+      return [...deduped.values()]
+    }
+
     const leaveStatus = isLeaveStatus(status) ? status : ''
-
-    do {
-      const res = await fetchClientAnnualLeaveRequests({
-        status: leaveStatus,
-        admin_id: typeof writerAdminId === 'number' ? writerAdminId : undefined,
-        offset,
-        limit: pageLimit,
-      })
-      merged.push(...(res.items || []))
-      totalCount = res.total || 0
-      offset += pageLimit
-    } while (merged.length < totalCount)
-
-    return merged
+    return fetchPaged({ status: leaveStatus })
   }
 
   const loadItems = async () => {
@@ -296,7 +334,10 @@ export default function ClientApprovalDocumentsPage() {
     setPage(1)
   }, [queueTab])
 
-  const pendingCount = useMemo(() => items.filter((item) => item.status === 'pending').length, [items])
+  const pendingCount = useMemo(
+    () => items.filter((item) => item.status === 'pending' || (item.source === 'leave' && item.rawLeave?.cancel_status === 'pending')).length,
+    [items]
+  )
 
   const currentApprover = useMemo(() => {
     if (!detail) return null
@@ -308,11 +349,18 @@ export default function ClientApprovalDocumentsPage() {
   }, [detail])
 
   const openReviewPanel = (item: UnifiedApprovalItem, mode: 'approved' | 'rejected') => {
+    const isLeaveCancelReview = item.source === 'leave' && item.rawLeave?.cancel_status === 'pending'
     setSelectedItem(item)
     setReviewMode(mode)
     setComment('')
     setSignatureText('')
-    setRejectedReason(item.source === 'leave' ? item.rawLeave?.reject_reason || '' : '')
+    setRejectedReason(
+      item.source === 'leave'
+        ? isLeaveCancelReview
+          ? item.rawLeave?.cancel_review_note || ''
+          : item.rawLeave?.reject_reason || ''
+        : ''
+    )
   }
 
   const closePanel = () => {
@@ -337,19 +385,28 @@ export default function ClientApprovalDocumentsPage() {
 
   const handleReview = async () => {
     if (!selectedItem || !reviewMode) return
+    const isLeaveCancelReview = selectedItem.source === 'leave' && selectedItem.rawLeave?.cancel_status === 'pending'
     if (reviewMode === 'rejected' && !rejectedReason.trim()) {
-      toast.error('반려 사유를 입력해 주세요.')
+      toast.error(isLeaveCancelReview ? '검토 메모를 입력해 주세요.' : '반려 사유를 입력해 주세요.')
       return
     }
 
     try {
       setSubmitting(true)
       if (selectedItem.source === 'leave') {
-        await reviewClientAnnualLeaveRequest(selectedItem.id, {
-          action: reviewMode,
-          reject_reason: reviewMode === 'rejected' ? rejectedReason.trim() : undefined,
-        })
-        toast.success(reviewMode === 'approved' ? '휴가 신청을 승인했습니다.' : '휴가 신청을 반려했습니다.')
+        if (isLeaveCancelReview) {
+          await reviewClientAnnualLeaveCancelRequest(selectedItem.id, {
+            action: reviewMode,
+            review_note: rejectedReason.trim() || undefined,
+          })
+          toast.success(reviewMode === 'approved' ? '휴가 취소 요청을 승인했습니다.' : '휴가 취소 요청을 반려했습니다.')
+        } else {
+          await reviewClientAnnualLeaveRequest(selectedItem.id, {
+            action: reviewMode,
+            reject_reason: reviewMode === 'rejected' ? rejectedReason.trim() : undefined,
+          })
+          toast.success(reviewMode === 'approved' ? '휴가 신청을 승인했습니다.' : '휴가 신청을 반려했습니다.')
+        }
       } else {
         if (!detail) {
           toast.error('문서 상세를 불러온 뒤 다시 시도해 주세요.')
@@ -375,6 +432,8 @@ export default function ClientApprovalDocumentsPage() {
       setSubmitting(false)
     }
   }
+
+  const isSelectedLeaveCancelPending = selectedItem?.source === 'leave' && selectedItem.rawLeave?.cancel_status === 'pending'
 
   return (
     <section className="space-y-4">
@@ -457,8 +516,10 @@ export default function ClientApprovalDocumentsPage() {
               </tr>
             ) : (
               items.map((item) => {
-                const statusMeta = getStatusMeta(item.status)
+                const statusMeta = getUnifiedStatusMeta(item)
                 const writerName = staffs.find((staff) => staff.id === item.writer_admin_id)?.name || item.writer_admin_id
+                const isLeaveCancelPending = item.source === 'leave' && item.rawLeave?.cancel_status === 'pending'
+                const canReviewItem = item.status === 'pending' || isLeaveCancelPending
                 return (
                   <tr key={`${item.source}-${item.id}`}>
                     <td className="px-3 py-3 text-left text-zinc-700">{docTypeLabels[item.doc_type] || item.doc_type}</td>
@@ -489,7 +550,7 @@ export default function ClientApprovalDocumentsPage() {
                     </td>
                     <td className="px-3 py-3 text-center text-zinc-500">{formatDateTime(item.submitted_at)}</td>
                     <td className="px-3 py-3 text-center">
-                      {item.status === 'pending' ? (
+                      {canReviewItem ? (
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
@@ -545,7 +606,9 @@ export default function ClientApprovalDocumentsPage() {
           <div className="absolute inset-y-0 right-0 w-full max-w-2xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
             <div className="flex items-start justify-between border-b border-zinc-200 bg-white px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-900">{reviewMode ? '결재 처리' : '결재 상세'}</h2>
+                <h2 className="text-lg font-semibold text-zinc-900">
+                  {reviewMode ? (isSelectedLeaveCancelPending ? '휴가 취소요청 처리' : '결재 처리') : '결재 상세'}
+                </h2>
                 <p className="mt-1 text-sm text-zinc-500">{selectedItem.title}</p>
               </div>
               <button
@@ -567,8 +630,8 @@ export default function ClientApprovalDocumentsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-zinc-500">상태</p>
-                      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusMeta(selectedItem.status).className}`}>
-                        {getStatusMeta(selectedItem.status).label}
+                      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getUnifiedStatusMeta(selectedItem).className}`}>
+                        {getUnifiedStatusMeta(selectedItem).label}
                       </span>
                     </div>
                     <div>
@@ -596,6 +659,16 @@ export default function ClientApprovalDocumentsPage() {
                     {selectedItem.rawLeave?.reject_reason ? (
                       <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                         반려 사유: {selectedItem.rawLeave.reject_reason}
+                      </div>
+                    ) : null}
+                    {selectedItem.rawLeave?.cancel_reason ? (
+                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                        취소 요청 사유: {selectedItem.rawLeave.cancel_reason}
+                      </div>
+                    ) : null}
+                    {selectedItem.rawLeave?.cancel_review_note ? (
+                      <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                        취소 검토 메모: {selectedItem.rawLeave.cancel_review_note}
                       </div>
                     ) : null}
                   </div>
@@ -732,19 +805,29 @@ export default function ClientApprovalDocumentsPage() {
                 selectedItem.source === 'leave' ? (
                   reviewMode === 'rejected' ? (
                     <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                      <label className="mb-1 block text-xs text-zinc-600">반려 사유</label>
+                      <label className="mb-1 block text-xs text-zinc-600">
+                        {isSelectedLeaveCancelPending ? '검토 메모' : '반려 사유'}
+                      </label>
                       <textarea
                         rows={4}
                         value={rejectedReason}
                         onChange={(e) => setRejectedReason(e.target.value)}
                         className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                        placeholder="반려 사유를 입력해 주세요."
+                        placeholder={isSelectedLeaveCancelPending ? '취소요청 반려 사유를 입력해 주세요.' : '반려 사유를 입력해 주세요.'}
                       />
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                      승인 시 서버에서 자동으로 오래된 연차부터 차감합니다.
-                    </div>
+                    <>
+                      {isSelectedLeaveCancelPending ? (
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                          승인 시 기존 차감 연차가 자동 복구되고, 원장에 복구 이력이 남습니다.
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                          승인 시 서버에서 자동으로 오래된 연차부터 차감합니다.
+                        </div>
+                      )}
+                    </>
                   )
                 ) : (
                   <div className="rounded-lg border border-zinc-200 bg-white p-4">

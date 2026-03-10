@@ -38,6 +38,9 @@ function handleAdminUnauthorized() {
   clearAdminAccessToken()
   if (typeof window === 'undefined') return
   const path = window.location.pathname
+  if (path === '/admin/mail/oauth/callback' || path === '/client/mail/oauth/callback') {
+    return
+  }
   if (path.startsWith('/admin')) {
     window.location.href = '/login/staff'
     return
@@ -50,14 +53,24 @@ function handleAdminUnauthorized() {
 export function setAdminAccessToken(token: string | null) {
   adminAccessToken = token
   if (typeof window !== 'undefined') {
-    if (token) window.sessionStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, token)
-    else window.sessionStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY)
+    if (token) {
+      window.sessionStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, token)
+      window.localStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, token)
+    } else {
+      window.sessionStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY)
+      window.localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY)
+    }
   }
 }
 
 export function getAdminAccessToken() {
   if (!adminAccessToken && typeof window !== 'undefined') {
-    adminAccessToken = window.sessionStorage.getItem(ADMIN_ACCESS_TOKEN_KEY)
+    adminAccessToken =
+      window.sessionStorage.getItem(ADMIN_ACCESS_TOKEN_KEY) ||
+      window.localStorage.getItem(ADMIN_ACCESS_TOKEN_KEY)
+    if (adminAccessToken && !window.sessionStorage.getItem(ADMIN_ACCESS_TOKEN_KEY)) {
+      window.sessionStorage.setItem(ADMIN_ACCESS_TOKEN_KEY, adminAccessToken)
+    }
   }
   return adminAccessToken
 }
@@ -70,20 +83,31 @@ export function clearAdminAccessToken() {
   adminAccessToken = null
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY)
+    window.localStorage.removeItem(ADMIN_ACCESS_TOKEN_KEY)
   }
 }
 
 export function setClientAccessToken(token: string | null) {
   clientAccessToken = token
   if (typeof window !== 'undefined') {
-    if (token) window.sessionStorage.setItem(CLIENT_ACCESS_TOKEN_KEY, token)
-    else window.sessionStorage.removeItem(CLIENT_ACCESS_TOKEN_KEY)
+    if (token) {
+      window.sessionStorage.setItem(CLIENT_ACCESS_TOKEN_KEY, token)
+      window.localStorage.setItem(CLIENT_ACCESS_TOKEN_KEY, token)
+    } else {
+      window.sessionStorage.removeItem(CLIENT_ACCESS_TOKEN_KEY)
+      window.localStorage.removeItem(CLIENT_ACCESS_TOKEN_KEY)
+    }
   }
 }
 
 export function getClientAccessToken() {
   if (!clientAccessToken && typeof window !== 'undefined') {
-    clientAccessToken = window.sessionStorage.getItem(CLIENT_ACCESS_TOKEN_KEY)
+    clientAccessToken =
+      window.sessionStorage.getItem(CLIENT_ACCESS_TOKEN_KEY) ||
+      window.localStorage.getItem(CLIENT_ACCESS_TOKEN_KEY)
+    if (clientAccessToken && !window.sessionStorage.getItem(CLIENT_ACCESS_TOKEN_KEY)) {
+      window.sessionStorage.setItem(CLIENT_ACCESS_TOKEN_KEY, clientAccessToken)
+    }
   }
   return clientAccessToken
 }
@@ -96,6 +120,7 @@ export function clearClientAccessToken() {
   clientAccessToken = null
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem(CLIENT_ACCESS_TOKEN_KEY)
+    window.localStorage.removeItem(CLIENT_ACCESS_TOKEN_KEY)
   }
 }
 
@@ -207,7 +232,11 @@ clientHttp.interceptors.response.use(
     } catch (refreshError) {
       clearClientAccessToken()
       processClientQueue(null)
-      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/client')) {
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname.startsWith('/client') &&
+        window.location.pathname !== '/client/mail/oauth/callback'
+      ) {
         window.location.href = '/login/client'
       }
       return Promise.reject(refreshError)

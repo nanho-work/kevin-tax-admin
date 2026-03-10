@@ -16,7 +16,7 @@ import {
   updateStaffPermissions,
 } from '@/services/client/clientPermissionService'
 import { getClientStaffs } from '@/services/client/clientStaffService'
-import { createRole, deleteRole, getRoles } from '@/services/client/roleService'
+import { createRole, deleteRole, getRoles, reorderRoles } from '@/services/client/roleService'
 import { createTeam, deleteTeam, getTeams, reorderTeams, updateTeam } from '@/services/client/teamService'
 import type { AdminOut } from '@/types/admin'
 import type { PermissionCodeOut } from '@/types/clientPermission'
@@ -33,6 +33,8 @@ type StaffPermissionRow = {
 }
 
 type DrawerType = 'department' | 'team' | 'role' | null
+
+const ACL_EXCLUDED_CODES = new Set(['annual_leave.read', 'attendance.read'])
 
 function buildCodeMap(codes: PermissionCodeOut[], source?: { code: string; is_allowed: boolean }[]) {
   const map: Record<string, boolean> = {}
@@ -55,6 +57,10 @@ function getErrorMessage(error: any, fallback: string) {
     if (typeof first?.msg === 'string') return first.msg
   }
   return fallback
+}
+
+function filterAclCodes(items: PermissionCodeOut[]) {
+  return (items || []).filter((code) => !ACL_EXCLUDED_CODES.has(code.code))
 }
 
 export default function ClientAclMatrixPage() {
@@ -102,9 +108,9 @@ export default function ClientAclMatrixPage() {
   const [teamLines, setTeamLines] = useState<Record<string, { left: number; width: number }>>({})
 
   const [roleName, setRoleName] = useState('')
-  const [roleRankOrder, setRoleRankOrder] = useState('10')
   const [roleDescription, setRoleDescription] = useState('')
   const [roleSubmitting, setRoleSubmitting] = useState(false)
+  const [roleReordering, setRoleReordering] = useState(false)
 
   const groupedCodes = useMemo(() => {
     const grouped = new Map<string, PermissionCodeOut[]>()
@@ -116,6 +122,14 @@ export default function ClientAclMatrixPage() {
     return [...grouped.entries()]
   }, [codes])
 
+  const roleRankById = useMemo(() => {
+    const map = new Map<number, number>()
+    roles.forEach((role) => {
+      map.set(role.id, getRoleRank(role))
+    })
+    return map
+  }, [roles])
+
   const staffByTeamId = useMemo(() => {
     const map = new Map<number, AdminOut[]>()
     orgStaffs.forEach((staff) => {
@@ -125,8 +139,29 @@ export default function ClientAclMatrixPage() {
       prev.push(staff)
       map.set(teamId, prev)
     })
+    map.forEach((members, teamId) => {
+      members.sort((a, b) => {
+        const rankA =
+          typeof a.rank_order === 'number'
+            ? a.rank_order
+            : a.role_id
+              ? roleRankById.get(a.role_id) ?? 999
+              : 999
+        const rankB =
+          typeof b.rank_order === 'number'
+            ? b.rank_order
+            : b.role_id
+              ? roleRankById.get(b.role_id) ?? 999
+              : 999
+        if (rankA !== rankB) return rankA - rankB
+        const nameCompared = a.name.localeCompare(b.name, 'ko')
+        if (nameCompared !== 0) return nameCompared
+        return a.id - b.id
+      })
+      map.set(teamId, members)
+    })
     return map
-  }, [orgStaffs])
+  }, [orgStaffs, roleRankById])
 
   const teamsByDepartmentId = useMemo(() => {
     const map = new Map<number, TeamOut[]>()
@@ -208,7 +243,7 @@ export default function ClientAclMatrixPage() {
         setAclError(null)
 
         const [codeRes, staffRes] = await Promise.all([getPermissionCodes(true), getClientStaffs(1, 100)])
-        const codeItems = codeRes.items || []
+        const codeItems = filterAclCodes(codeRes.items || [])
         const staffItems = (staffRes.items || []).filter((staff) => staff.is_active)
 
         const permissionResponses = await Promise.all(
@@ -376,6 +411,7 @@ export default function ClientAclMatrixPage() {
     const changedItems = codes
       .filter((code) => row.values[code.code] !== row.baseline[code.code])
       .map((code) => ({ code: code.code, is_allowed: row.values[code.code] }))
+      .filter((item) => !ACL_EXCLUDED_CODES.has(item.code))
 
     if (changedItems.length === 0) {
       toast('변경된 권한이 없습니다.')
@@ -730,12 +766,7 @@ export default function ClientAclMatrixPage() {
 
   const handleCreateRole = async () => {
     if (!roleName.trim()) {
-      toast.error('직위명을 입력해 주세요.')
-      return
-    }
-    const parsedRankOrder = Number(roleRankOrder)
-    if (!Number.isFinite(parsedRankOrder)) {
-      toast.error('순서는 숫자여야 합니다.')
+      toast.error('직급명을 입력해 주세요.')
       return
     }
 
@@ -743,30 +774,103 @@ export default function ClientAclMatrixPage() {
       setRoleSubmitting(true)
       await createRole({
         name: roleName.trim(),
-        rank_order: parsedRankOrder,
         description: roleDescription.trim() || undefined,
       })
-      toast.success('직위를 생성했습니다.')
+      toast.success('직급을 생성했습니다.')
       setRoleName('')
-      setRoleRankOrder('10')
       setRoleDescription('')
       closeDrawer()
       await loadOrganizationResources()
     } catch (error) {
-      toast.error(getErrorMessage(error, '직위 생성에 실패했습니다.'))
+      toast.error(getErrorMessage(error, '직급 생성에 실패했습니다.'))
     } finally {
       setRoleSubmitting(false)
     }
   }
 
-  const handleDeleteRole = async (roleId: number) => {
-    if (!window.confirm('해당 직위를 삭제하시겠습니까?')) return
+  const handleMoveRole = async (roleId: number, direction: 'up' | 'down') => {
+    const currentIndex = roles.findIndex((role) => role.id === roleId)
+    if (currentIndex < 0) return
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= roles.length) return
+
+    const reordered = [...roles]
+    const [target] = reordered.splice(currentIndex, 1)
+    reordered.splice(nextIndex, 0, target)
+
     try {
-      await deleteRole(roleId)
-      toast.success('직위를 삭제했습니다.')
+      setRoleReordering(true)
+      await reorderRoles({
+        items: reordered.map((role, index) => ({
+          role_id: role.id,
+          rank_order: index + 1,
+        })),
+      })
       await loadOrganizationResources()
     } catch (error) {
-      toast.error(getErrorMessage(error, '직위 삭제에 실패했습니다.'))
+      toast.error(getErrorMessage(error, '직급 순서 변경에 실패했습니다.'))
+    } finally {
+      setRoleReordering(false)
+    }
+  }
+
+  const handleDeleteRole = async (roleId: number) => {
+    if (!window.confirm('해당 직급을 삭제하시겠습니까?')) return
+    try {
+      await deleteRole(roleId)
+      toast.success('직급을 삭제했습니다.')
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '직급 삭제에 실패했습니다.'))
+    }
+  }
+
+  const handleMoveMember = async (teamId: number, memberId: number, direction: 'up' | 'down') => {
+    const members = staffByTeamId.get(teamId) || []
+    const currentIndex = members.findIndex((member) => member.id === memberId)
+    if (currentIndex < 0) return
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= members.length) return
+
+    const currentMember = members[currentIndex]
+    const nextMember = members[nextIndex]
+
+    if (!currentMember.role_id || !nextMember.role_id) {
+      toast.error('직급이 설정된 직원만 순서를 조정할 수 있습니다.')
+      return
+    }
+
+    if (currentMember.role_id === nextMember.role_id) {
+      toast('동일 직급 내 순서는 직급 순서로 변경할 수 없습니다.')
+      return
+    }
+
+    const currentRoleIndex = roles.findIndex((role) => role.id === currentMember.role_id)
+    const nextRoleIndex = roles.findIndex((role) => role.id === nextMember.role_id)
+    if (currentRoleIndex < 0 || nextRoleIndex < 0) {
+      toast.error('직급 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    const reorderedRoles = [...roles]
+    ;[reorderedRoles[currentRoleIndex], reorderedRoles[nextRoleIndex]] = [
+      reorderedRoles[nextRoleIndex],
+      reorderedRoles[currentRoleIndex],
+    ]
+
+    try {
+      setRoleReordering(true)
+      await reorderRoles({
+        items: reorderedRoles.map((role, index) => ({
+          role_id: role.id,
+          rank_order: index + 1,
+        })),
+      })
+      await loadOrganizationResources()
+    } catch (error) {
+      toast.error(getErrorMessage(error, '직원 순서 변경에 실패했습니다.'))
+    } finally {
+      setRoleReordering(false)
     }
   }
 
@@ -804,11 +908,29 @@ export default function ClientAclMatrixPage() {
             <p className="text-xs text-zinc-400">소속 직원 없음</p>
           ) : (
             <ul className="space-y-1">
-              {members.map((member) => (
+              {members.map((member, index) => (
                 <li key={member.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate text-zinc-700">{member.name}</span>
+                  <div className="flex min-w-0 items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={roleReordering || index === 0}
+                      onClick={() => handleMoveMember(team.id, member.id, 'up')}
+                      className="rounded border border-zinc-300 px-1 text-[10px] leading-4 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={roleReordering || index === members.length - 1}
+                      onClick={() => handleMoveMember(team.id, member.id, 'down')}
+                      className="rounded border border-zinc-300 px-1 text-[10px] leading-4 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                    >
+                      ↓
+                    </button>
+                    <span className="truncate text-zinc-700">{member.name}</span>
+                  </div>
                   <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">
-                    {member.role_id ? roleNameById.get(member.role_id) || '직위미정' : '직위미정'}
+                    {member.role_id ? roleNameById.get(member.role_id) || '직급미정' : '직급미정'}
                   </span>
                 </li>
               ))}
@@ -1039,76 +1161,81 @@ export default function ClientAclMatrixPage() {
           {aclError}
         </section>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-          <table className="min-w-[1100px] w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-zinc-50 text-zinc-700">
-                <th className="border border-zinc-200 px-3 py-2 text-left" rowSpan={2}>
-                  직원
-                </th>
-                <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
-                  전체
-                </th>
-                {groupedCodes.map(([group, groupCodes]) => (
-                  <th key={group} className="border border-zinc-200 px-3 py-2 text-center" colSpan={groupCodes.length}>
-                    {group}
+        <div className="space-y-3">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            내휴가관리/출퇴근관리는 기본 권한으로 제공되어 목록에서 제외됩니다.
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+            <table className="min-w-[1100px] w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-50 text-zinc-700">
+                  <th className="border border-zinc-200 px-3 py-2 text-left" rowSpan={2}>
+                    직원
                   </th>
-                ))}
-                <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
-                  저장
-                </th>
-              </tr>
-              <tr className="bg-zinc-50 text-zinc-500">
-                {groupedCodes.flatMap(([_, groupCodes]) =>
-                  groupCodes.map((code) => (
-                    <th key={code.code} className="border border-zinc-200 px-2 py-2 text-center whitespace-nowrap">
-                      {code.action_name}
+                  <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
+                    전체
+                  </th>
+                  {groupedCodes.map(([group, groupCodes]) => (
+                    <th key={group} className="border border-zinc-200 px-3 py-2 text-center" colSpan={groupCodes.length}>
+                      {group}
                     </th>
-                  ))
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const allChecked = codes.length > 0 && codes.every((code) => row.values[code.code])
-                const changed = hasChanges(row, codes)
-                return (
-                  <tr key={row.staff.id} className="even:bg-zinc-50/50">
-                    <td className="border border-zinc-200 px-3 py-2 text-left text-zinc-800">
-                      {row.staff.name}
-                      <span className="ml-2 text-zinc-400">({row.staff.birth_date || '생일 미등록'})</span>
-                    </td>
-                    <td className="border border-zinc-200 px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={allChecked}
-                        onChange={(e) => handleToggleAll(row.staff.id, e.target.checked)}
-                      />
-                    </td>
-                    {codes.map((code) => (
-                      <td key={`${row.staff.id}-${code.code}`} className="border border-zinc-200 px-2 py-2 text-center">
+                  ))}
+                  <th className="border border-zinc-200 px-3 py-2 text-center" rowSpan={2}>
+                    저장
+                  </th>
+                </tr>
+                <tr className="bg-zinc-50 text-zinc-500">
+                  {groupedCodes.flatMap(([_, groupCodes]) =>
+                    groupCodes.map((code) => (
+                      <th key={code.code} className="border border-zinc-200 px-2 py-2 text-center whitespace-nowrap">
+                        {code.action_name}
+                      </th>
+                    ))
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const allChecked = codes.length > 0 && codes.every((code) => row.values[code.code])
+                  const changed = hasChanges(row, codes)
+                  return (
+                    <tr key={row.staff.id} className="even:bg-zinc-50/50">
+                      <td className="border border-zinc-200 px-3 py-2 text-left text-zinc-800">
+                        {row.staff.name}
+                        <span className="ml-2 text-zinc-400">({row.staff.birth_date || '생일 미등록'})</span>
+                      </td>
+                      <td className="border border-zinc-200 px-3 py-2 text-center">
                         <input
                           type="checkbox"
-                          checked={Boolean(row.values[code.code])}
-                          onChange={(e) => handleToggle(row.staff.id, code.code, e.target.checked)}
+                          checked={allChecked}
+                          onChange={(e) => handleToggleAll(row.staff.id, e.target.checked)}
                         />
                       </td>
-                    ))}
-                    <td className="border border-zinc-200 px-3 py-2 text-center">
-                      <button
-                        type="button"
-                        disabled={!changed || row.saving}
-                        onClick={() => void handleSaveAcl(row.staff.id)}
-                        className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-                      >
-                        {row.saving ? '저장중...' : '저장'}
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      {codes.map((code) => (
+                        <td key={`${row.staff.id}-${code.code}`} className="border border-zinc-200 px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(row.values[code.code])}
+                            onChange={(e) => handleToggle(row.staff.id, code.code, e.target.checked)}
+                          />
+                        </td>
+                      ))}
+                      <td className="border border-zinc-200 px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          disabled={!changed || row.saving}
+                          onClick={() => void handleSaveAcl(row.staff.id)}
+                          className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                        >
+                          {row.saving ? '저장중...' : '저장'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1368,18 +1495,11 @@ export default function ClientAclMatrixPage() {
 
               {drawerType === 'role' ? (
                 <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
-                  <p className="text-sm font-medium text-zinc-800">직위 관리</p>
+                  <p className="text-sm font-medium text-zinc-800">직급 관리</p>
                   <input
                     value={roleName}
                     onChange={(e) => setRoleName(e.target.value)}
-                    placeholder="직위명"
-                    className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
-                  />
-                  <input
-                    type="number"
-                    value={roleRankOrder}
-                    onChange={(e) => setRoleRankOrder(e.target.value)}
-                    placeholder="순서"
+                    placeholder="직급명"
                     className="h-9 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
                   />
                   <input
@@ -1394,25 +1514,41 @@ export default function ClientAclMatrixPage() {
                     disabled={roleSubmitting}
                     className="h-9 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
                   >
-                    {roleSubmitting ? '생성 중...' : '직위 생성'}
+                    {roleSubmitting ? '생성 중...' : '직급 생성'}
                   </button>
                   <div className="mt-3 rounded-md border border-zinc-200 bg-white">
                     <ul className="max-h-64 divide-y divide-zinc-200 overflow-y-auto">
                       {roles.length === 0 ? (
                         <li className="px-3 py-4 text-center text-xs text-zinc-500">등록된 직급이 없습니다.</li>
                       ) : (
-                        roles.map((role) => (
+                        roles.map((role, index) => (
                           <li key={role.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                            <span className="truncate text-xs text-zinc-700">
-                              {role.name} (순서 {getRoleRank(role)})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRole(role.id)}
-                              className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
-                            >
-                              삭제
-                            </button>
+                            <span className="truncate text-xs text-zinc-700">{role.name}</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={roleReordering || index === 0}
+                                onClick={() => handleMoveRole(role.id, 'up')}
+                                className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                disabled={roleReordering || index === roles.length - 1}
+                                onClick={() => handleMoveRole(role.id, 'down')}
+                                className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRole(role.id)}
+                                className="rounded border border-rose-300 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                              >
+                                삭제
+                              </button>
+                            </div>
                           </li>
                         ))
                       )}
