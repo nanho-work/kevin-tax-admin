@@ -8,6 +8,8 @@ import type {
   MailAccountUpdatePayload,
   MailAttachmentImportPayload,
   MailAttachmentImportResponse,
+  MailAttachmentSaveToCompanyPayload,
+  MailAttachmentSaveToCompanyResponse,
   MailAttachmentListResponse,
   MailCompanyCandidateListResponse,
   MailConnectionTestResponse,
@@ -28,6 +30,8 @@ import type {
   MailInitialSyncStatusResponse,
   MailMessageDetail,
   MailMessageDeleteResponse,
+  MailMessageMoveFolderPayload,
+  MailMessageMoveFolderResponse,
   MailMessageLinkCompanyPayload,
   MailMessageListParams,
   MailMessageListResponse,
@@ -58,12 +62,18 @@ export function getAdminMailErrorMessage(error: unknown): string {
       /traceback|sql|stack|exception|axios|internal server error/i.test(normalizedDetail) ||
       normalizedDetail.length > 160
 
-    if (status === 400) return '요청값을 다시 확인해 주세요.'
+    if (status === 400) {
+      if (normalizedDetail && !detailLooksTechnical) return normalizedDetail
+      return '요청값을 다시 확인해 주세요.'
+    }
     if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
     if (status === 403) return '권한이 없어 요청을 처리할 수 없습니다.'
     if (status === 404) return '요청한 메일 정보를 찾을 수 없습니다.'
     if (status === 409) return '현재 상태에서는 이 작업을 진행할 수 없습니다.'
-    if (status === 422) return '입력값을 확인해 주세요.'
+    if (status === 422) {
+      if (normalizedDetail && !detailLooksTechnical) return normalizedDetail
+      return '입력값을 확인해 주세요.'
+    }
     if (typeof status === 'number' && status >= 500) {
       return '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
     }
@@ -206,6 +216,16 @@ export async function purgeMailMessage(messageId: number, mailAccountId?: number
   return res.data
 }
 
+export async function moveMailMessageToFolder(
+  messageId: number,
+  payload: MailMessageMoveFolderPayload,
+  mailAccountId?: number
+): Promise<MailMessageMoveFolderResponse> {
+  void mailAccountId
+  const res = await adminHttp.post<MailMessageMoveFolderResponse>(`${BASE}/messages/${messageId}/move-folder`, payload)
+  return res.data
+}
+
 export async function updateMailMessageRead(
   messageId: number,
   isRead: boolean,
@@ -248,6 +268,17 @@ export async function importMailAttachments(
 ): Promise<MailAttachmentImportResponse> {
   const res = await adminHttp.post<MailAttachmentImportResponse>(
     `${BASE}/messages/${messageId}/attachments/import`,
+    payload
+  )
+  return res.data
+}
+
+export async function saveMailAttachmentsToCompany(
+  messageId: number,
+  payload: MailAttachmentSaveToCompanyPayload
+): Promise<MailAttachmentSaveToCompanyResponse> {
+  const res = await adminHttp.post<MailAttachmentSaveToCompanyResponse>(
+    `${BASE}/messages/${messageId}/attachments/save-to-company`,
     payload
   )
   return res.data

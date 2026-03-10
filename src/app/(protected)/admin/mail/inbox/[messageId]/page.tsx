@@ -2,21 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import axios from 'axios'
 import { toast } from 'react-hot-toast'
 import { formatKSTDateTimeKorean } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
+import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
+import { fetchCompanyTaxList } from '@/services/admin/company'
 import {
   getMailForwardDraft,
   getAdminMailErrorMessage,
   importMailAttachments,
+  listMailFolders,
   listMailAttachments,
   getMailMessageDetail,
   getMailReplyDraft,
+  moveMailMessageToFolder,
   moveMailMessageToTrash,
   purgeMailMessage,
   restoreMailMessageFromTrash,
   sendMailForward,
   sendMailReply,
+  saveMailAttachmentsToCompany,
   updateMailMessageRead,
 } from '@/services/admin/mailService'
 import type { MailForwardDraftResponse, MailMessageDetail, MailReplyDraftResponse } from '@/types/adminMail'
@@ -26,6 +32,50 @@ function parseEmails(raw: string): string[] {
     .split(',')
     .map((value) => value.trim())
     .filter((value) => value.length > 0)
+}
+
+function formatAttachmentSize(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '-'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  const precision = value >= 100 || unitIndex === 0 ? 0 : 1
+  return `${value.toFixed(precision)} ${units[unitIndex]}`
+}
+
+function isPreviewableAttachment(attachment: MailMessageDetail['attachments'][number]): boolean {
+  const mime = (attachment.mime_type || '').toLowerCase()
+  if (mime.startsWith('image/')) return true
+  if (mime === 'application/pdf') return true
+  if (mime.startsWith('text/')) return true
+  if (mime === 'application/json' || mime === 'application/xml' || mime === 'application/csv') return true
+  if (mime.startsWith('audio/') || mime.startsWith('video/')) return true
+
+  const fileName = (attachment.original_file_name || '').toLowerCase()
+  const ext = fileName.includes('.') ? fileName.split('.').pop() || '' : ''
+  const previewableExt = new Set([
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'svg',
+    'pdf',
+    'txt',
+    'csv',
+    'json',
+    'xml',
+    'mp3',
+    'wav',
+    'ogg',
+    'mp4',
+    'webm',
+  ])
+  return previewableExt.has(ext)
 }
 
 export default function AdminMailMessageDetailPage() {
@@ -56,11 +106,32 @@ export default function AdminMailMessageDetailPage() {
   const [secureLinkMaxDownloadCount, setSecureLinkMaxDownloadCount] = useState(5)
   const [includeInlineAttachments, setIncludeInlineAttachments] = useState(false)
   const [attachmentActionLoadingId, setAttachmentActionLoadingId] = useState<number | null>(null)
+  const [previewPanelOpen, setPreviewPanelOpen] = useState(false)
+  const [previewPanelUrl, setPreviewPanelUrl] = useState<string | null>(null)
+  const [previewPanelDownloadUrl, setPreviewPanelDownloadUrl] = useState<string | null>(null)
+  const [previewPanelTitle, setPreviewPanelTitle] = useState('첨부파일 미리보기')
+  const [movePanelOpen, setMovePanelOpen] = useState(false)
+  const [moveFolderId, setMoveFolderId] = useState('')
+  const [moveLoading, setMoveLoading] = useState(false)
+  const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([])
+  const [companySavePanelOpen, setCompanySavePanelOpen] = useState(false)
+  const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false)
+  const [companySaveLoading, setCompanySaveLoading] = useState(false)
+  const [companyOptionsError, setCompanyOptionsError] = useState<string | null>(null)
+  const [companyOptions, setCompanyOptions] = useState<Array<{ id: number; company_name: string; registration_number?: string }>>([])
+  const [companyKeyword, setCompanyKeyword] = useState('')
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const [selectedAttachment, setSelectedAttachment] = useState<MailMessageDetail['attachments'][number] | null>(null)
+  const [autoImportIfMissing, setAutoImportIfMissing] = useState(true)
 
   const backHref = useMemo(() => {
-    const query = searchParams.toString()
+    const params = new URLSearchParams(searchParams.toString())
+    if (!params.get('account_id') && typeof detail?.mail_account_id === 'number') {
+      params.set('account_id', String(detail.mail_account_id))
+    }
+    const query = params.toString()
     return query ? `/admin/mail/inbox?${query}` : '/admin/mail/inbox'
-  }, [searchParams])
+  }, [detail?.mail_account_id, searchParams])
   const backLabel = useMemo(() => {
     const mailbox = searchParams.get('mailbox')
     if (mailbox === 'inbox') return '< 받은메일함'
@@ -72,6 +143,7 @@ export default function AdminMailMessageDetailPage() {
     const accountId = Number(searchParams.get('account_id'))
     return Number.isFinite(accountId) && accountId > 0 ? accountId : undefined
   }, [searchParams])
+  const effectiveMailAccountId = scopedMailAccountId ?? (typeof detail?.mail_account_id === 'number' ? detail.mail_account_id : undefined)
 
   const mergeDetailAttachments = (
     detailRes: MailMessageDetail,
@@ -108,12 +180,25 @@ export default function AdminMailMessageDetailPage() {
   }, [messageId, scopedMailAccountId, includeInlineAttachments])
 
   useEffect(() => {
+    const loadFolders = async () => {
+      try {
+        const res = await listMailFolders(true, effectiveMailAccountId)
+        setFolders((res.items || []).map((item) => ({ id: item.id, name: item.name })))
+      } catch {
+        setFolders([])
+      }
+    }
+    void loadFolders()
+  }, [effectiveMailAccountId])
+
+  useEffect(() => {
     if (!detail || detail.is_read) return
     if (autoReadDoneRef.current === detail.id) return
     autoReadDoneRef.current = detail.id
     void updateMailMessageRead(detail.id, true, scopedMailAccountId)
       .then(() => {
         setDetail((prev) => (prev ? { ...prev, is_read: true } : prev))
+        emitMailCountsRefresh()
       })
       .catch(() => {
         autoReadDoneRef.current = null
@@ -239,6 +324,7 @@ export default function AdminMailMessageDetailPage() {
       setReadUpdating(true)
       await updateMailMessageRead(detail.id, !detail.is_read, scopedMailAccountId)
       await loadDetail()
+      emitMailCountsRefresh()
       toast.success(detail.is_read ? '안읽음 처리되었습니다.' : '읽음 처리되었습니다.')
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
@@ -251,6 +337,7 @@ export default function AdminMailMessageDetailPage() {
     if (!detail) return
     try {
       await moveMailMessageToTrash(detail.id, scopedMailAccountId)
+      emitMailCountsRefresh()
       toast.success('휴지통으로 이동했습니다.')
       router.replace(backHref)
     } catch (error) {
@@ -262,6 +349,7 @@ export default function AdminMailMessageDetailPage() {
     if (!detail) return
     try {
       await restoreMailMessageFromTrash(detail.id, scopedMailAccountId)
+      emitMailCountsRefresh()
       toast.success('복구되었습니다.')
       router.replace(backHref)
     } catch (error) {
@@ -274,6 +362,7 @@ export default function AdminMailMessageDetailPage() {
     if (!window.confirm('완전삭제 후 복구할 수 없습니다. 삭제할까요?')) return
     try {
       await purgeMailMessage(detail.id, scopedMailAccountId)
+      emitMailCountsRefresh()
       toast.success('완전삭제되었습니다.')
       router.replace(backHref)
     } catch (error) {
@@ -312,6 +401,10 @@ export default function AdminMailMessageDetailPage() {
   ) => {
     const current = detail?.attachments.find((item) => item.id === attachmentId)
     if (!current) return
+    if (mode === 'preview' && !isPreviewableAttachment(current)) {
+      toast.error('이 파일 형식은 미리보기를 지원하지 않습니다. 다운로드해 주세요.')
+      return
+    }
     if (current.scan_status === 'infected' || current.scan_status === 'error') {
       toast.error('보안 검사 결과로 열 수 없는 첨부파일입니다.')
       return
@@ -337,11 +430,130 @@ export default function AdminMailMessageDetailPage() {
         toast.error('첨부파일 링크를 가져오지 못했습니다. 다시 시도해 주세요.')
         return
       }
+      if (mode === 'preview') {
+        setPreviewPanelTitle(refreshed.original_file_name || '첨부파일 미리보기')
+        setPreviewPanelUrl(targetUrl)
+        setPreviewPanelDownloadUrl(downloadUrl)
+        setPreviewPanelOpen(true)
+        return
+      }
       window.open(targetUrl, '_blank', 'noopener,noreferrer')
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
     } finally {
       setAttachmentActionLoadingId(null)
+    }
+  }
+
+  const closePreviewPanel = () => {
+    setPreviewPanelOpen(false)
+    setPreviewPanelUrl(null)
+    setPreviewPanelDownloadUrl(null)
+  }
+
+  const handleMoveToFolder = async () => {
+    if (!detail) return
+    const folderIdValue = moveFolderId.trim()
+    if (!folderIdValue) {
+      toast.error('이동할 폴더를 선택해 주세요.')
+      return
+    }
+    const targetFolderId: number | null = folderIdValue === 'inbox' ? null : Number(folderIdValue)
+    if (targetFolderId !== null && (!Number.isFinite(targetFolderId) || targetFolderId <= 0)) {
+      toast.error('이동할 폴더를 다시 선택해 주세요.')
+      return
+    }
+    try {
+      setMoveLoading(true)
+      await moveMailMessageToFolder(detail.id, { folder_id: targetFolderId }, effectiveMailAccountId)
+      emitMailCountsRefresh()
+      toast.success('폴더로 이동했습니다.')
+      setMovePanelOpen(false)
+      router.replace(backHref)
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        toast.error('서버에 메일 폴더 이동 API가 아직 배포되지 않았습니다.')
+        return
+      }
+      toast.error(getAdminMailErrorMessage(error))
+    } finally {
+      setMoveLoading(false)
+    }
+  }
+
+  const loadCompanyOptions = async () => {
+    try {
+      setCompanyOptionsLoading(true)
+      setCompanyOptionsError(null)
+      const response = await fetchCompanyTaxList({ page: 1, limit: 500 })
+      const mapped = (response.items || [])
+        .map((item) => ({
+          id: item.id,
+          company_name: item.company_name || `업체 #${item.id}`,
+          registration_number: item.registration_number || '',
+        }))
+        .sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
+      setCompanyOptions(mapped)
+    } catch (error) {
+      setCompanyOptionsError(getAdminMailErrorMessage(error))
+    } finally {
+      setCompanyOptionsLoading(false)
+    }
+  }
+
+  const openCompanySavePanel = async (attachment: MailMessageDetail['attachments'][number]) => {
+    if (attachment.scan_status === 'infected' || attachment.scan_status === 'error') {
+      toast.error('보안 검사 결과로 저장할 수 없는 첨부파일입니다.')
+      return
+    }
+    setSelectedAttachment(attachment)
+    setSelectedCompanyId(null)
+    setCompanyKeyword('')
+    setAutoImportIfMissing(true)
+    setCompanySavePanelOpen(true)
+    if (companyOptions.length === 0 && !companyOptionsLoading) {
+      await loadCompanyOptions()
+    }
+  }
+
+  const closeCompanySavePanel = () => {
+    if (companySaveLoading) return
+    setCompanySavePanelOpen(false)
+    setSelectedAttachment(null)
+    setSelectedCompanyId(null)
+    setCompanyKeyword('')
+  }
+
+  const filteredCompanyOptions = useMemo(() => {
+    const keyword = companyKeyword.trim().toLowerCase()
+    if (!keyword) return companyOptions
+    return companyOptions.filter((company) => {
+      const name = company.company_name.toLowerCase()
+      const reg = (company.registration_number || '').toLowerCase()
+      return name.includes(keyword) || reg.includes(keyword)
+    })
+  }, [companyOptions, companyKeyword])
+
+  const handleSaveAttachmentToCompany = async () => {
+    if (!detail || !selectedAttachment) return
+    if (!selectedCompanyId) {
+      toast.error('저장할 거래처를 선택해 주세요.')
+      return
+    }
+
+    try {
+      setCompanySaveLoading(true)
+      await saveMailAttachmentsToCompany(detail.id, {
+        company_id: selectedCompanyId,
+        attachment_ids: [selectedAttachment.id],
+        auto_import_if_missing: autoImportIfMissing,
+      })
+      toast.success('거래처 기타문서로 저장했습니다.')
+      closeCompanySavePanel()
+    } catch (error) {
+      toast.error(getAdminMailErrorMessage(error))
+    } finally {
+      setCompanySaveLoading(false)
     }
   }
 
@@ -357,7 +569,8 @@ export default function AdminMailMessageDetailPage() {
   }, [detail?.body_html, detail?.body_html_rendered, detail?.attachments, includeInlineAttachments])
 
   return (
-    <section className="w-full">
+    <>
+      <section className="w-full">
       <div className="flex items-center gap-2 rounded-t-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
         <button
           type="button"
@@ -392,6 +605,18 @@ export default function AdminMailMessageDetailPage() {
             >
               전달
             </button>
+            {!detail.is_deleted ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMoveFolderId('')
+                  setMovePanelOpen(true)
+                }}
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                이동
+              </button>
+            ) : null}
             {detail.is_deleted ? (
               <>
                 <button
@@ -559,15 +784,7 @@ export default function AdminMailMessageDetailPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
-            {detail.body_html_rendered || detail.body_html ? (
-              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderedMail.sanitizedHtml }} />
-            ) : (
-              <pre className="whitespace-pre-wrap break-words font-sans text-sm text-zinc-800">{detail.body_text || '-'}</pre>
-            )}
-          </div>
-
-          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="mt-2 rounded-xl border border-zinc-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-zinc-900">첨부파일</p>
               <label className="inline-flex items-center gap-1 text-xs text-zinc-600">
@@ -582,16 +799,15 @@ export default function AdminMailMessageDetailPage() {
             {renderedMail.visibleAttachments.length === 0 ? (
               <p className="mt-2 text-sm text-zinc-500">첨부파일이 없습니다.</p>
             ) : (
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-1">
                 {renderedMail.visibleAttachments.map((attachment) => (
-                  <div key={attachment.id} className="rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-700">
-                    <p className="truncate text-zinc-900">{attachment.original_file_name}</p>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      {attachment.download_status}
-                      {attachment.mime_type ? ` · ${attachment.mime_type}` : ''}
-                      {attachment.file_size ? ` · ${attachment.file_size.toLocaleString()} bytes` : ''}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2">
+                  <div
+                    key={attachment.id}
+                    className="inline-flex max-w-full items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700"
+                  >
+                    <p className="max-w-[24rem] truncate text-zinc-900">{attachment.original_file_name}</p>
+                    <p className="whitespace-nowrap text-xs text-zinc-500">{formatAttachmentSize(attachment.file_size)}</p>
+                    <div className="flex items-center gap-2">
                       {attachment.download_status !== 'downloaded' ? (
                         <button
                           type="button"
@@ -603,14 +819,16 @@ export default function AdminMailMessageDetailPage() {
                         </button>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => void handleOpenAttachment(attachment.id, 'preview')}
-                            disabled={attachmentActionLoadingId === attachment.id}
-                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                          >
-                            미리보기
-                          </button>
+                          {isPreviewableAttachment(attachment) ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenAttachment(attachment.id, 'preview')}
+                              disabled={attachmentActionLoadingId === attachment.id}
+                              className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              미리보기
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => void handleOpenAttachment(attachment.id, 'download')}
@@ -621,14 +839,190 @@ export default function AdminMailMessageDetailPage() {
                           </button>
                         </>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => void openCompanySavePanel(attachment)}
+                        className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                      >
+                        거래처 저장
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          <div className="mt-2 rounded-xl border border-zinc-200 bg-white p-4">
+            {detail.body_html_rendered || detail.body_html ? (
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderedMail.sanitizedHtml }} />
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-sans text-sm text-zinc-800">{detail.body_text || '-'}</pre>
+            )}
+          </div>
         </div>
       )}
-    </section>
+      </section>
+
+      {previewPanelOpen && previewPanelUrl ? (
+        <div className="fixed inset-0 z-50 flex bg-black/20">
+          <button type="button" className="flex-1 cursor-default" onClick={closePreviewPanel} aria-label="미리보기 닫기" />
+          <aside className="h-full w-full max-w-3xl border-l border-zinc-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-2">
+              <p className="truncate pr-3 text-sm font-semibold text-zinc-900">{previewPanelTitle}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.open(previewPanelUrl, '_blank', 'noopener,noreferrer')}
+                  className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                >
+                  새 창으로 보기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => previewPanelDownloadUrl && window.open(previewPanelDownloadUrl, '_blank', 'noopener,noreferrer')}
+                  disabled={!previewPanelDownloadUrl}
+                  className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  다운로드
+                </button>
+                <button
+                  type="button"
+                  onClick={closePreviewPanel}
+                  className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+            <iframe title="첨부파일 미리보기" src={previewPanelUrl} className="h-[calc(100%-49px)] w-full" />
+          </aside>
+        </div>
+      ) : null}
+
+      {companySavePanelOpen ? (
+        <div className="fixed inset-0 z-50 flex bg-black/20">
+          <button type="button" className="flex-1 cursor-default" onClick={closeCompanySavePanel} aria-label="거래처 저장 닫기" />
+          <aside className="h-full w-full max-w-md border-l border-zinc-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <p className="text-sm font-semibold text-zinc-900">거래처 기타문서 저장</p>
+              <button
+                type="button"
+                onClick={closeCompanySavePanel}
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="space-y-4 p-4">
+              <div>
+                <p className="text-xs text-zinc-500">파일명</p>
+                <p className="mt-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-900">
+                  {selectedAttachment?.original_file_name || '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500">거래처 검색</p>
+                <input
+                  value={companyKeyword}
+                  onChange={(e) => setCompanyKeyword(e.target.value)}
+                  placeholder="업체명 또는 사업자번호"
+                  className="mt-1 h-9 w-full rounded border border-zinc-300 px-2 text-sm"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500">거래처 선택</p>
+                <div className="mt-1 max-h-64 overflow-y-auto rounded border border-zinc-200">
+                  {companyOptionsLoading ? (
+                    <p className="px-3 py-2 text-sm text-zinc-500">거래처 목록을 불러오는 중...</p>
+                  ) : companyOptionsError ? (
+                    <p className="px-3 py-2 text-sm text-rose-600">{companyOptionsError}</p>
+                  ) : filteredCompanyOptions.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-zinc-500">검색 결과가 없습니다.</p>
+                  ) : (
+                    filteredCompanyOptions.map((company) => (
+                      <label key={company.id} className="flex cursor-pointer items-center gap-2 border-b border-zinc-100 px-3 py-2 last:border-b-0">
+                        <input
+                          type="radio"
+                          name="company-save-target-admin"
+                          checked={selectedCompanyId === company.id}
+                          onChange={() => setSelectedCompanyId(company.id)}
+                        />
+                        <span className="min-w-0 text-sm text-zinc-800">
+                          <span className="block truncate">{company.company_name}</span>
+                          <span className="block text-xs text-zinc-500">{company.registration_number || '-'}</span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-600">
+                <input
+                  type="checkbox"
+                  checked={autoImportIfMissing}
+                  onChange={(e) => setAutoImportIfMissing(e.target.checked)}
+                />
+                첨부 미가져오기 상태면 자동으로 가져온 뒤 저장
+              </label>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleSaveAttachmentToCompany()}
+                  disabled={companySaveLoading || companyOptionsLoading}
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {companySaveLoading ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {movePanelOpen ? (
+        <div className="fixed inset-0 z-50 flex bg-black/20">
+          <button type="button" className="flex-1 cursor-default" onClick={() => setMovePanelOpen(false)} aria-label="폴더 이동 닫기" />
+          <aside className="h-full w-full max-w-md border-l border-zinc-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <p className="text-sm font-semibold text-zinc-900">폴더 이동</p>
+              <button
+                type="button"
+                onClick={() => setMovePanelOpen(false)}
+                className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <p className="text-xs text-zinc-500">이동할 폴더</p>
+              <select
+                value={moveFolderId}
+                onChange={(e) => setMoveFolderId(e.target.value)}
+                className="h-9 w-full rounded border border-zinc-300 px-2 text-sm"
+              >
+                <option value="">폴더 선택</option>
+                <option value="inbox">받은메일함(INBOX)</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={String(folder.id)}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleMoveToFolder()}
+                  disabled={moveLoading || !moveFolderId.trim()}
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {moveLoading ? '이동 중...' : '이동'}
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+    </>
   )
 }

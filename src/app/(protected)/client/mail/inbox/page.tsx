@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Mail, MailOpen, Paperclip } from 'lucide-react'
+import { Mail, MailOpen, Paperclip, RefreshCw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
+import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
 import { resolveMailSnippet } from '@/utils/mailSnippet'
 import {
   createMailFolder,
@@ -15,6 +16,7 @@ import {
   getClientMailErrorMessage,
   listMailAttachments,
   moveMailMessageToTrash,
+  moveMailMessageToFolder,
   purgeMailMessage,
   getMailMessageDetail,
   importMailAttachments,
@@ -22,6 +24,7 @@ import {
   listMailAccounts,
   listMailFolders,
   listMailMessages,
+  syncMailAccount,
   reprocessMailMessageRules,
   restoreMailMessageFromTrash,
   sendMailReply,
@@ -85,6 +88,9 @@ export default function ClientMailInboxPage() {
   const [activeMailbox, setActiveMailbox] = useState<'all' | 'inbox' | 'sent' | 'spam' | 'custom'>('all')
   const [activeFolderName, setActiveFolderName] = useState('')
   const [readFilter, setReadFilter] = useState<'' | 'read' | 'unread'>('')
+  const [bulkMoveFolderId, setBulkMoveFolderId] = useState('')
+  const [bulkMoveFolders, setBulkMoveFolders] = useState<MailFolder[]>([])
+  const [manualSyncLoading, setManualSyncLoading] = useState(false)
   const [candidates, setCandidates] = useState<Array<{ company_id: number; company_name: string; score: number; reasons: string[]; already_linked: boolean }>>([])
   const totalPages = Math.max(1, Math.ceil(total / size))
   const currentStart = total === 0 ? 0 : (page - 1) * size + 1
@@ -111,9 +117,18 @@ export default function ClientMailInboxPage() {
     try {
       const res = await listMailAccounts(true)
       setAccounts(res.items || [])
-      if (!mailAccountId && res.items.length > 0) {
-        setMailAccountId(res.items[0].id)
-      }
+      setMailAccountId((prev) => {
+        const items = res.items || []
+        if (items.length === 0) return ''
+        const requested = Number(searchParams.get('account_id') || '')
+        if (Number.isFinite(requested) && requested > 0 && items.some((item) => item.id === requested)) {
+          return requested
+        }
+        if (typeof prev === 'number' && items.some((item) => item.id === prev)) {
+          return prev
+        }
+        return items[0].id
+      })
     } catch (error) {
       const message = getClientMailErrorMessage(error)
       setApiNotice(message)
@@ -205,6 +220,7 @@ export default function ClientMailInboxPage() {
   useEffect(() => {
     const mailbox = searchParams.get('mailbox')
     const accountIdParam = searchParams.get('account_id')
+    const folderParam = searchParams.get('folder')
     const keywordParam = searchParams.get('q')
     const readParam = searchParams.get('read')
 
@@ -235,6 +251,11 @@ export default function ClientMailInboxPage() {
     if (mailbox === 'sent') {
       setActiveMailbox('sent')
       setActiveFolderName('')
+      return
+    }
+    if (mailbox === 'custom') {
+      setActiveMailbox('custom')
+      setActiveFolderName(folderParam ?? '')
       return
     }
     setActiveMailbox('all')
@@ -277,6 +298,25 @@ export default function ClientMailInboxPage() {
   const selectedAttachmentCount = renderedMail.selectedVisibleAttachmentIds.length
   const isAllCurrentPageSelected = messages.length > 0 && messages.every((message) => selectedMessageIds.includes(message.id))
   const selectedMessageCount = selectedMessageIds.length
+  const selectedMessageAccountIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          messages
+            .filter((message) => selectedMessageIds.includes(message.id))
+            .map((message) => Number(message.mail_account_id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        )
+      ),
+    [messages, selectedMessageIds]
+  )
+  const isMultiAccountSelection = selectedMessageAccountIds.length > 1
+  const bulkMoveTargetAccountId =
+    selectedMessageAccountIds.length === 1
+      ? selectedMessageAccountIds[0]
+      : typeof scopedMailAccountId === 'number'
+        ? scopedMailAccountId
+        : null
   const handleLinkCompany = async () => {
     if (!detail) return
     const companyId = Number(linkCompanyId)
@@ -395,6 +435,7 @@ export default function ClientMailInboxPage() {
       await updateMailMessageRead(detail.id, nextRead, scopedMailAccountId)
       setMessages((prev) => prev.map((item) => (item.id === detail.id ? { ...item, is_read: nextRead } : item)))
       await loadMessageDetail(detail.id)
+      emitMailCountsRefresh()
       toast.success(nextRead ? '읽음 처리되었습니다.' : '안읽음 처리되었습니다.')
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
@@ -425,6 +466,7 @@ export default function ClientMailInboxPage() {
       toast.success(`재처리 완료 (${res.matched_rule_total}개 규칙 매칭)`)
       await loadMessageDetail(detail.id)
       await loadMessages(page)
+      emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
@@ -480,6 +522,7 @@ export default function ClientMailInboxPage() {
       setReplyCcRaw('')
       setReplyBccRaw('')
       await loadMessages(page)
+      emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
@@ -531,6 +574,7 @@ export default function ClientMailInboxPage() {
         setDetail(null)
       }
       await loadMessages(page)
+      emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     }
@@ -545,6 +589,7 @@ export default function ClientMailInboxPage() {
         setDetail(null)
       }
       await loadMessages(page)
+      emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     }
@@ -560,6 +605,7 @@ export default function ClientMailInboxPage() {
         setDetail(null)
       }
       await loadMessages(page)
+      emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     }
@@ -597,6 +643,9 @@ export default function ClientMailInboxPage() {
     if (detail && targetIds.includes(detail.id)) {
       await loadMessageDetail(detail.id)
     }
+    if (successCount > 0) {
+      emitMailCountsRefresh()
+    }
   }
 
   const handleBulkMoveToTrash = async () => {
@@ -616,6 +665,9 @@ export default function ClientMailInboxPage() {
     }
     setSelectedMessageIds([])
     await loadMessages(page)
+    if (successCount > 0) {
+      emitMailCountsRefresh()
+    }
   }
 
   const handleBulkRestore = async () => {
@@ -637,6 +689,9 @@ export default function ClientMailInboxPage() {
     }
     setSelectedMessageIds([])
     await loadMessages(page)
+    if (successCount > 0) {
+      emitMailCountsRefresh()
+    }
   }
 
   const handleBulkPurge = async () => {
@@ -657,6 +712,48 @@ export default function ClientMailInboxPage() {
     }
     setSelectedMessageIds([])
     await loadMessages(page)
+    if (successCount > 0) {
+      emitMailCountsRefresh()
+    }
+  }
+
+  const handleBulkMoveToFolder = async () => {
+    if (selectedMessageIds.length === 0) return
+    if (isMultiAccountSelection) {
+      toast.error('서로 다른 계정 메일은 한 번에 이동할 수 없습니다.')
+      return
+    }
+    if (!bulkMoveTargetAccountId) {
+      toast.error('이동할 계정을 먼저 선택해 주세요.')
+      return
+    }
+    const folderIdValue = bulkMoveFolderId.trim()
+    if (!folderIdValue) {
+      toast.error('이동할 폴더를 선택해 주세요.')
+      return
+    }
+    const targetFolderId: number | null = folderIdValue === 'inbox' ? null : Number(folderIdValue)
+    if (targetFolderId !== null && (!Number.isFinite(targetFolderId) || targetFolderId <= 0)) {
+      toast.error('이동할 폴더를 다시 선택해 주세요.')
+      return
+    }
+    const targetIds = [...selectedMessageIds]
+    const results = await Promise.allSettled(
+      targetIds.map((id) => moveMailMessageToFolder(id, { folder_id: targetFolderId }, bulkMoveTargetAccountId))
+    )
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    if (successCount > 0) {
+      toast.success(`폴더 이동 완료 (${successCount}건)`)
+    }
+    if (successCount < targetIds.length) {
+      toast.error(`${targetIds.length - successCount}건 이동 실패`)
+    }
+    setSelectedMessageIds([])
+    setBulkMoveFolderId('')
+    await loadMessages(page)
+    if (detail && targetIds.includes(detail.id)) {
+      await loadMessageDetail(detail.id)
+    }
   }
 
   const handleChangeReadFilter = (next: '' | 'read' | 'unread') => {
@@ -666,6 +763,64 @@ export default function ClientMailInboxPage() {
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname)
   }
+
+  const handleManualSync = async () => {
+    const targetAccountId = typeof mailAccountId === 'number' ? mailAccountId : null
+    if (!targetAccountId) {
+      toast.error('동기화할 메일 계정을 선택해 주세요.')
+      return
+    }
+    try {
+      setManualSyncLoading(true)
+      await syncMailAccount(targetAccountId, 50)
+      await loadMessages(page)
+      if (detail) {
+        await loadMessageDetail(detail.id)
+      }
+      emitMailCountsRefresh()
+      toast.success('메일 동기화가 완료되었습니다.')
+    } catch (error) {
+      toast.error(getClientMailErrorMessage(error))
+    } finally {
+      setManualSyncLoading(false)
+    }
+  }
+
+  const detailQueryString = useMemo(() => {
+    const params = new URLSearchParams()
+    if (typeof scopedMailAccountId === 'number') {
+      params.set('account_id', String(scopedMailAccountId))
+    }
+    if (includeTrash) params.set('mailbox', 'trash')
+    else if (activeMailbox === 'inbox') params.set('mailbox', 'inbox')
+    else if (activeMailbox === 'sent') params.set('mailbox', 'sent')
+    else if (activeMailbox === 'custom') {
+      params.set('mailbox', 'custom')
+      if (activeFolderName.trim()) params.set('folder', activeFolderName.trim())
+    } else {
+      params.set('mailbox', 'all')
+    }
+    if (keyword.trim()) params.set('q', keyword.trim())
+    if (readFilter) params.set('read', readFilter)
+    return params.toString()
+  }, [activeFolderName, activeMailbox, includeTrash, keyword, readFilter, scopedMailAccountId])
+
+  useEffect(() => {
+    const loadBulkMoveFolders = async () => {
+      if (!bulkMoveTargetAccountId || isMultiAccountSelection) {
+        setBulkMoveFolders([])
+        setBulkMoveFolderId('')
+        return
+      }
+      try {
+        const res = await listMailFolders(true, bulkMoveTargetAccountId)
+        setBulkMoveFolders(res.items || [])
+      } catch {
+        setBulkMoveFolders([])
+      }
+    }
+    void loadBulkMoveFolders()
+  }, [bulkMoveTargetAccountId, isMultiAccountSelection])
 
   return (
     <section className="flex flex-col gap-4">
@@ -730,6 +885,36 @@ export default function ClientMailInboxPage() {
               </>
             ) : (
               <>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={bulkMoveFolderId}
+                    onChange={(e) => setBulkMoveFolderId(e.target.value)}
+                    disabled={selectedMessageCount === 0 || isMultiAccountSelection || !bulkMoveTargetAccountId}
+                    className="h-7 rounded border border-zinc-300 bg-white px-2 text-xs text-zinc-700 disabled:opacity-50"
+                  >
+                    {isMultiAccountSelection ? (
+                      <option value="">다중 계정 선택됨</option>
+                    ) : !bulkMoveTargetAccountId ? (
+                      <option value="">계정 선택 필요</option>
+                    ) : (
+                      <option value="">폴더 선택</option>
+                    )}
+                    <option value="inbox">받은메일함(INBOX)</option>
+                    {bulkMoveFolders.map((folder) => (
+                      <option key={folder.id} value={String(folder.id)}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={selectedMessageCount === 0 || !bulkMoveFolderId.trim() || isMultiAccountSelection || !bulkMoveTargetAccountId}
+                    onClick={() => void handleBulkMoveToFolder()}
+                    className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    이동
+                  </button>
+                </div>
                 <button
                   type="button"
                   disabled={selectedMessageCount === 0}
@@ -754,6 +939,15 @@ export default function ClientMailInboxPage() {
                 >
                   안읽음
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void handleManualSync()}
+                  disabled={manualSyncLoading || typeof mailAccountId !== 'number'}
+                  title={typeof mailAccountId === 'number' ? '현재 계정 메일 동기화' : '계정을 선택해 주세요'}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${manualSyncLoading ? 'animate-spin' : ''}`} />
+                </button>
               </>
             )}
           </div>
@@ -773,8 +967,7 @@ export default function ClientMailInboxPage() {
                     key={message.id}
                     className="cursor-pointer hover:bg-zinc-50"
                     onClick={() => {
-                      const query = searchParams.toString()
-                      router.push(query ? `${pathname}/${message.id}?${query}` : `${pathname}/${message.id}`)
+                      router.push(detailQueryString ? `${pathname}/${message.id}?${detailQueryString}` : `${pathname}/${message.id}`)
                     }}
                   >
                     <td className="w-10 px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>

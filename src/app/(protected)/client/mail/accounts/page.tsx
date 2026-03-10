@@ -6,10 +6,8 @@ import { toast } from 'react-hot-toast'
 import { formatKSTDateTime, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import {
   cancelMailAccountInitialSync,
-  createMailFolder,
   createMailRule,
   createMailAccount,
-  deleteMailFolder,
   deleteMailRule,
   deleteMailAccount,
   getMailAccountInitialSyncStatus,
@@ -117,7 +115,6 @@ export default function ClientMailAccountsPage() {
   const [rules, setRules] = useState<MailRule[]>([])
   const [syncLogs, setSyncLogs] = useState<Array<{ id: number; status: string; synced_count: number; started_at: string }>>([])
   const [actionLogs, setActionLogs] = useState<Array<{ id: number; action: string; actor_type: string; created_at: string; detail?: string | null }>>([])
-  const [folderNameInput, setFolderNameInput] = useState('')
   const [ruleNameInput, setRuleNameInput] = useState('')
   const [ruleMatchField, setRuleMatchField] = useState<'from_email' | 'subject' | 'snippet' | 'to_email' | 'cc_email'>('from_email')
   const [ruleMatchOperator, setRuleMatchOperator] = useState<'contains' | 'equals' | 'starts_with' | 'ends_with'>('contains')
@@ -127,12 +124,11 @@ export default function ClientMailAccountsPage() {
   const [ruleMailAccountId, setRuleMailAccountId] = useState<number | ''>('')
   const [rulePriority, setRulePriority] = useState('100')
   const [ruleStopProcessing, setRuleStopProcessing] = useState(true)
-  const [folderSubmitting, setFolderSubmitting] = useState(false)
   const [ruleSubmitting, setRuleSubmitting] = useState(false)
   const [ruleDeletingId, setRuleDeletingId] = useState<number | null>(null)
-  const [folderDeletingId, setFolderDeletingId] = useState<number | null>(null)
   const [accountScopeFilter, setAccountScopeFilter] = useState<'' | MailAccountScopeType>('')
   const [initialSyncTargetCount, setInitialSyncTargetCount] = useState('5000')
+  const [settingsTab, setSettingsTab] = useState<'external' | 'spam'>('external')
 
   const [mailDomain, setMailDomain] = useState<MailDomainOption>('custom')
   const [receiveProtocol, setReceiveProtocol] = useState<ReceiveProtocol>('imap')
@@ -471,24 +467,6 @@ export default function ClientMailAccountsPage() {
     }
   }
 
-  const handleCreateFolder = async () => {
-    if (!folderNameInput.trim()) {
-      toast.error('폴더명을 입력해 주세요.')
-      return
-    }
-    try {
-      setFolderSubmitting(true)
-      await createMailFolder({ name: folderNameInput.trim() })
-      setFolderNameInput('')
-      toast.success('폴더를 등록했습니다.')
-      await loadRuleAndFolderData()
-    } catch (error) {
-      toast.error(getClientMailErrorMessage(error))
-    } finally {
-      setFolderSubmitting(false)
-    }
-  }
-
   const handleCreateRule = async () => {
     if (!ruleNameInput.trim() || !ruleMatchValue.trim()) {
       toast.error('자동분류 이름과 찾을 내용을 입력해 주세요.')
@@ -532,19 +510,6 @@ export default function ClientMailAccountsPage() {
     }
   }
 
-  const handleDeleteFolder = async (folderId: number) => {
-    try {
-      setFolderDeletingId(folderId)
-      await deleteMailFolder(folderId)
-      toast.success('폴더를 비활성화했습니다.')
-      await loadRuleAndFolderData()
-    } catch (error) {
-      toast.error(getClientMailErrorMessage(error))
-    } finally {
-      setFolderDeletingId(null)
-    }
-  }
-
   const handleEditAccount = (account: MailAccount) => {
     const inferredDomain = inferDomainOptionFromAccount(account)
     const inferredProtocol: ReceiveProtocol =
@@ -579,6 +544,31 @@ export default function ClientMailAccountsPage() {
         </div>
       ) : null}
 
+      <div className="rounded-xl border border-zinc-200 bg-white p-1">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSettingsTab('external')}
+            className={`h-9 rounded-md px-3 text-sm ${
+              settingsTab === 'external' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+            }`}
+          >
+            외부 메일 연동
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('spam')}
+            className={`h-9 rounded-md px-3 text-sm ${
+              settingsTab === 'spam' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+            }`}
+          >
+            스팸 설정
+          </button>
+        </div>
+      </div>
+
+      {settingsTab === 'external' ? (
+      <>
       <form onSubmit={handleCreateAccount} className="rounded-xl border border-zinc-200 bg-white p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{editingAccountId ? `메일 계정 수정 #${editingAccountId}` : '메일 계정 등록'}</h2>
@@ -922,43 +912,12 @@ export default function ClientMailAccountsPage() {
           </ul>
         )}
       </div>
+      </>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-zinc-900">폴더 관리</h3>
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              className={inputClass}
-              value={folderNameInput}
-              onChange={(e) => setFolderNameInput(e.target.value)}
-              placeholder="폴더명"
-            />
-            <button
-              type="button"
-              onClick={handleCreateFolder}
-              disabled={folderSubmitting}
-              className="h-10 rounded-md bg-zinc-900 px-4 text-sm text-white hover:bg-zinc-800 disabled:opacity-60"
-            >
-              등록
-            </button>
-          </div>
-          <div className="mt-3 space-y-2">
-            {folders.map((folder) => (
-              <div key={folder.id} className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm">
-                <span>{folder.name}</span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFolder(folder.id)}
-                  disabled={folderDeletingId === folder.id}
-                  className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
+      {settingsTab === 'spam' ? (
+      <>
+      <div className="grid grid-cols-1 gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <h3 className="text-sm font-semibold text-zinc-900">자동분류 설정</h3>
           <p className="mt-1 text-xs text-zinc-500">조건에 맞는 메일을 자동으로 폴더 이동 또는 고객사 연결 처리합니다.</p>
@@ -1049,6 +1008,8 @@ export default function ClientMailAccountsPage() {
           </div>
         </div>
       </div>
+      </>
+      ) : null}
     </section>
   )
 }

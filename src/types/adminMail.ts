@@ -299,6 +299,16 @@ export interface MailMessageUnlinkCompanyPayload {
   relation_type?: MailRelationType
 }
 
+export interface MailMessageMoveFolderPayload {
+  folder_id?: number | null
+}
+
+export interface MailMessageMoveFolderResponse {
+  message: string
+  mail_message_id: number
+  folder_name?: string | null
+}
+
 export interface MailAttachmentListResponse {
   total: number
   items: MailAttachment[]
@@ -316,6 +326,19 @@ export interface MailAttachmentImportResponse {
     detail: string | null
     s3_key: string | null
   }>
+}
+
+export interface MailAttachmentSaveToCompanyPayload {
+  company_id: number
+  attachment_ids: number[]
+  auto_import_if_missing?: boolean
+}
+
+export interface MailAttachmentSaveToCompanyResponse {
+  message: string
+  company_id?: number
+  attachment_ids?: number[]
+  saved_count?: number
 }
 
 export interface MailSendPayload {
@@ -565,6 +588,7 @@ export interface MailFolderCreatePayload {
   color?: string
   description?: string
   sort_order?: number
+  mail_account_id?: number
 }
 
 export interface MailFolderUpdatePayload {

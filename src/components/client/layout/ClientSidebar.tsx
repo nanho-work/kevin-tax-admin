@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Mail, Mails, SendHorizontal, SquarePen, Settings, Trash2 } from 'lucide-react'
 import { logoutClient } from '@/services/client/clientAuthService'
-import { listMailAccounts, listMailMessages } from '@/services/client/clientMailService'
+import { createMailFolder, listMailAccounts, listMailFolders, listMailMessages } from '@/services/client/clientMailService'
 import { clearClientAccessToken } from '@/services/http'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
+import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -17,7 +18,7 @@ const menus = [
 
 const mailMenus = [
   { label: '메일쓰기', href: '/client/mail/compose' },
-  { label: '설정', href: '/client/mail/accounts' },
+  { label: '메일설정', href: '/client/mail/accounts' },
 ]
 
 const companyManagementMenus = [
@@ -74,6 +75,26 @@ function isMenuActive(pathname: string, searchParams: URLSearchParams, href: str
   return true
 }
 
+function MailboxMenuLabel({ type, label }: { type: 'all' | 'inbox' | 'sent' | 'trash'; label: string }) {
+  const Icon = type === 'all' ? Mails : type === 'inbox' ? Mail : type === 'sent' ? SendHorizontal : Trash2
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function MailActionMenuLabel({ href, label }: { href: string; label: string }) {
+  const Icon = href === '/client/mail/compose' ? SquarePen : Settings
+  return (
+    <span className="inline-flex items-center justify-center gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </span>
+  )
+}
+
 export default function ClientSidebar({ collapsed = false, onToggleCollapse }: ClientSidebarProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -92,7 +113,13 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const [isSettingOpen, setIsSettingOpen] = useState(hasSettingPath)
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
+  const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
   const [expandedMailAccounts, setExpandedMailAccounts] = useState<Record<number, boolean>>({})
+  const [mailCountsRefreshTick, setMailCountsRefreshTick] = useState(0)
+  const [folderCreateTargetAccountId, setFolderCreateTargetAccountId] = useState<number | null>(null)
+  const [folderCreateName, setFolderCreateName] = useState('')
+  const [folderCreateLoading, setFolderCreateLoading] = useState(false)
+  const [folderCreateError, setFolderCreateError] = useState<string | null>(null)
   const { session, loading } = useClientSessionContext()
   const canManageClients = getClientRoleRank(session) === 0
   const profile = useMemo(
@@ -105,11 +132,19 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
   const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     `/client/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
+  const buildMailFolderHref = (accountId: number, folderName: string) =>
+    `/client/mail/inbox?mailbox=custom&account_id=${accountId}&folder=${encodeURIComponent(folderName)}`
 
   const isMailAccountMenuActive = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     pathname === '/client/mail/inbox' &&
     searchParams.get('account_id') === String(accountId) &&
     searchParams.get('mailbox') === mailbox
+
+  const isMailFolderMenuActive = (accountId: number, folderName: string) =>
+    pathname === '/client/mail/inbox' &&
+    searchParams.get('account_id') === String(accountId) &&
+    searchParams.get('mailbox') === 'custom' &&
+    searchParams.get('folder') === folderName
 
   useEffect(() => {
     if (hasMailPath) setIsMailOpen(true)
@@ -142,6 +177,12 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   }, [searchParams])
 
   useEffect(() => {
+    const refresh = () => setMailCountsRefreshTick((prev) => prev + 1)
+    window.addEventListener(MAIL_COUNTS_REFRESH_EVENT, refresh)
+    return () => window.removeEventListener(MAIL_COUNTS_REFRESH_EVENT, refresh)
+  }, [])
+
+  useEffect(() => {
     if (loading || !session) return
 
     const loadMailCounts = async () => {
@@ -155,14 +196,16 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
         setMailAccounts(accounts)
 
         const nextCounts: Record<number, { all: number; inboxUnread: number; sent: number; trash: number }> = {}
+        const nextFolders: Record<number, Array<{ id: number; name: string }>> = {}
         await Promise.all(
           accounts.map(async (account) => {
             try {
-              const [allRes, inboxUnreadRes, sentRes, trashRes] = await Promise.all([
+              const [allRes, inboxUnreadRes, sentRes, trashRes, folderRes] = await Promise.all([
                 listMailMessages({ page: 1, size: 1, mail_account_id: account.id }),
                 listMailMessages({ page: 1, size: 1, mail_account_id: account.id, mailbox_type: 'inbox', is_read: false }),
                 listMailMessages({ page: 1, size: 1, mail_account_id: account.id, direction: 'outbound' }),
                 listMailMessages({ page: 1, size: 1, mail_account_id: account.id, include_trash: true }),
+                listMailFolders(true, account.id),
               ])
               nextCounts[account.id] = {
                 all: allRes.total ?? 0,
@@ -170,20 +213,77 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 sent: sentRes.total ?? 0,
                 trash: trashRes.total ?? 0,
               }
+              nextFolders[account.id] = (folderRes.items || [])
+                .map((item) => ({ id: item.id, name: item.name }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
             } catch {
               nextCounts[account.id] = { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
+              nextFolders[account.id] = []
             }
           })
         )
         setMailAccountCounts(nextCounts)
+        setMailFoldersByAccount(nextFolders)
       } catch {
         setMailAccounts([])
         setMailAccountCounts({})
+        setMailFoldersByAccount({})
       }
     }
 
     void loadMailCounts()
-  }, [session, loading, pathname, searchParams])
+  }, [session, loading, pathname, searchParams, mailCountsRefreshTick])
+
+  const mailTopMenus = mailMenus.filter((menu) => menu.href !== '/client/mail/accounts')
+  const mailSettingMenu = mailMenus.find((menu) => menu.href === '/client/mail/accounts') || null
+
+  const handleOpenFolderCreate = (accountId: number) => {
+    if (folderCreateTargetAccountId === accountId) {
+      setFolderCreateTargetAccountId(null)
+      setFolderCreateName('')
+      setFolderCreateError(null)
+      return
+    }
+    setFolderCreateTargetAccountId(accountId)
+    setFolderCreateName('')
+    setFolderCreateError(null)
+  }
+
+  const handleCancelFolderCreate = () => {
+    setFolderCreateTargetAccountId(null)
+    setFolderCreateName('')
+    setFolderCreateError(null)
+  }
+
+  const handleSubmitFolderCreate = async (accountId: number) => {
+    const trimmed = folderCreateName.trim()
+    if (!trimmed) {
+      setFolderCreateError('폴더 이름을 입력해 주세요.')
+      return
+    }
+    const targetAccount = mailAccounts.find((account) => account.id === accountId)
+    if (!targetAccount || targetAccount.account_scope !== 'personal') {
+      setFolderCreateError('개인 계정에서만 폴더를 만들 수 있습니다.')
+      return
+    }
+    try {
+      setFolderCreateLoading(true)
+      await createMailFolder({ name: trimmed, mail_account_id: accountId })
+      const folderRes = await listMailFolders(true, accountId)
+      setMailFoldersByAccount((prev) => ({
+        ...prev,
+        [accountId]: (folderRes.items || [])
+          .map((item) => ({ id: item.id, name: item.name }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+      }))
+      window.dispatchEvent(new CustomEvent(MAIL_COUNTS_REFRESH_EVENT))
+      handleCancelFolderCreate()
+    } catch {
+      setFolderCreateError('폴더 생성에 실패했습니다.')
+    } finally {
+      setFolderCreateLoading(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -274,8 +374,8 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           </button>
           {isMailOpen && (
             <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
-              <div className="grid grid-cols-2 gap-2">
-                {mailMenus.map((menu) => (
+              <div className="grid grid-cols-1 gap-2">
+                {mailTopMenus.map((menu) => (
                   <Link key={menu.href} href={menu.href}>
                     <div
                       className={`rounded-md border px-3 py-2 text-center text-xs transition ${
@@ -284,7 +384,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
                       }`}
                     >
-                      <span>{menu.label}</span>
+                      <MailActionMenuLabel href={menu.href} label={menu.label} />
                     </div>
                   </Link>
                 ))}
@@ -322,13 +422,13 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                       <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
                         <Link href={buildMailAccountHref(account.id, 'all')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>전체메일</span>
+                            <MailboxMenuLabel type="all" label="전체메일" />
                             <span>{counts.all.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
                         <Link href={buildMailAccountHref(account.id, 'inbox')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'inbox') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>받은메일함</span>
+                            <MailboxMenuLabel type="inbox" label="받은메일함" />
                             {counts.inboxUnread > 0 ? (
                               <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
                                 <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
@@ -339,15 +439,22 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                             )}
                           </div>
                         </Link>
+                        {(mailFoldersByAccount[account.id] || []).map((folder) => (
+                          <Link key={folder.id} href={buildMailFolderHref(account.id, folder.name)}>
+                            <div className={`ml-4 flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailFolderMenuActive(account.id, folder.name) ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                              <span className="truncate">{folder.name}</span>
+                            </div>
+                          </Link>
+                        ))}
                         <Link href={buildMailAccountHref(account.id, 'sent')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>보낸메일함</span>
+                            <MailboxMenuLabel type="sent" label="보낸메일함" />
                             <span>{counts.sent.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
                         <Link href={buildMailAccountHref(account.id, 'trash')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'trash') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>휴지통</span>
+                            <MailboxMenuLabel type="trash" label="휴지통" />
                             <span>{counts.trash.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
@@ -388,32 +495,96 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                       <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
                         <Link href={buildMailAccountHref(account.id, 'all')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>전체메일</span>
+                            <MailboxMenuLabel type="all" label="전체메일" />
                             <span>{counts.all.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
-                        <Link href={buildMailAccountHref(account.id, 'inbox')}>
-                          <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'inbox') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>받은메일함</span>
-                            {counts.inboxUnread > 0 ? (
-                              <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
-                                <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
-                                <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
-                              </span>
-                            ) : (
-                              <span className="text-neutral-500">0</span>
-                            )}
+                        <div className="flex items-center gap-1">
+                          <Link href={buildMailAccountHref(account.id, 'inbox')} className="min-w-0 flex-1">
+                            <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'inbox') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                              <MailboxMenuLabel type="inbox" label="받은메일함" />
+                              {counts.inboxUnread > 0 ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
+                                  <span className="animate-pulse text-[10px] leading-none text-amber-500">★</span>
+                                  <span>{counts.inboxUnread.toLocaleString('ko-KR')}</span>
+                                </span>
+                              ) : (
+                                <span className="text-neutral-500">0</span>
+                              )}
+                            </div>
+                          </Link>
+                          <div className="group relative">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenFolderCreate(account.id)}
+                            className="inline-flex h-4 w-4 items-center justify-center rounded border border-neutral-300 text-[10px] text-neutral-600 hover:bg-neutral-50"
+                            aria-label="폴더 만들기"
+                          >
+                            +
+                            </button>
+                            <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-1000 group-hover:opacity-100">
+                              폴더 만들기
+                            </span>
                           </div>
-                        </Link>
+                        </div>
+                        {folderCreateTargetAccountId === account.id ? (
+                          <div className="ml-4 mt-1 space-y-1 rounded border border-neutral-200 bg-neutral-50 p-2">
+                            <input
+                              value={folderCreateName}
+                              onChange={(e) => {
+                                setFolderCreateName(e.target.value)
+                                if (folderCreateError) setFolderCreateError(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  void handleSubmitFolderCreate(account.id)
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  handleCancelFolderCreate()
+                                }
+                              }}
+                              placeholder="폴더 이름"
+                              className="h-7 w-full rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-900 outline-none focus:border-neutral-500"
+                              autoFocus
+                            />
+                            {folderCreateError ? <p className="text-[10px] text-rose-600">{folderCreateError}</p> : null}
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={handleCancelFolderCreate}
+                                className="rounded border border-neutral-300 bg-white px-2 py-0.5 text-[10px] text-neutral-700 hover:bg-neutral-50"
+                              >
+                                취소
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSubmitFolderCreate(account.id)}
+                                disabled={folderCreateLoading}
+                                className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+                              >
+                                {folderCreateLoading ? '저장 중...' : '저장'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {(mailFoldersByAccount[account.id] || []).map((folder) => (
+                          <Link key={folder.id} href={buildMailFolderHref(account.id, folder.name)}>
+                            <div className={`ml-4 flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailFolderMenuActive(account.id, folder.name) ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                              <span className="truncate">{folder.name}</span>
+                            </div>
+                          </Link>
+                        ))}
                         <Link href={buildMailAccountHref(account.id, 'sent')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>보낸메일함</span>
+                            <MailboxMenuLabel type="sent" label="보낸메일함" />
                             <span>{counts.sent.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
                         <Link href={buildMailAccountHref(account.id, 'trash')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'trash') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                            <span>휴지통</span>
+                            <MailboxMenuLabel type="trash" label="휴지통" />
                             <span>{counts.trash.toLocaleString('ko-KR')}</span>
                           </div>
                         </Link>
@@ -422,6 +593,22 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   </div>
                 )
               })}
+              {mailSettingMenu ? (
+                <>
+                  <div className="my-2 border-t border-neutral-200" />
+                  <Link href={mailSettingMenu.href}>
+                    <div
+                      className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                        isMenuActive(pathname, searchParams, mailSettingMenu.href)
+                          ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                          : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <MailActionMenuLabel href={mailSettingMenu.href} label={mailSettingMenu.label} />
+                    </div>
+                  </Link>
+                </>
+              ) : null}
             </div>
           )}
         </div>
