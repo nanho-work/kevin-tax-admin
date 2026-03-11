@@ -1,10 +1,5 @@
+import { redirect } from 'next/navigation'
 
-import AttendanceLogTable from '@/components/staff/AttendanceLogTable'
-
-export default function AttendanceLogsPage() {
-  return (
-    <main >
-      <AttendanceLogTable />
-    </main>
-  )
+export default function LegacyAttendancePage() {
+  redirect('/admin/staff/attendance')
 }

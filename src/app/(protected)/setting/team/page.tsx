@@ -1,10 +1,5 @@
+import { redirect } from 'next/navigation'
 
-import TeamTable from "@/components/Company/setting/Team/TeamTable"
-
-export default function AttendanceLogsPage() {
-  return (
-    <main >
-      <TeamTable />
-    </main>
-  )
+export default function LegacySettingTeamPage() {
+  redirect('/client/staff/organization')
 }

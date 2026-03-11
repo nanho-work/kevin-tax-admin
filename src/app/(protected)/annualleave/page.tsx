@@ -1,10 +1,5 @@
+import { redirect } from 'next/navigation'
 
-import AnnualLeaveTable from "@/components/admin/AnnualLeave/AnnualLeaveTable"
-
-export default function AttendanceLogsPage() {
-  return (
-    <main >
-      <AnnualLeaveTable />
-    </main>
-  )
+export default function LegacyAnnualLeavePage() {
+  redirect('/client/staff/leave')
 }

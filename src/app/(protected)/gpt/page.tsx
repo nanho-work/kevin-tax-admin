@@ -1,7 +1,5 @@
-// app/(protected)/gpt/page.tsx
+import { redirect } from 'next/navigation'
 
-import GPTClient from "@/components/gpt/GPTClient";
-
-export default function GPTPage() {
-  return <GPTClient />;
+export default function LegacyGptPage() {
+  redirect('/client/client-management/gpt')
 }

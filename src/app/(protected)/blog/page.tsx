@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function BlogPage() {
-  redirect('/blog/list')
+  redirect('/client/client-management/blog/list')
 }

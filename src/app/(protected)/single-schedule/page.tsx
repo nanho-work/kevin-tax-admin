@@ -1,8 +1,5 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import React from 'react'
-import SingleSchedule from '@/components/single-schedule/single-schedule'
-
-export default function SingleSchedulePage() {
-  return <SingleSchedule />
+export default function LegacySingleSchedulePage() {
+  redirect('/client/schedule')
 }

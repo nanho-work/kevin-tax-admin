@@ -1,10 +1,5 @@
+import { redirect } from 'next/navigation'
 
-import DepartmentTable from "@/components/Company/setting/Department/DepartmentTable"
-
-export default function AttendanceLogsPage() {
-  return (
-    <main >
-      <DepartmentTable />
-    </main>
-  )
+export default function LegacySettingDepartmentPage() {
+  redirect('/client/staff/organization')
 }

@@ -1,9 +1,5 @@
-import TaxScheduleTable from '@/components/Company/tax-schedule/TaxScheduleTable'
+import { redirect } from 'next/navigation'
 
-export default function TaxSchedulePage() {
-  return (
-    <main >
-      <TaxScheduleTable />
-    </main>
-  )
+export default function LegacyTaxSchedulePage() {
+  redirect('/admin/tax-schedule')
 }
