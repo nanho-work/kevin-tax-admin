@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
@@ -40,7 +40,7 @@ function getGoogleOAuthCallbackErrorMessage(error: unknown): string {
   return getAdminMailErrorMessage(error)
 }
 
-export default function AdminMailOAuthCallbackPage() {
+function AdminMailOAuthCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const handledRef = useRef(false)
@@ -136,5 +136,13 @@ export default function AdminMailOAuthCallbackPage() {
         </div>
       ) : null}
     </section>
+  )
+}
+
+export default function AdminMailOAuthCallbackPage() {
+  return (
+    <Suspense fallback={<section className="mx-auto mt-16 max-w-xl rounded-xl border border-zinc-200 bg-white p-6 text-sm text-zinc-600">Google 연결 중...</section>}>
+      <AdminMailOAuthCallbackContent />
+    </Suspense>
   )
 }
