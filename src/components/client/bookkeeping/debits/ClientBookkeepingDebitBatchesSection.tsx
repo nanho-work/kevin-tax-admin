@@ -343,11 +343,11 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
                       <span className="text-xs text-zinc-500">확인중...</span>
                     ) : (mappingStatusMap[row.id]?.unmatched || 0) > 0 ? (
                       <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                        거래처 미적용 {mappingStatusMap[row.id].unmatched}건
+                        고객사 미적용 {mappingStatusMap[row.id].unmatched}건
                       </span>
                     ) : (
                       <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                        거래처 등록 완료
+                        고객사 등록 완료
                       </span>
                     )}
                   </td>

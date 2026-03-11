@@ -915,7 +915,7 @@ export default function AdminMailAccountsPage() {
       <div className="grid grid-cols-1 gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <h3 className="text-sm font-semibold text-zinc-900">자동 정리 규칙</h3>
-          <p className="mt-1 text-xs text-zinc-500">조건에 맞는 메일을 자동으로 폴더 이동하거나 거래처에 연결합니다.</p>
+          <p className="mt-1 text-xs text-zinc-500">조건에 맞는 메일을 자동으로 폴더 이동하거나 고객사에 연결합니다.</p>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
             <input className={inputClass} value={ruleNameInput} onChange={(e) => setRuleNameInput(e.target.value)} placeholder="규칙 이름" />
             <select className={inputClass} value={ruleMailAccountId} onChange={(e) => setRuleMailAccountId(e.target.value ? Number(e.target.value) : '')}>
@@ -945,7 +945,7 @@ export default function AdminMailAccountsPage() {
                 <option key={folder.id} value={folder.id}>{folder.name}</option>
               ))}
             </select>
-            <input className={inputClass} value={ruleTargetCompanyId} onChange={(e) => setRuleTargetCompanyId(e.target.value)} placeholder="연결할 거래처 번호(선택)" />
+            <input className={inputClass} value={ruleTargetCompanyId} onChange={(e) => setRuleTargetCompanyId(e.target.value)} placeholder="연결할 고객사 번호(선택)" />
           </div>
           <label className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
             <input type="checkbox" checked={ruleStopProcessing} onChange={(e) => setRuleStopProcessing(e.target.checked)} />

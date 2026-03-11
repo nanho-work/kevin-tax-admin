@@ -32,7 +32,7 @@ export default function CompanyList({
   disableDelete = true,
   pageSize = 12,
   createHref,
-  createLabel = '거래처등록',
+  createLabel = '고객사등록',
   showAccountStatus = true,
 }: Props) {
   const router = useRouter()

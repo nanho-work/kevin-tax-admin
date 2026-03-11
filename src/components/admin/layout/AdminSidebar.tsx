@@ -56,7 +56,7 @@ const menuSections: MenuSection[] = [
     key: 'schedule',
     label: '일정 관리',
     children: [
-      { label: '거래처 일정', href: '/admin/tax-schedule' },
+      { label: '고객사 일정', href: '/admin/tax-schedule' },
     ],
   },
   {

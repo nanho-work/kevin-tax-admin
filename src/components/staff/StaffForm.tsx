@@ -25,6 +25,7 @@ export default function StaffForm() {
     // - CreateStaffRequest 타입 기반으로 초기값 설정
     // - role은 기본값 'CLERK_ASSIST'로 설정
     const [form, setForm] = useState<CreateStaffRequest>({
+        login_id: '',
         email: '',
         name: '',
         password: '',
@@ -89,6 +90,7 @@ export default function StaffForm() {
         e.preventDefault()
         try {
             const formData = new FormData()
+            formData.append('login_id', form.login_id)
             formData.append('email', form.email)
             formData.append('name', form.name)
             formData.append('password', form.password)
@@ -115,6 +117,17 @@ export default function StaffForm() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-6 mx-auto max-w-2xl w-full">
             {/* 이메일 + 전화번호 */}
             <div className="flex gap-6">
+                <div className="flex flex-col w-full">
+                    <label htmlFor="login_id" className="font-medium">로그인 아이디</label>
+                    <input
+                        id="login_id"
+                        name="login_id"
+                        value={form.login_id}
+                        onChange={handleChange}
+                        placeholder="로그인 아이디"
+                        className="border border-gray-300 px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                    />
+                </div>
                 <div className="flex flex-col w-full">
                     <label htmlFor="email" className="font-medium">이메일</label>
                     <input

@@ -29,7 +29,7 @@ function toErrorMessage(detail: unknown): string {
 
 export default function LoginForm() {
   const router = useRouter()
-  const [form, setForm] = useState<LoginRequest>({ email: '', password: '' })
+  const [form, setForm] = useState<LoginRequest>({ login_id: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -81,17 +81,17 @@ export default function LoginForm() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ✅ 이메일 입력 필드 */}
+          {/* ✅ 로그인 아이디 입력 필드 */}
           <div>
-            <label htmlFor="email" className="block text-sm text-gray-700 mb-1">
-              이메일
+            <label htmlFor="login_id" className="block text-sm text-gray-700 mb-1">
+              로그인 아이디
             </label>
             <input
-              id="email"
-              type="email"
-              name="email"
-              placeholder="이메일을 입력하세요"
-              value={form.email}
+              id="login_id"
+              type="text"
+              name="login_id"
+              placeholder="로그인 아이디를 입력하세요"
+              value={form.login_id}
               onChange={handleChange}
               required
               autoComplete="username"

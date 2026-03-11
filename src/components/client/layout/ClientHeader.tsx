@@ -16,10 +16,10 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/mail/compose')) return { parent: '메일', child: '메일작성' }
   if (pathname.startsWith('/client/mail/accounts')) return { parent: '메일', child: '설정' }
   if (pathname.startsWith('/client/mail')) return { parent: '메일' }
-  if (pathname.startsWith('/client/companies/new')) return { parent: '거래처관리', child: '거래처등록' }
-  if (pathname.startsWith('/client/companies/')) return { parent: '거래처관리', child: '거래처 기본사항' }
-  if (pathname.startsWith('/client/companies')) return { parent: '거래처관리', child: '거래처 기본사항' }
-  if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '기장 관리', child: '기장 거래처 관리' }
+  if (pathname.startsWith('/client/companies/new')) return { parent: '고객사관리', child: '고객사등록' }
+  if (pathname.startsWith('/client/companies/')) return { parent: '고객사관리', child: '고객사 기본사항' }
+  if (pathname.startsWith('/client/companies')) return { parent: '고객사관리', child: '고객사 기본사항' }
+  if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '기장 관리', child: '기장 고객사 관리' }
   if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '기장 관리', child: '월별 청구/수납 관리' }
   if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '기장 관리', child: '월별 집계' }
   if (pathname.startsWith('/client/bookkeeping/debits/history/')) return { parent: '기장 관리', child: '업로드 이력 상세' }

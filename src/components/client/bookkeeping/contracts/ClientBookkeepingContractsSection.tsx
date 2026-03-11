@@ -275,7 +275,7 @@ export default function ClientBookkeepingContractsSection() {
       form.monthly_fee_supply.trim() === '' ? undefined : Number(form.monthly_fee_supply.replace(/,/g, ''))
 
     if (!form.company_id) {
-      toast.error('거래처 회사를 선택해 주세요.')
+      toast.error('고객사를 선택해 주세요.')
       return
     }
     if (!startDate && !startMonth) {
@@ -325,10 +325,10 @@ export default function ClientBookkeepingContractsSection() {
       setSaving(true)
       if (modal.mode === 'create') {
         await createContract(payload)
-        toast.success('거래처 계약이 등록되었습니다.')
+        toast.success('고객사 계약이 등록되었습니다.')
       } else if (modal.target) {
         await updateContract(modal.target.id, payload)
-        toast.success('거래처 계약이 수정되었습니다.')
+        toast.success('고객사 계약이 수정되었습니다.')
       }
       closeModal()
       await loadContracts()
@@ -428,9 +428,9 @@ export default function ClientBookkeepingContractsSection() {
               onClick={openCreate}
               className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
             >
-              거래처 추가
+              고객사 추가
             </button>
-            <TemplateDownloadButton code="BOOKKEEPING_CONTRACT_BULK" label="거래처 계약 일괄등록 양식" />
+            <TemplateDownloadButton code="BOOKKEEPING_CONTRACT_BULK" label="고객사 계약 일괄등록 양식" />
             <button
               type="button"
               onClick={() => bulkFileInputRef.current?.click()}
@@ -625,7 +625,7 @@ export default function ClientBookkeepingContractsSection() {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={11} className="px-3 py-10 text-center text-zinc-500">
-                  거래처 계약이 없습니다.
+                  고객사 계약이 없습니다.
                 </td>
               </tr>
             ) : (
@@ -707,7 +707,7 @@ export default function ClientBookkeepingContractsSection() {
           <div className="w-full max-w-3xl rounded-lg border border-zinc-200 bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-zinc-900">
-                {modal.mode === 'create' ? '거래처 계약 등록' : '거래처 계약 수정'}
+                {modal.mode === 'create' ? '고객사 계약 등록' : '고객사 계약 수정'}
               </h2>
               <button
                 type="button"

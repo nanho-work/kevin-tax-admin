@@ -580,7 +580,7 @@ export default function AdminMailMessageDetailPage() {
   const handleSaveAttachmentToCompany = async () => {
     if (!detail || !selectedAttachment) return
     if (!selectedCompanyId) {
-      toast.error('저장할 거래처를 선택해 주세요.')
+      toast.error('저장할 고객사를 선택해 주세요.')
       return
     }
 
@@ -591,7 +591,7 @@ export default function AdminMailMessageDetailPage() {
         attachment_ids: [selectedAttachment.id],
         auto_import_if_missing: autoImportIfMissing,
       })
-      toast.success('거래처 기타문서로 저장했습니다.')
+      toast.success('고객사 기타문서로 저장했습니다.')
       closeCompanySavePanel()
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
@@ -887,7 +887,7 @@ export default function AdminMailMessageDetailPage() {
                         onClick={() => void openCompanySavePanel(attachment)}
                         className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                       >
-                        거래처 저장
+                        고객사 저장
                       </button>
                     </div>
                   </div>
@@ -945,10 +945,10 @@ export default function AdminMailMessageDetailPage() {
 
       {companySavePanelOpen ? (
         <div className="fixed inset-0 z-50 flex bg-black/20">
-          <button type="button" className="flex-1 cursor-default" onClick={closeCompanySavePanel} aria-label="거래처 저장 닫기" />
+          <button type="button" className="flex-1 cursor-default" onClick={closeCompanySavePanel} aria-label="고객사 저장 닫기" />
           <aside className="h-full w-full max-w-md border-l border-zinc-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-              <p className="text-sm font-semibold text-zinc-900">거래처 기타문서 저장</p>
+              <p className="text-sm font-semibold text-zinc-900">고객사 기타문서 저장</p>
               <button
                 type="button"
                 onClick={closeCompanySavePanel}
@@ -965,7 +965,7 @@ export default function AdminMailMessageDetailPage() {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-zinc-500">거래처 검색</p>
+                <p className="text-xs text-zinc-500">고객사 검색</p>
                 <input
                   value={companyKeyword}
                   onChange={(e) => setCompanyKeyword(e.target.value)}
@@ -974,10 +974,10 @@ export default function AdminMailMessageDetailPage() {
                 />
               </div>
               <div>
-                <p className="text-xs text-zinc-500">거래처 선택</p>
+                <p className="text-xs text-zinc-500">고객사 선택</p>
                 <div className="mt-1 max-h-64 overflow-y-auto rounded border border-zinc-200">
                   {companyOptionsLoading ? (
-                    <p className="px-3 py-2 text-sm text-zinc-500">거래처 목록을 불러오는 중...</p>
+                    <p className="px-3 py-2 text-sm text-zinc-500">고객사 목록을 불러오는 중...</p>
                   ) : companyOptionsError ? (
                     <p className="px-3 py-2 text-sm text-rose-600">{companyOptionsError}</p>
                   ) : filteredCompanyOptions.length === 0 ? (

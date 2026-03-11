@@ -30,7 +30,7 @@ const mailMenus = [
 ]
 
 const companyManagementMenus = [
-  { label: '거래처 기본사항', href: '/client/companies' },
+  { label: '고객사 기본사항', href: '/client/companies' },
 ]
 
 const staffManagementMenus = [
@@ -56,7 +56,7 @@ const clientManagementMenus = [
 ]
 
 const bookkeepingMenus = [
-  { label: '기장 거래처 관리', href: '/client/bookkeeping/contracts' },
+  { label: '기장 고객사 관리', href: '/client/bookkeeping/contracts' },
   { label: '월별 청구/수납 관리', href: '/client/bookkeeping/billings' },
   { label: '월별 집계', href: '/client/bookkeeping/summary' },
   { label: '입금내역', href: '/client/bookkeeping/debits' },
@@ -861,7 +861,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasCompanyManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>거래처관리</span>
+            <span>고객사관리</span>
             <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isCompanyManagementOpen && (

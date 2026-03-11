@@ -12,7 +12,7 @@ export default function ClientCompanyList() {
       disableDelete={false}
       pageSize={12}
       createHref="/client/companies/new"
-      createLabel="거래처등록"
+      createLabel="고객사등록"
       showAccountStatus={false}
     />
   )

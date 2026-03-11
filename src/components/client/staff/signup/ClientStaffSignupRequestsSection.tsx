@@ -181,6 +181,7 @@ export default function ClientStaffSignupRequestsSection() {
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
               <th className="px-3 py-3 text-left">이름</th>
+              <th className="px-3 py-3 text-left">로그인아이디</th>
               <th className="px-3 py-3 text-left">이메일</th>
               <th className="px-3 py-3 text-left">연락처</th>
               <th className="px-3 py-3 text-center">입사일</th>
@@ -192,11 +193,11 @@ export default function ClientStaffSignupRequestsSection() {
           <tbody className="divide-y divide-zinc-200">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-zinc-500">조회 중...</td>
+                <td colSpan={8} className="px-3 py-10 text-center text-zinc-500">조회 중...</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-zinc-500">가입 신청 내역이 없습니다.</td>
+                <td colSpan={8} className="px-3 py-10 text-center text-zinc-500">가입 신청 내역이 없습니다.</td>
               </tr>
             ) : (
               items.map((item) => (
@@ -210,6 +211,7 @@ export default function ClientStaffSignupRequestsSection() {
                       {item.name}
                     </button>
                   </td>
+                  <td className="px-3 py-3 text-zinc-700">{item.login_id || '-'}</td>
                   <td className="px-3 py-3 text-zinc-700">{item.email}</td>
                   <td className="px-3 py-3 text-zinc-700">{item.phone || '-'}</td>
                   <td className="px-3 py-3 text-center text-zinc-700">{formatDate(item.hired_at)}</td>
@@ -256,6 +258,10 @@ export default function ClientStaffSignupRequestsSection() {
                     <p className="mt-1 text-zinc-900">{selected.email}</p>
                   </div>
                   <div>
+                    <p className="text-xs text-zinc-500">로그인아이디</p>
+                    <p className="mt-1 text-zinc-900">{selected.login_id || '-'}</p>
+                  </div>
+                  <div>
                     <p className="text-xs text-zinc-500">연락처</p>
                     <p className="mt-1 text-zinc-900">{selected.phone || '-'}</p>
                   </div>
@@ -276,6 +282,18 @@ export default function ClientStaffSignupRequestsSection() {
                   <div>
                     <p className="text-xs text-zinc-500">개인정보 동의</p>
                     <p className="mt-1 text-zinc-900">{selected.privacy_agreed ? '동의' : '미동의'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500">입력 사업자번호</p>
+                    <p className="mt-1 text-zinc-900">{selected.input_business_number || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500">입력 회사명</p>
+                    <p className="mt-1 text-zinc-900">{selected.input_company_name || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500">회사 확인</p>
+                    <p className="mt-1 text-zinc-900">{selected.company_verified ? '확인' : '미확인'}</p>
                   </div>
                 </div>
               </div>

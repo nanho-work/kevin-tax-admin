@@ -40,6 +40,7 @@ function normalizeFlexibleDate(value: string) {
 
 function createInitialForm(): CreateStaffRequest {
     return {
+        login_id: '',
         email: '',
         name: '',
         password: '',
@@ -134,7 +135,12 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
         try {
             setSubmitting(true)
             setMessage(null)
+            if (!form.login_id.trim()) {
+                setMessage({ type: 'error', text: '로그인 아이디를 입력해 주세요.' })
+                return
+            }
             const formData = new FormData()
+            formData.append('login_id', form.login_id.trim())
             formData.append('email', form.email)
             formData.append('name', form.name)
             formData.append('password', form.password)
@@ -204,6 +210,17 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
                 </div>
             ) : null}
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                    <label htmlFor="login_id" className="mb-1 block text-xs text-zinc-600">로그인 아이디</label>
+                    <input
+                        id="login_id"
+                        name="login_id"
+                        value={form.login_id}
+                        onChange={handleChange}
+                        placeholder="로그인 아이디"
+                        className={inputClass}
+                    />
+                </div>
                 <div>
                     <label htmlFor="email" className="mb-1 block text-xs text-zinc-600">이메일</label>
                     <input

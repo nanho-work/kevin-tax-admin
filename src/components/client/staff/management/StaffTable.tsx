@@ -67,7 +67,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_minmax(0,1fr)_auto]">
                     <input
                         type="text"
-                        placeholder="이름 / 이메일 / 전화 검색"
+                        placeholder="로그인아이디 / 이름 / 이메일 / 전화 검색"
                         value={keyword}
                         onChange={(e) => {
                             setKeyword(e.target.value)
@@ -101,6 +101,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                         <tr>
                             <th className="px-3 py-3 text-center">프로필</th>
                             <th className="px-3 py-3 text-center">이름</th>
+                            <th className="px-3 py-3 text-center">로그인아이디</th>
                             <th className="px-3 py-3 text-center">이메일</th>
                             <th className="px-3 py-3 text-center">생일</th>
                             <th className="px-3 py-3 text-center">연락처</th>
@@ -113,13 +114,13 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                     <tbody className="divide-y divide-zinc-200">
                         {listError ? (
                             <tr>
-                                <td colSpan={9} className="px-3 py-10 text-center text-rose-600">
+                                <td colSpan={10} className="px-3 py-10 text-center text-rose-600">
                                     {listError}
                                 </td>
                             </tr>
                         ) : visibleStaffs.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="px-3 py-10 text-center text-zinc-500">
+                                <td colSpan={10} className="px-3 py-10 text-center text-zinc-500">
                                     {showInactive ? '퇴사한 직원이 없습니다.' : '재직 중인 직원이 없습니다.'}
                                 </td>
                             </tr>
@@ -152,6 +153,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                                                 <span>{staff.name}</span>
                                             )}
                                         </td>
+                                        <td className="px-3 py-3 text-center">{staff.login_id || '-'}</td>
                                         <td className="px-3 py-3 text-center">{staff.email}</td>
                                         <td className="px-3 py-3 text-center">{staff.birth_date || '-'}</td>
                                         <td className="px-3 py-3 text-center">{staff.phone || '-'}</td>

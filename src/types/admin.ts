@@ -7,7 +7,8 @@ import type { RoleOut } from "./role";
 // ✅ 로그인 요청 시 사용되는 타입
 // 어드민 로그인 시 서버에 전달하는 이메일과 비밀번호 정보를 담습니다.
 export interface LoginRequest {
-  email: string            // 로그인 이메일
+  login_id: string         // 로그인 아이디
+  email?: string           // 호환용(임시)
   password: string         // 로그인 비밀번호
 }
 
@@ -21,6 +22,7 @@ export interface LoginResponse {
 
 export interface AdminOut {
   id: number
+  login_id?: string
   name: string
   email: string
   phone?: string
@@ -44,6 +46,7 @@ export type AdminSession = AdminOut
 
 // ✅ 관리자 생성 요청 - 등록 시 서버에 전송하는 타입
 export interface CreateStaffRequest {
+  login_id: string
   email: string
   name: string
   password: string
