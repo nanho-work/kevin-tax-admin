@@ -1,4 +1,4 @@
-import { adminHttp } from '@/services/http'
+import { adminHttp, getAdminAccessToken } from '@/services/http'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
@@ -34,8 +34,10 @@ export async function fetchCompanyTaxList({
   business_type,
 
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
+  const token = getAdminAccessToken()
   const response = await adminHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
     params: { page, limit, keyword, business_type },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   return response.data;
 }

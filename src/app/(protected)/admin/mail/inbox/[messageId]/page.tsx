@@ -89,6 +89,7 @@ export default function AdminMailMessageDetailPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [showRecipients, setShowRecipients] = useState(false)
   const autoReadDoneRef = useRef<number | null>(null)
+  const companySearchRequestSeqRef = useRef(0)
   const [composeMode, setComposeMode] = useState<null | 'reply' | 'forward'>(null)
   const [draftLoading, setDraftLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -481,12 +482,46 @@ export default function AdminMailMessageDetailPage() {
     }
   }
 
-  const loadCompanyOptions = async () => {
+  const loadCompanyOptions = async (keyword?: string) => {
+    const requestSeq = ++companySearchRequestSeqRef.current
+    const PAGE_LIMIT = 100
+    const MAX_RESULTS = 500
     try {
       setCompanyOptionsLoading(true)
       setCompanyOptionsError(null)
-      const response = await fetchCompanyTaxList({ page: 1, limit: 500 })
-      const mapped = (response.items || [])
+      const normalizedKeyword = keyword?.trim() || undefined
+      const collected: Array<{ id: number; company_name: string; registration_number?: string }> = []
+      let page = 1
+      let expectedTotal = 0
+
+      while (collected.length < MAX_RESULTS) {
+        const response = await fetchCompanyTaxList({
+          page,
+          limit: PAGE_LIMIT,
+          keyword: normalizedKeyword,
+        })
+        if (requestSeq !== companySearchRequestSeqRef.current) return
+        const items = response.items || []
+        expectedTotal = response.total || items.length
+
+        collected.push(
+          ...items.map((item) => ({
+            id: item.id,
+            company_name: item.company_name || `업체 #${item.id}`,
+            registration_number: item.registration_number || '',
+          }))
+        )
+
+        if (items.length < PAGE_LIMIT) break
+        if (collected.length >= expectedTotal) break
+        page += 1
+      }
+
+      const uniqueById = new Map<number, { id: number; company_name: string; registration_number?: string }>()
+      for (const item of collected) {
+        uniqueById.set(item.id, item)
+      }
+      const mapped = Array.from(uniqueById.values())
         .map((item) => ({
           id: item.id,
           company_name: item.company_name || `업체 #${item.id}`,
@@ -495,8 +530,10 @@ export default function AdminMailMessageDetailPage() {
         .sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
       setCompanyOptions(mapped)
     } catch (error) {
+      if (requestSeq !== companySearchRequestSeqRef.current) return
       setCompanyOptionsError(getAdminMailErrorMessage(error))
     } finally {
+      if (requestSeq !== companySearchRequestSeqRef.current) return
       setCompanyOptionsLoading(false)
     }
   }
@@ -511,9 +548,7 @@ export default function AdminMailMessageDetailPage() {
     setCompanyKeyword('')
     setAutoImportIfMissing(true)
     setCompanySavePanelOpen(true)
-    if (companyOptions.length === 0 && !companyOptionsLoading) {
-      await loadCompanyOptions()
-    }
+    await loadCompanyOptions('')
   }
 
   const closeCompanySavePanel = () => {
@@ -523,6 +558,14 @@ export default function AdminMailMessageDetailPage() {
     setSelectedCompanyId(null)
     setCompanyKeyword('')
   }
+
+  useEffect(() => {
+    if (!companySavePanelOpen) return
+    const timer = window.setTimeout(() => {
+      void loadCompanyOptions(companyKeyword)
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [companyKeyword, companySavePanelOpen])
 
   const filteredCompanyOptions = useMemo(() => {
     const keyword = companyKeyword.trim().toLowerCase()

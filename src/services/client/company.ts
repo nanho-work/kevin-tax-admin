@@ -1,4 +1,4 @@
-import { clientHttp } from '@/services/http'
+import { clientHttp, getClientAccessToken } from '@/services/http'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
@@ -144,8 +144,10 @@ export async function fetchClientCompanyTaxList({
   keyword,
   business_type,
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
+  const token = getClientAccessToken()
   const response = await clientHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
     params: { page, limit, keyword, business_type },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   return response.data
 }
