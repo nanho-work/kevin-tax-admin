@@ -84,7 +84,18 @@ const Header = () => {
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-neutral-900">KEVIN TAX ADMIN</div>
-            <div className="mt-0.5 text-xs text-neutral-500">{currentLabel}</div>
+            {backPath ? (
+              <div className="mt-1 flex items-center gap-2">
+                <BackButton
+                  fallbackPath={backPath}
+                  className="inline-flex h-7 items-center rounded-md border border-zinc-300 px-2.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                />
+                <span className="text-xs text-neutral-300">|</span>
+                <span className="truncate text-xs text-neutral-500">{currentLabel}</span>
+              </div>
+            ) : (
+              <div className="mt-0.5 text-xs text-neutral-500">{currentLabel}</div>
+            )}
           </div>
           {isAdminMailInbox ? (
             <div className="flex items-center gap-2 pr-7">
@@ -117,8 +128,6 @@ const Header = () => {
                 }}
               />
             </div>
-          ) : backPath ? (
-            <BackButton fallbackPath={backPath} />
           ) : null}
         </div>
       </div>

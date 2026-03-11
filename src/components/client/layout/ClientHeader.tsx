@@ -112,7 +112,18 @@ export default function ClientHeader() {
       <div className="px-4 py-3">
         <div className="grid grid-cols-[1fr_auto] items-stretch gap-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-neutral-900">{title}</div>
+            {backPath ? (
+              <div className="flex items-center gap-2">
+                <BackButton
+                  fallbackPath={backPath}
+                  className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                />
+                <span className="text-sm text-neutral-300">|</span>
+                <div className="truncate text-sm font-semibold text-neutral-900">{title}</div>
+              </div>
+            ) : (
+              <div className="text-sm font-semibold text-neutral-900">{title}</div>
+            )}
           </div>
           {isClientMailInbox ? (
             <div className="flex items-center gap-2 pr-7">
@@ -143,13 +154,6 @@ export default function ClientHeader() {
                     replaceHeaderSearch({ keyword: headerKeyword })
                   }
                 }}
-              />
-            </div>
-          ) : backPath ? (
-            <div className="flex items-center">
-              <BackButton
-                fallbackPath={backPath}
-                className="inline-flex h-10 items-center rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               />
             </div>
           ) : null}

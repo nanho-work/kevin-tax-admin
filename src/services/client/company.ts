@@ -135,6 +135,7 @@ interface FetchCompanyParams {
   page: number
   limit: number
   keyword?: string
+  category?: '법인' | '개인'
   business_type?: 'individual' | 'corporate'
 }
 
@@ -142,11 +143,12 @@ export async function fetchClientCompanyTaxList({
   page,
   limit,
   keyword,
+  category,
   business_type,
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
   const token = getClientAccessToken()
   const response = await clientHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
-    params: { page, limit, keyword, business_type },
+    params: { page, limit, keyword, category, business_type },
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   return response.data

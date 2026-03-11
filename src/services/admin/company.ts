@@ -31,12 +31,12 @@ export async function fetchCompanyTaxList({
   page,
   limit,
   keyword,
+  category,
   business_type,
-
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
   const token = getAdminAccessToken()
   const response = await adminHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
-    params: { page, limit, keyword, business_type },
+    params: { page, limit, keyword, category, business_type },
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   return response.data;

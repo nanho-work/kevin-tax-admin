@@ -15,6 +15,7 @@ interface Props {
     page: number
     limit: number
     keyword?: string
+    category?: '법인' | '개인'
     business_type?: 'individual' | 'corporate'
   }) => Promise<PaginatedResponse<CompanyTaxDetail>>;
   deactivate?: (companyId: number) => Promise<{ message?: string }>;
@@ -23,6 +24,21 @@ interface Props {
   createHref?: string;
   createLabel?: string;
   showAccountStatus?: boolean;
+}
+
+type CategoryFilter = '' | '법인' | '개인'
+
+function mapLegacyBusinessTypeToCategory(value: string | null): CategoryFilter {
+  if (value === 'corporate') return '법인'
+  if (value === 'individual') return '개인'
+  return ''
+}
+
+function resolveCompanyCategory(row: CompanyTaxDetail): CategoryFilter {
+  if (row.category === '법인' || row.category === '개인') return row.category
+  if (row.business_type === 'corporate') return '법인'
+  if (row.business_type === 'individual') return '개인'
+  return ''
 }
 
 export default function CompanyList({
@@ -43,10 +59,11 @@ export default function CompanyList({
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [keyword, setKeyword] = useState(() => searchParams.get('keyword') || '');
-  const [businessType, setBusinessType] = useState<'' | 'individual' | 'corporate'>(() => {
-    const type = searchParams.get('business_type')
-    return type === 'individual' || type === 'corporate' ? type : ''
-  });
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(() => {
+    const category = searchParams.get('category')
+    if (category === '법인' || category === '개인') return category
+    return mapLegacyBusinessTypeToCategory(searchParams.get('business_type'))
+  })
   const [page, setPage] = useState(() => {
     const parsed = Number(searchParams.get('page') || 1)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
@@ -56,17 +73,20 @@ export default function CompanyList({
 
   useEffect(() => {
     setPage(1);
-  }, [keyword, businessType]);
+  }, [keyword, categoryFilter]);
 
   useEffect(() => {
     const nextKeyword = searchParams.get('keyword') || ''
-    const nextTypeRaw = searchParams.get('business_type')
-    const nextType = nextTypeRaw === 'individual' || nextTypeRaw === 'corporate' ? nextTypeRaw : ''
+    const nextCategoryRaw = searchParams.get('category')
+    const nextCategory =
+      nextCategoryRaw === '법인' || nextCategoryRaw === '개인'
+        ? nextCategoryRaw
+        : mapLegacyBusinessTypeToCategory(searchParams.get('business_type'))
     const parsedPage = Number(searchParams.get('page') || 1)
     const nextPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
 
     setKeyword(nextKeyword)
-    setBusinessType(nextType)
+    setCategoryFilter(nextCategory)
     setPage(nextPage)
   }, [searchParams]);
 
@@ -74,10 +94,10 @@ export default function CompanyList({
     const params = new URLSearchParams()
     if (page > 1) params.set('page', String(page))
     if (keyword.trim()) params.set('keyword', keyword.trim())
-    if (businessType) params.set('business_type', businessType)
+    if (categoryFilter) params.set('category', categoryFilter)
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }, [page, keyword, businessType, pathname, router]);
+  }, [page, keyword, categoryFilter, pathname, router]);
 
   useEffect(() => {
     const loadCompanies = async () => {
@@ -94,7 +114,7 @@ export default function CompanyList({
             page: cursor,
             limit: batchSize,
             keyword: keyword.trim(),
-            business_type: businessType || undefined,
+            category: categoryFilter || undefined,
           })
           merged.push(...(items || []))
           total = totalCountFromApi || merged.length
@@ -102,7 +122,11 @@ export default function CompanyList({
           if (!items || items.length === 0) break
         } while (merged.length < total)
 
-        const sorted = [...merged].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
+        const filtered =
+          categoryFilter === ''
+            ? merged
+            : merged.filter((item) => resolveCompanyCategory(item) === categoryFilter)
+        const sorted = [...filtered].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko'))
         setAllCompanies(sorted)
         setTotalCount(sorted.length)
       } catch (err) {
@@ -121,7 +145,7 @@ export default function CompanyList({
       }
     };
     loadCompanies();
-  }, [keyword, businessType, pageSize, fetchList]);
+  }, [keyword, categoryFilter, pageSize, fetchList]);
 
   useEffect(() => {
     const start = (page - 1) * pageSize
@@ -233,27 +257,27 @@ export default function CompanyList({
               <div className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white p-1">
                 <button
                   type="button"
-                  onClick={() => setBusinessType('')}
+                  onClick={() => setCategoryFilter('')}
                   className={`rounded px-3 py-1.5 text-sm transition ${
-                    businessType === '' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                    categoryFilter === '' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
                   }`}
                 >
                   전체
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBusinessType('corporate')}
+                  onClick={() => setCategoryFilter('법인')}
                   className={`rounded px-3 py-1.5 text-sm transition ${
-                    businessType === 'corporate' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                    categoryFilter === '법인' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
                   }`}
                 >
                   법인
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBusinessType('individual')}
+                  onClick={() => setCategoryFilter('개인')}
                   className={`rounded px-3 py-1.5 text-sm transition ${
-                    businessType === 'individual' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                    categoryFilter === '개인' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
                   }`}
                 >
                   개인
@@ -290,14 +314,14 @@ export default function CompanyList({
                   companies.map((c, idx) => (
                     <tr key={c.id} className="even:bg-zinc-50">
                       <td className="h-10 px-2 text-center">{(page - 1) * pageSize + idx + 1}</td>
-                      <td className="h-10 px-2 text-center">{c.category || '-'}</td>
+                      <td className="h-10 px-2 text-center">{resolveCompanyCategory(c) || '-'}</td>
                       <td className="h-10 px-2 text-center text-zinc-900">{c.company_name}</td>
                       <td className="h-10 px-2 text-center">
                         {(() => {
                           const params = new URLSearchParams()
                           if (page > 1) params.set('page', String(page))
                           if (keyword.trim()) params.set('keyword', keyword.trim())
-                          if (businessType) params.set('business_type', businessType)
+                          if (categoryFilter) params.set('category', categoryFilter)
                           const query = params.toString()
                           const href = query ? `${detailBasePath}/${c.id}?${query}` : `${detailBasePath}/${c.id}`
                           return (

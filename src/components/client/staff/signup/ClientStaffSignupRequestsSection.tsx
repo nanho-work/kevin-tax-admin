@@ -13,6 +13,7 @@ import {
 import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
 import type { StaffSignupRequest, StaffSignupRequestStatus } from '@/types/staffSignupRequest'
+import { STAFF_SIGNUP_COUNTS_REFRESH_EVENT } from '@/utils/staffSignupEvents'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -114,6 +115,7 @@ export default function ClientStaffSignupRequestsSection() {
       })
       toast.success('직원 가입 신청을 승인했습니다.')
       await loadRequests(statusFilter)
+      window.dispatchEvent(new CustomEvent(STAFF_SIGNUP_COUNTS_REFRESH_EVENT))
       setSelected(null)
     } catch (error) {
       toast.error(getClientStaffSignupRequestErrorMessage(error))
@@ -135,6 +137,7 @@ export default function ClientStaffSignupRequestsSection() {
       })
       toast.success('직원 가입 신청을 반려했습니다.')
       await loadRequests(statusFilter)
+      window.dispatchEvent(new CustomEvent(STAFF_SIGNUP_COUNTS_REFRESH_EVENT))
       setSelected(null)
     } catch (error) {
       toast.error(getClientStaffSignupRequestErrorMessage(error))

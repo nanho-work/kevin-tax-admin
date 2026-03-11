@@ -14,10 +14,12 @@ import {
   listMailMessages,
   updateMailFolder,
 } from '@/services/client/clientMailService'
+import { fetchClientStaffSignupRequests } from '@/services/client/clientStaffSignupRequestService'
 import { clearClientAccessToken } from '@/services/http'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
+import { STAFF_SIGNUP_COUNTS_REFRESH_EVENT } from '@/utils/staffSignupEvents'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -135,6 +137,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const [folderEditLoading, setFolderEditLoading] = useState(false)
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
+  const [pendingSignupCount, setPendingSignupCount] = useState(0)
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -310,6 +313,32 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
     void loadMailCounts()
   }, [session, loading, mailCountsRefreshTick, expandedMailAccounts, selectedMailAccountId])
+
+  useEffect(() => {
+    if (loading || !session) {
+      setPendingSignupCount(0)
+      return
+    }
+
+    let cancelled = false
+    const loadPendingSignupCount = async () => {
+      try {
+        const res = await fetchClientStaffSignupRequests('pending')
+        if (!cancelled) setPendingSignupCount(res.total ?? 0)
+      } catch {
+        if (!cancelled) setPendingSignupCount(0)
+      }
+    }
+
+    void loadPendingSignupCount()
+    window.addEventListener('focus', loadPendingSignupCount)
+    window.addEventListener(STAFF_SIGNUP_COUNTS_REFRESH_EVENT, loadPendingSignupCount)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', loadPendingSignupCount)
+      window.removeEventListener(STAFF_SIGNUP_COUNTS_REFRESH_EVENT, loadPendingSignupCount)
+    }
+  }, [loading, pathname, session])
 
   const mailTopMenus = mailMenus.filter((menu) => menu.href !== '/client/mail/accounts')
   const mailSettingMenu = mailMenus.find((menu) => menu.href === '/client/mail/accounts') || null
@@ -903,6 +932,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
               {staffManagementMenus.map((menu) => {
                 const active = pathname === menu.href
+                const showSignupBadge = menu.href === '/client/staff/signup-requests' && pendingSignupCount > 0
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
@@ -910,7 +940,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
-                      {menu.label}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate">{menu.label}</span>
+                        {showSignupBadge ? (
+                          <span className="shrink-0 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            {pendingSignupCount.toLocaleString('ko-KR')}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </Link>
                 )
