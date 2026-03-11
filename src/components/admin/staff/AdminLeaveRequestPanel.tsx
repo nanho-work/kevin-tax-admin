@@ -8,6 +8,7 @@ import {
   fetchMyAnnualLeaveRequests,
   requestCancelAnnualLeaveRequest,
 } from '@/services/admin/annualLeaveRequestService'
+import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import type { AnnualLeaveCancelStatus, AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
 
 const inputClass =
@@ -87,6 +88,9 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
   const [cancelRequestTarget, setCancelRequestTarget] = useState<AnnualLeaveRequest | null>(null)
   const [cancelRequestReason, setCancelRequestReason] = useState('')
   const [cancelRequestSubmitting, setCancelRequestSubmitting] = useState(false)
+  const [remainingDays, setRemainingDays] = useState<number | null>(null)
+  const [remainingLoading, setRemainingLoading] = useState(false)
+  const [remainingError, setRemainingError] = useState<string | null>(null)
   const [form, setForm] = useState({
     is_half_day: false,
     start_date: '',
@@ -126,20 +130,64 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
     setPage(1)
   }, [listTab])
 
+  const loadRemainingDays = async () => {
+    try {
+      setRemainingLoading(true)
+      setRemainingError(null)
+      const res = await fetchAnnualLeaves({ offset: 0, limit: 200 })
+      const totalRemaining = (res.items || []).reduce((sum, item) => sum + Number(item.remaining_days || 0), 0)
+      const normalized = Math.max(0, Math.round(totalRemaining * 10) / 10)
+      setRemainingDays(normalized)
+    } catch (error: any) {
+      setRemainingDays(null)
+      setRemainingError(error?.response?.data?.detail || '잔여 휴가를 불러오지 못했습니다.')
+    } finally {
+      setRemainingLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadRemainingDays()
+  }, [])
+
   const calculatedDays = useMemo(() => {
     if (form.is_half_day) return form.start_date ? 0.5 : 0
     return calculateInclusiveDays(form.start_date, form.end_date)
   }, [form.end_date, form.is_half_day, form.start_date])
 
+  const hasNoRemaining = useMemo(() => remainingDays !== null && remainingDays <= 0, [remainingDays])
+  const exceedsRemaining = useMemo(
+    () => remainingDays !== null && calculatedDays > 0 && calculatedDays > remainingDays,
+    [calculatedDays, remainingDays]
+  )
+  const expectedRemaining = useMemo(() => {
+    if (remainingDays === null) return null
+    return Math.round((remainingDays - calculatedDays) * 10) / 10
+  }, [calculatedDays, remainingDays])
+  const isRequestDisabled = remainingLoading || hasNoRemaining
+
   const canSubmit = useMemo(() => {
-    return form.start_date && form.end_date && calculatedDays > 0
-  }, [calculatedDays, form.end_date, form.start_date])
+    return Boolean(form.start_date && form.end_date && calculatedDays > 0 && !isRequestDisabled && !exceedsRemaining)
+  }, [calculatedDays, exceedsRemaining, form.end_date, form.start_date, isRequestDisabled])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!form.start_date || !form.end_date) {
       toast.error('휴가 기간을 입력해 주세요.')
+      return
+    }
+
+    if (remainingLoading) {
+      toast.error('잔여 휴가를 확인 중입니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+    if (hasNoRemaining) {
+      toast.error('남은 휴가가 없어 신청할 수 없습니다.')
+      return
+    }
+    if (exceedsRemaining) {
+      toast.error('신청 일수가 남은 휴가보다 많습니다.')
       return
     }
 
@@ -165,6 +213,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       })
       setPage(1)
       await loadRequests(1, listTab)
+      await loadRemainingDays()
       await onSubmitted?.()
     } catch (error: any) {
       toast.error(error?.response?.data?.detail || '휴가 신청 등록에 실패했습니다.')
@@ -220,6 +269,20 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
             <h1 className="text-lg font-semibold text-zinc-900">휴가신청</h1>
             <p className="mt-1 text-sm text-zinc-500">미래 휴가뿐 아니라 지난 날짜 기준 휴가도 신청할 수 있습니다.</p>
           </div>
+          <div className="flex items-center gap-2">
+            {remainingLoading ? (
+              <span className="inline-flex h-8 items-center rounded-full border border-zinc-200 bg-zinc-100 px-3 text-xs text-zinc-600">
+                잔여 휴가 확인 중...
+              </span>
+            ) : hasNoRemaining ? (
+              <span className="inline-flex h-8 items-center rounded-full border border-amber-300 bg-amber-100 px-3 text-xs font-medium text-amber-800">
+                ⚠ 남은 휴가가 없어요
+              </span>
+            ) : null}
+            {remainingError ? (
+              <span className="text-xs text-rose-600">{remainingError}</span>
+            ) : null}
+          </div>
           {mode === 'panel' && onClose ? (
             <button
               type="button"
@@ -238,6 +301,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
               <input
                 type="checkbox"
                 checked={form.is_half_day}
+                disabled={isRequestDisabled}
                 onChange={(e) =>
                   setForm((prev) => {
                     const nextHalfDay = e.target.checked
@@ -258,6 +322,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
               type="date"
               className={inputClass}
               value={form.start_date}
+              disabled={isRequestDisabled}
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
@@ -277,7 +342,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
                   : inputClass
               }
               value={form.end_date}
-              disabled={form.is_half_day}
+              disabled={form.is_half_day || isRequestDisabled}
               onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value }))}
             />
           </div>
@@ -293,9 +358,23 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
               type="text"
               className={inputClass}
               value={form.reason}
+              disabled={isRequestDisabled}
               onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
               placeholder="예: 병원, 개인 일정"
             />
+          </div>
+          <div className="xl:col-span-5 flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
+            <div className="flex items-center gap-4 text-zinc-700">
+              <span>
+                현재 잔여: <strong>{remainingDays !== null ? `${remainingDays}일` : '-'}</strong>
+              </span>
+              <span className={expectedRemaining !== null && expectedRemaining < 0 ? 'text-rose-700' : ''}>
+                신청 후 예상 잔여: <strong>{expectedRemaining !== null ? `${expectedRemaining}일` : '-'}</strong>
+              </span>
+            </div>
+            {exceedsRemaining ? (
+              <span className="text-xs font-medium text-rose-600">신청 일수가 잔여 휴가를 초과했습니다.</span>
+            ) : null}
           </div>
           <div className="xl:col-span-5 flex justify-end">
             <button
@@ -514,7 +593,12 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
 
   if (mode === 'panel') {
     return (
-      <div className="fixed inset-0 z-50 bg-black/30">
+      <div
+        className="fixed inset-0 z-50 bg-black/30"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose?.()
+        }}
+      >
         <div className="absolute inset-y-0 right-0 w-full max-w-5xl overflow-y-auto border-l border-zinc-200 bg-zinc-50 shadow-2xl">
           <div className="px-6 py-5">{content}</div>
         </div>

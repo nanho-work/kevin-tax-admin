@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Mail, Mails, SendHorizontal, SquarePen, Settings, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
-import { logoutAdmin } from '@/services/admin/adminService'
 import {
   createMailFolder,
   deleteMailFolder,
@@ -16,7 +15,6 @@ import {
   updateMailFolder,
 } from '@/services/admin/mailService'
 import { format } from 'date-fns'
-import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { getAdminRoleRank } from '@/utils/roleRank'
@@ -38,30 +36,8 @@ type AdminSidebarProps = {
 const menuSections: MenuSection[] = [
   { key: 'dashboard', label: '대시보드', href: '/admin/dashboard' },
   {
-    key: 'mail',
-    label: '메일',
-    children: [
-      { label: '메일작성', href: '/admin/mail/compose' },
-      { label: '메일설정', href: '/admin/mail/accounts' },
-    ],
-  },
-  {
-    key: 'companies',
-    label: '고객사 관리',
-    children: [
-      { label: '고객사 리스트', href: '/admin/companies' },
-    ],
-  },
-  {
-    key: 'schedule',
-    label: '일정 관리',
-    children: [
-      { label: '고객사 일정', href: '/admin/tax-schedule' },
-    ],
-  },
-  {
     key: 'leave',
-    label: '마이페이지',
+    label: '내부업무',
     children: [
       { label: '내휴가관리', href: '/admin/staff/my-leave' },
       { label: '프로필', href: '/admin/staff/profile' },
@@ -71,37 +47,38 @@ const menuSections: MenuSection[] = [
     ],
   },
   {
-    key: 'company-withholding',
-    label: '고객사 원천세',
+    key: 'mail',
+    label: '메일',
     children: [
-      { label: '사업신고', href: '/admin/company-withholding/business' },
-      { label: '근로소득신고', href: '/admin/company-withholding/earned-income' },
-      { label: '기타신고', href: '/admin/company-withholding/etc' },
+      { label: '메일작성', href: '/admin/mail/compose' },
+      { label: '메일설정', href: '/admin/mail/accounts' },
     ],
   },
   {
-    key: 'setting',
-    label: '설정',
+    key: 'companies',
+    label: '외부업무',
     children: [
-      { label: '부서 관리', href: '/admin/setting/department' },
-      { label: '팀 관리', href: '/admin/setting/team' },
-      { label: '직급 관리', href: '/admin/setting/role' },
+      { label: '기본관리', href: '/admin/companies' },
+      { label: '원천세관리', href: '/admin/company-withholding/business' },
+      { label: '고객사 일정', href: '/admin/tax-schedule' },
     ],
   },
 ]
 
 function getActiveSection(pathname: string): string {
+  if (pathname.startsWith('/admin/staff')) return 'leave'
   if (pathname.startsWith('/admin/mail')) return 'mail'
   if (pathname.startsWith('/admin/companies')) return 'companies'
-  if (pathname.startsWith('/admin/tax-schedule')) return 'schedule'
-  if (pathname.startsWith('/admin/staff')) return 'leave'
-  if (pathname.startsWith('/admin/company-withholding')) return 'company-withholding'
-  if (pathname.startsWith('/admin/setting')) return 'setting'
+  if (pathname.startsWith('/admin/company-withholding')) return 'companies'
+  if (pathname.startsWith('/admin/tax-schedule')) return 'companies'
   if (pathname.startsWith('/admin/dashboard')) return 'dashboard'
   return ''
 }
 
 function isChildActive(pathname: string, searchParams: URLSearchParams, href: string): boolean {
+  if (href === '/admin/company-withholding/business' && pathname.startsWith('/admin/company-withholding')) {
+    return true
+  }
   const [targetPath, queryString] = href.split('?')
   if (pathname !== targetPath) return false
   if (!queryString) return true
@@ -146,10 +123,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     companyName?: string
     profile_image_url?: string
     checkIn?: string
+    checkOut?: string
     roleLevel?: number
     roleName?: string
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [checkingOut, setCheckingOut] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [currentTime, setCurrentTime] = useState<string>(() =>
     new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -225,26 +204,33 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
         roleName: (session as any).role_name ?? (session as any).role?.name,
         roleLevel: getAdminRoleRank(session),
         checkIn: undefined,
+        checkOut: undefined,
       })
 
       try {
         const today = format(new Date(), 'yyyy-MM-dd')
         const attendanceRes = await getAttendanceLogs({ date_to: today, limit: 1, offset: 0 })
         const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
+        const todayCheckOut = attendanceRes.items?.[0]?.check_out || null
 
-        if (todayCheckIn) {
-          setUser((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  checkIn: new Date(todayCheckIn).toLocaleTimeString('ko-KR', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                }
-              : prev
-          )
-        }
+        setUser((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            checkIn: todayCheckIn
+              ? new Date(todayCheckIn).toLocaleTimeString('ko-KR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : undefined,
+            checkOut: todayCheckOut
+              ? new Date(todayCheckOut).toLocaleTimeString('ko-KR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : undefined,
+          }
+        })
       } catch (attendanceError) {
         console.warn('근태 정보 조회 실패:', attendanceError)
       }
@@ -616,16 +602,23 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  const handleLogout = async () => {
+  const handleCheckOut = async () => {
+    if (checkingOut || user?.checkOut) return
+    setCheckingOut(true)
     try {
       await checkOutAdmin()
+      const checkoutTime = new Date().toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      setUser((prev) => (prev ? { ...prev, checkOut: checkoutTime } : prev))
+      toast.success('퇴근 처리되었습니다.')
     } catch (e) {
-      console.warn('⚠️ 퇴근 기록 실패:', e)
+      console.warn('퇴근 기록 실패:', e)
+      toast.error('퇴근 처리에 실패했습니다.')
+    } finally {
+      setCheckingOut(false)
     }
-
-    await logoutAdmin()
-    clearAdminAccessToken()
-    router.push('/login/staff')
   }
 
   if (collapsed) {
@@ -677,16 +670,18 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                   {user.name} {user.roleName || ''}
                 </p>
                 <p className="mt-0.5 text-xs text-neutral-500">출근시간: {user.checkIn ?? '-'}</p>
+                <p className="mt-0.5 text-xs text-neutral-500">퇴근시간: {user.checkOut ?? '-'}</p>
               </div>
             </div>
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-500">현재시간: {currentTime}</p>
               <button
                 type="button"
-                onClick={handleLogout}
-                className="h-6 rounded-md bg-neutral-900 px-2 text-[11px] font-medium text-white hover:bg-neutral-800"
+                onClick={() => void handleCheckOut()}
+                disabled={checkingOut || Boolean(user.checkOut)}
+                className="h-6 rounded-md bg-amber-500 px-2 text-[11px] font-medium text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
               >
-                로그아웃
+                {user.checkOut ? '퇴근완료' : checkingOut ? '처리중' : '퇴근'}
               </button>
             </div>
           </div>

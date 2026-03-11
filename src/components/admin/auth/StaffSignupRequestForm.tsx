@@ -211,6 +211,10 @@ export default function StaffSignupRequestForm() {
     return consentTerm.content
       .replaceAll('${company_name}', companyName)
       .replaceAll('{{company_name}}', companyName)
+      .replaceAll('{company_name}', companyName)
+      .replaceAll('${컴퍼니네임}', companyName)
+      .replaceAll('{{컴퍼니네임}}', companyName)
+      .replaceAll('{컴퍼니네임}', companyName)
   }, [companyLookup?.company_name, consentTerm?.content])
 
   const hasRequiredErrors = REQUIRED_FIELD_ORDER.some((field) => Boolean(requiredErrors[field]))

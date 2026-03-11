@@ -5,6 +5,7 @@ import { Camera, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { changeAdminPassword, deleteMyProfileImage, uploadMyProfileImage } from '@/services/admin/adminService'
 import {
+  fetchMySensitiveConsentTerms,
   fetchMySensitiveProfile,
   getAdminSensitiveProfileErrorMessage,
   revealMySensitiveProfile,
@@ -23,15 +24,17 @@ import type {
   PersonalDocumentDocType,
   PersonalDocumentStatusItem,
 } from '@/types/personalDocument'
-import type { AdminSensitiveProfile } from '@/types/adminSensitiveProfile'
+import type { AdminSensitiveConsentTerm, AdminSensitiveProfile } from '@/types/adminSensitiveProfile'
 
 const DOC_TYPES: Array<{ code: PersonalDocumentDocType; label: string }> = [
   { code: 'id_card', label: '신분증' },
   { code: 'bank_account', label: '통장사본' },
 ]
+const RRN_CONSENT_CODE = 'staff.rrn.processing.required'
+const PAYROLL_CONSENT_CODE = 'staff.payroll.processing.required'
 
 const inputClass =
-  'block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+  'block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500'
 const PROFILE_IMAGE_MAX_DIMENSION = 1024
 const PROFILE_IMAGE_TARGET_BYTES = 600 * 1024
 const SUPPORTED_PROFILE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -124,6 +127,22 @@ function docTypeLabel(code: string) {
   return code
 }
 
+function formatResidentNumberInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 13)
+  if (digits.length <= 6) return digits
+  return `${digits.slice(0, 6)}-${digits.slice(6)}`
+}
+
+function applyCompanyNameTemplate(content: string, companyName: string) {
+  return content
+    .replaceAll('${company_name}', companyName)
+    .replaceAll('{{company_name}}', companyName)
+    .replaceAll('{company_name}', companyName)
+    .replaceAll('${컴퍼니네임}', companyName)
+    .replaceAll('{{컴퍼니네임}}', companyName)
+    .replaceAll('{컴퍼니네임}', companyName)
+}
+
 function FieldLabel({ label, registered }: { label: string; registered?: boolean }) {
   return (
     <div className="mb-1 flex items-center gap-2">
@@ -158,6 +177,13 @@ export default function AdminPersonalDocumentPage() {
   const [sensitiveProfile, setSensitiveProfile] = useState<AdminSensitiveProfile | null>(null)
   const [sensitiveLoading, setSensitiveLoading] = useState(false)
   const [hasLoadedSensitive, setHasLoadedSensitive] = useState(false)
+  const [sensitiveConsentTerms, setSensitiveConsentTerms] = useState<AdminSensitiveConsentTerm[]>([])
+  const [sensitiveConsentLoading, setSensitiveConsentLoading] = useState(false)
+  const [hasLoadedSensitiveConsents, setHasLoadedSensitiveConsents] = useState(false)
+  const [sensitiveConsents, setSensitiveConsents] = useState({
+    rrn: false,
+    payroll: false,
+  })
   const [savingSensitive, setSavingSensitive] = useState(false)
   const [revealedSensitive, setRevealedSensitive] = useState<{
     resident_number: string | null
@@ -283,6 +309,25 @@ export default function AdminPersonalDocumentPage() {
     if (hasLoadedSensitive || sensitiveLoading) return
     void loadSensitiveProfile()
   }, [activeTab, hasLoadedSensitive, sensitiveLoading, loadSensitiveProfile])
+
+  const loadSensitiveConsentTerms = useCallback(async () => {
+    try {
+      setSensitiveConsentLoading(true)
+      const terms = await fetchMySensitiveConsentTerms()
+      setSensitiveConsentTerms(terms)
+    } catch {
+      setSensitiveConsentTerms([])
+    } finally {
+      setHasLoadedSensitiveConsents(true)
+      setSensitiveConsentLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'basic') return
+    if (hasLoadedSensitiveConsents || sensitiveConsentLoading) return
+    void loadSensitiveConsentTerms()
+  }, [activeTab, hasLoadedSensitiveConsents, loadSensitiveConsentTerms, sensitiveConsentLoading])
 
   useEffect(() => {
     if (!profileImageFile) {
@@ -414,20 +459,107 @@ export default function AdminPersonalDocumentPage() {
   }
 
   const handleSaveSensitiveProfile = async () => {
+    const residentDigits = sensitiveForm.resident_number.replace(/\D/g, '')
+    const residentWillUpdate = sensitiveEditMode.resident_number && residentDigits.length > 0
+    if (residentWillUpdate && residentDigits.length !== 13) {
+      toast.error('주민번호는 숫자 13자리로 입력해 주세요.')
+      return
+    }
+    if (residentWillUpdate && !canEditResidentField) {
+      toast.error('주민번호 처리 동의를 먼저 체크해 주세요.')
+      return
+    }
+
+    const bankName = sensitiveForm.bank_name.trim()
+    const accountHolder = sensitiveForm.account_holder.trim()
+    const accountNumber = sensitiveForm.account_number.trim()
+    const zipCode = sensitiveForm.zip_code.trim()
+    const address1 = sensitiveForm.address1.trim()
+    const address2 = sensitiveForm.address2.trim()
+    const emergencyContactName = sensitiveForm.emergency_contact_name.trim()
+    const emergencyContactPhone = sensitiveForm.emergency_contact_phone.trim()
+
+    const profileBankName = (sensitiveProfile?.bank_name || '').trim()
+    const profileAccountHolder = (sensitiveProfile?.account_holder || '').trim()
+    const profileZipCode = (sensitiveProfile?.zip_code || '').trim()
+    const profileAddress1 = (sensitiveProfile?.address1 || '').trim()
+    const profileAddress2 = (sensitiveProfile?.address2 || '').trim()
+    const profileEmergencyContactName = (sensitiveProfile?.emergency_contact_name || '').trim()
+    const profileEmergencyContactPhone = (sensitiveProfile?.emergency_contact_phone || '').trim()
+
+    const bankNameChanged = bankName !== profileBankName
+    const accountHolderChanged = accountHolder !== profileAccountHolder
+    const accountWillUpdate = sensitiveEditMode.account_number && accountNumber.length > 0
+    const zipCodeChanged = zipCode !== profileZipCode
+    const address1Changed = address1 !== profileAddress1
+    const address2Changed = address2 !== profileAddress2
+    const emergencyContactNameChanged = emergencyContactName !== profileEmergencyContactName
+    const emergencyContactPhoneChanged = emergencyContactPhone !== profileEmergencyContactPhone
+
+    const payrollWillUpdate = bankNameChanged || accountHolderChanged || accountWillUpdate
+
+    if (payrollWillUpdate && !canEditPayrollFields) {
+      toast.error('통장정보 처리 동의를 먼저 체크해 주세요.')
+      return
+    }
+
+    const payload: Parameters<typeof upsertMySensitiveProfile>[0] = {
+      reason: sensitiveForm.reason.trim() || undefined,
+    }
+    let hasPayloadChange = false
+
+    if (residentWillUpdate) {
+      payload.resident_number = residentDigits
+      payload.rrn_processing_agreed = true
+      payload.rrn_processing_term_id = rrnConsentTerm?.id
+      hasPayloadChange = true
+    }
+    if (bankNameChanged) {
+      payload.bank_name = bankName || undefined
+      hasPayloadChange = true
+    }
+    if (accountHolderChanged) {
+      payload.account_holder = accountHolder || undefined
+      hasPayloadChange = true
+    }
+    if (accountWillUpdate) {
+      payload.account_number = accountNumber
+      hasPayloadChange = true
+    }
+    if (zipCodeChanged) {
+      payload.zip_code = zipCode || undefined
+      hasPayloadChange = true
+    }
+    if (address1Changed) {
+      payload.address1 = address1 || undefined
+      hasPayloadChange = true
+    }
+    if (address2Changed) {
+      payload.address2 = address2 || undefined
+      hasPayloadChange = true
+    }
+    if (emergencyContactNameChanged) {
+      payload.emergency_contact_name = emergencyContactName || undefined
+      hasPayloadChange = true
+    }
+    if (emergencyContactPhoneChanged) {
+      payload.emergency_contact_phone = emergencyContactPhone || undefined
+      hasPayloadChange = true
+    }
+    if (payrollWillUpdate) {
+      payload.payroll_processing_agreed = true
+      payload.payroll_processing_term_id = payrollConsentTerm?.id
+      hasPayloadChange = true
+    }
+
+    if (!hasPayloadChange) {
+      toast.error('변경된 민감정보가 없습니다.')
+      return
+    }
+
     try {
       setSavingSensitive(true)
-      const profile = await upsertMySensitiveProfile({
-        resident_number: sensitiveForm.resident_number.trim() || undefined,
-        bank_name: sensitiveForm.bank_name || undefined,
-        account_holder: sensitiveForm.account_holder || undefined,
-        account_number: sensitiveForm.account_number.trim() || undefined,
-        zip_code: sensitiveForm.zip_code || undefined,
-        address1: sensitiveForm.address1 || undefined,
-        address2: sensitiveForm.address2 || undefined,
-        emergency_contact_name: sensitiveForm.emergency_contact_name || undefined,
-        emergency_contact_phone: sensitiveForm.emergency_contact_phone || undefined,
-        reason: sensitiveForm.reason.trim() || undefined,
-      })
+      const profile = await upsertMySensitiveProfile(payload)
       setSensitiveProfile(profile)
       setRevealedSensitive({
         resident_number: null,
@@ -472,6 +604,14 @@ export default function AdminPersonalDocumentPage() {
   }
 
   const startSensitiveFieldEdit = (target: 'resident_number' | 'account_number') => {
+    if (target === 'resident_number' && !canEditResidentField) {
+      toast.error('주민번호 처리 동의를 먼저 체크해 주세요.')
+      return
+    }
+    if (target === 'account_number' && !canEditPayrollFields) {
+      toast.error('통장정보 처리 동의를 먼저 체크해 주세요.')
+      return
+    }
     setSensitiveEditMode((prev) => ({ ...prev, [target]: true }))
     setRevealedSensitive((prev) => ({ ...prev, [target]: null }))
     setSensitiveForm((prev) => ({ ...prev, [target]: '' }))
@@ -544,6 +684,29 @@ export default function AdminPersonalDocumentPage() {
   const accountRegistered = sensitiveFieldRegistered.account_number
   const showResidentInput = !residentRegistered || sensitiveEditMode.resident_number
   const showAccountInput = !accountRegistered || sensitiveEditMode.account_number
+  const rrnConsentTerm = useMemo(
+    () => sensitiveConsentTerms.find((term) => term.code === RRN_CONSENT_CODE) || null,
+    [sensitiveConsentTerms]
+  )
+  const payrollConsentTerm = useMemo(
+    () => sensitiveConsentTerms.find((term) => term.code === PAYROLL_CONSENT_CODE) || null,
+    [sensitiveConsentTerms]
+  )
+  const canEditResidentField = Boolean(rrnConsentTerm && sensitiveConsents.rrn)
+  const canEditPayrollFields = Boolean(payrollConsentTerm && sensitiveConsents.payroll)
+  const sessionCompanyName =
+    (session as any)?.client?.company_name?.trim() ||
+    (session as any)?.company_name?.trim() ||
+    (session as any)?.client_name?.trim() ||
+    '해당 회사'
+  const resolvedRrnConsentContent = useMemo(() => {
+    if (!rrnConsentTerm?.content) return ''
+    return applyCompanyNameTemplate(rrnConsentTerm.content, sessionCompanyName)
+  }, [rrnConsentTerm?.content, sessionCompanyName])
+  const resolvedPayrollConsentContent = useMemo(() => {
+    if (!payrollConsentTerm?.content) return ''
+    return applyCompanyNameTemplate(payrollConsentTerm.content, sessionCompanyName)
+  }, [payrollConsentTerm?.content, sessionCompanyName])
 
   const handleCertificateFileSelect = (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -716,6 +879,66 @@ export default function AdminPersonalDocumentPage() {
                 </button>
               </div>
               {sensitiveLoading ? <p className="mt-3 text-sm text-zinc-500">불러오는 중...</p> : null}
+              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-sm font-semibold text-zinc-900">개인정보 처리 동의</p>
+                {sensitiveConsentLoading ? <p className="mt-2 text-xs text-zinc-500">동의 약관을 불러오는 중...</p> : null}
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-md border border-zinc-200 bg-white p-3">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={sensitiveConsents.rrn}
+                        onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, rrn: e.target.checked }))}
+                        disabled={!rrnConsentTerm}
+                        className="mt-0.5"
+                      />
+                      <span className="text-xs text-zinc-700">
+                        주민번호 처리 동의
+                        {rrnConsentTerm ? (
+                          <span className="ml-1 text-zinc-500">(v{rrnConsentTerm.version})</span>
+                        ) : (
+                          <span className="ml-1 text-rose-600">(약관 미등록)</span>
+                        )}
+                      </span>
+                    </label>
+                    {resolvedRrnConsentContent ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
+                        <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
+                          {resolvedRrnConsentContent}
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                  <div className="rounded-md border border-zinc-200 bg-white p-3">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={sensitiveConsents.payroll}
+                        onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, payroll: e.target.checked }))}
+                        disabled={!payrollConsentTerm}
+                        className="mt-0.5"
+                      />
+                      <span className="text-xs text-zinc-700">
+                        통장정보 처리 동의 (계좌번호/은행명/예금주)
+                        {payrollConsentTerm ? (
+                          <span className="ml-1 text-zinc-500">(v{payrollConsentTerm.version})</span>
+                        ) : (
+                          <span className="ml-1 text-rose-600">(약관 미등록)</span>
+                        )}
+                      </span>
+                    </label>
+                    {resolvedPayrollConsentContent ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
+                        <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
+                          {resolvedPayrollConsentContent}
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="md:col-span-2">
                   <div className="mb-1 flex items-center justify-between">
@@ -737,6 +960,7 @@ export default function AdminPersonalDocumentPage() {
                             startSensitiveFieldEdit('resident_number')
                           }}
                           className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                          disabled={!canEditResidentField}
                         >
                           {sensitiveEditMode.resident_number ? '취소' : '수정'}
                         </button>
@@ -769,7 +993,15 @@ export default function AdminPersonalDocumentPage() {
                     <input
                       type="text"
                       value={sensitiveForm.resident_number}
-                      onChange={(e) => setSensitiveForm((prev) => ({ ...prev, resident_number: e.target.value }))}
+                      onChange={(e) =>
+                        setSensitiveForm((prev) => ({
+                          ...prev,
+                          resident_number: formatResidentNumberInput(e.target.value),
+                        }))
+                      }
+                      maxLength={14}
+                      placeholder="주민번호 13자리"
+                      disabled={!canEditResidentField}
                       className={inputClass}
                     />
                   ) : (
@@ -798,6 +1030,7 @@ export default function AdminPersonalDocumentPage() {
                             startSensitiveFieldEdit('account_number')
                           }}
                           className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                          disabled={!canEditPayrollFields}
                         >
                           {sensitiveEditMode.account_number ? '취소' : '수정'}
                         </button>
@@ -831,6 +1064,7 @@ export default function AdminPersonalDocumentPage() {
                       type="text"
                       value={sensitiveForm.account_number}
                       onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_number: e.target.value }))}
+                      disabled={!canEditPayrollFields}
                       className={inputClass}
                     />
                   ) : (
@@ -845,6 +1079,7 @@ export default function AdminPersonalDocumentPage() {
                     type="text"
                     value={sensitiveForm.bank_name}
                     onChange={(e) => setSensitiveForm((prev) => ({ ...prev, bank_name: e.target.value }))}
+                    disabled={!canEditPayrollFields}
                     className={inputClass}
                   />
                 </div>
@@ -854,6 +1089,7 @@ export default function AdminPersonalDocumentPage() {
                     type="text"
                     value={sensitiveForm.account_holder}
                     onChange={(e) => setSensitiveForm((prev) => ({ ...prev, account_holder: e.target.value }))}
+                    disabled={!canEditPayrollFields}
                     className={inputClass}
                   />
                 </div>

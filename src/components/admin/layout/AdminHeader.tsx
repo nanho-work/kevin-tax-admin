@@ -3,7 +3,17 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
+import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import { listMailAccounts } from '@/services/admin/mailService'
+import { logoutAdmin } from '@/services/admin/adminService'
+import {
+  fetchAdminNotificationUnreadCount,
+  getAdminNotificationErrorMessage,
+  listAdminNotifications,
+  markAdminNotificationRead,
+  markAllAdminNotificationsRead,
+} from '@/services/admin/notificationService'
+import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 
@@ -15,21 +25,24 @@ const Header = () => {
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string }>>([])
   const [headerMailAccountId, setHeaderMailAccountId] = useState('')
   const [headerKeyword, setHeaderKeyword] = useState('')
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const [loggingOut, setLoggingOut] = useState(false)
   const isAdminMailInbox = pathname.startsWith('/admin/mail/inbox')
 
   const currentLabel = useMemo(() => {
-    if (pathname.startsWith('/admin/companies')) return '고객사 관리'
+    if (pathname.startsWith('/admin/companies')) return '외부업무 > 기본관리'
+    if (pathname.startsWith('/admin/company-withholding')) return '외부업무 > 원천세관리'
     if (pathname.startsWith('/admin/mail/inbox')) return '메일 > 메일함'
     if (pathname.startsWith('/admin/mail/compose')) return '메일 > 메일작성'
     if (pathname.startsWith('/admin/mail/accounts')) return '메일 > 설정'
     if (pathname.startsWith('/admin/mail')) return '메일'
-    if (pathname.startsWith('/admin/tax-schedule')) return '일정 관리'
-    if (pathname.startsWith('/admin/staff/my-leave')) return '마이페이지 > 내휴가관리'
-    if (pathname.startsWith('/admin/staff/documents/new')) return '마이페이지 > 문서작성'
-    if (pathname.startsWith('/admin/staff/documents')) return '마이페이지 > 내 결재문서'
-    if (pathname.startsWith('/admin/staff/attendance')) return '마이페이지 > 출퇴근 관리'
-    if (pathname.startsWith('/admin/staff/account')) return '마이페이지 > 비밀번호 관리'
-    if (pathname.startsWith('/admin/staff')) return '마이페이지'
+    if (pathname.startsWith('/admin/tax-schedule')) return '외부업무 > 고객사 일정'
+    if (pathname.startsWith('/admin/staff/my-leave')) return '내부업무 > 내휴가관리'
+    if (pathname.startsWith('/admin/staff/documents/new')) return '내부업무 > 문서작성'
+    if (pathname.startsWith('/admin/staff/documents')) return '내부업무 > 내 결재문서'
+    if (pathname.startsWith('/admin/staff/attendance')) return '내부업무 > 출퇴근 관리'
+    if (pathname.startsWith('/admin/staff/account')) return '내부업무 > 비밀번호 관리'
+    if (pathname.startsWith('/admin/staff')) return '내부업무'
     if (pathname.startsWith('/admin/blog')) return '블로그'
     if (pathname.startsWith('/admin/gpt')) return 'GPT'
     if (pathname.startsWith('/admin/setting')) return '설정'
@@ -41,6 +54,12 @@ const Header = () => {
     if (pathname.startsWith('/admin/companies/') && pathname !== '/admin/companies/new') return '/admin/companies'
     if (pathname.startsWith('/admin/companies/new')) return '/admin/companies'
     if (pathname.startsWith('/admin/companies/account/new')) return '/admin/companies/account'
+    if (
+      pathname.startsWith('/admin/company-withholding/') &&
+      pathname !== '/admin/company-withholding/business'
+    ) {
+      return '/admin/company-withholding/business'
+    }
     return null
   }, [pathname])
 
@@ -78,6 +97,20 @@ const Header = () => {
     router.replace(query ? `${pathname}?${query}` : pathname)
   }
 
+  const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    try {
+      await logoutAdmin()
+    } catch (error) {
+      console.warn('로그아웃 API 호출 실패:', error)
+    } finally {
+      clearAdminAccessToken()
+      router.replace('/login/staff')
+      setLoggingOut(false)
+    }
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur">
       <div className="px-4 py-3">
@@ -92,43 +125,73 @@ const Header = () => {
                 />
                 <span className="text-xs text-neutral-300">|</span>
                 <span className="truncate text-xs text-neutral-500">{currentLabel}</span>
+                {unreadNotificationCount > 0 ? (
+                  <span className="inline-flex h-5 items-center rounded-full bg-amber-100 px-2 text-[11px] font-medium text-amber-700">
+                    새 알림 {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}건
+                  </span>
+                ) : null}
               </div>
             ) : (
-              <div className="mt-0.5 text-xs text-neutral-500">{currentLabel}</div>
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+                <span>{currentLabel}</span>
+                {unreadNotificationCount > 0 ? (
+                  <span className="inline-flex h-5 items-center rounded-full bg-amber-100 px-2 text-[11px] font-medium text-amber-700">
+                    새 알림 {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}건
+                  </span>
+                ) : null}
+              </div>
             )}
           </div>
-          {isAdminMailInbox ? (
-            <div className="flex items-center gap-2 pr-7">
-              <select
-                className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                value={headerMailAccountId}
-                onChange={(e) => {
-                  const nextAccountId = e.target.value
-                  setHeaderMailAccountId(nextAccountId)
-                  replaceHeaderSearch({ accountId: nextAccountId })
-                }}
-              >
-                <option value="">전체 계정</option>
-                {mailAccounts.map((account) => (
-                  <option key={account.id} value={String(account.id)}>
-                    {account.email}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                value={headerKeyword}
-                onChange={(e) => setHeaderKeyword(e.target.value)}
-                placeholder="제목/발신자/본문 검색"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    replaceHeaderSearch({ keyword: headerKeyword })
-                  }
-                }}
-              />
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2 pr-7">
+            {isAdminMailInbox ? (
+              <>
+                <select
+                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  value={headerMailAccountId}
+                  onChange={(e) => {
+                    const nextAccountId = e.target.value
+                    setHeaderMailAccountId(nextAccountId)
+                    replaceHeaderSearch({ accountId: nextAccountId })
+                  }}
+                >
+                  <option value="">전체 계정</option>
+                  {mailAccounts.map((account) => (
+                    <option key={account.id} value={String(account.id)}>
+                      {account.email}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  value={headerKeyword}
+                  onChange={(e) => setHeaderKeyword(e.target.value)}
+                  placeholder="제목/발신자/본문 검색"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      replaceHeaderSearch({ keyword: headerKeyword })
+                    }
+                  }}
+                />
+              </>
+            ) : null}
+            <PortalNotificationBell
+              listNotifications={listAdminNotifications}
+              fetchUnreadCount={fetchAdminNotificationUnreadCount}
+              markAsRead={markAdminNotificationRead}
+              markAllAsRead={markAllAdminNotificationsRead}
+              getErrorMessage={getAdminNotificationErrorMessage}
+              onUnreadCountChange={setUnreadNotificationCount}
+            />
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              disabled={loggingOut}
+              className="inline-flex h-9 items-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loggingOut ? '로그아웃 중...' : '로그아웃'}
+            </button>
+          </div>
         </div>
       </div>
     </header>

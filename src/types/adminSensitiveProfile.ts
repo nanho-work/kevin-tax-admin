@@ -28,6 +28,10 @@ export interface AdminSensitiveProfileUpsertPayload {
   emergency_contact_name?: string
   emergency_contact_phone?: string
   reason?: string
+  payroll_processing_agreed?: boolean
+  payroll_processing_term_id?: number
+  rrn_processing_agreed?: boolean
+  rrn_processing_term_id?: number
 }
 
 export interface AdminSensitiveRevealPayload {
@@ -60,4 +64,16 @@ export interface AdminSensitiveAccessLog {
 export interface AdminSensitiveAccessLogListResponse {
   total: number
   items: AdminSensitiveAccessLog[]
+}
+
+export interface AdminSensitiveConsentTerm {
+  id: number
+  code: string
+  version: number
+  title: string
+  content: string
+  is_required?: boolean
+  is_active?: boolean
+  effective_from?: string | null
+  created_at?: string
 }

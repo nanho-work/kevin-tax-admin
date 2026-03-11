@@ -23,7 +23,6 @@ import { STAFF_SIGNUP_COUNTS_REFRESH_EVENT } from '@/utils/staffSignupEvents'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
-  { label: '일정관리', href: '/client/schedule' },
 ]
 
 const mailMenus = [
@@ -32,6 +31,7 @@ const mailMenus = [
 ]
 
 const companyManagementMenus = [
+  { label: '고객사 일정', href: '/client/schedule' },
   { label: '고객사 기본사항', href: '/client/companies' },
 ]
 
@@ -112,7 +112,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const searchParams = useSearchParams()
   const router = useRouter()
   const hasMailPath = pathname.startsWith('/client/mail')
-  const hasCompanyManagementPath = pathname.startsWith('/client/companies')
+  const hasCompanyManagementPath = pathname.startsWith('/client/companies') || pathname.startsWith('/client/schedule')
   const hasStaffManagementPath = pathname.startsWith('/client/staff')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
@@ -626,7 +626,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
-        <div className="space-y-1">
+        <div className="flex flex-col gap-1">
         {menus.map((menu) => {
           const active = pathname === menu.href
           return (
@@ -642,7 +642,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           )
         })}
 
-        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+        <div className="order-2 pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsMailOpen((prev) => !prev)}
@@ -882,7 +882,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           )}
         </div>
 
-        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+        <div className="order-3 pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsCompanyManagementOpen((prev) => !prev)}
@@ -890,7 +890,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasCompanyManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>고객사관리</span>
+            <span>외부업무(고객사)</span>
             <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isCompanyManagementOpen && (
@@ -917,7 +917,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           )}
         </div>
 
-        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+        <div className="order-1 pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsStaffManagementOpen((prev) => !prev)}
@@ -925,7 +925,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasStaffManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>인사관리</span>
+            <span>내부업무</span>
             <span aria-hidden>{isStaffManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isStaffManagementOpen && (
@@ -956,7 +956,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           )}
         </div>
 
-        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+        <div className="order-4 pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsBookkeepingOpen((prev) => !prev)}
@@ -964,7 +964,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasBookkeepingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>기장 관리</span>
+            <span>외부업무(기장)</span>
             <span aria-hidden>{isBookkeepingOpen ? '▾' : '▸'}</span>
           </button>
           {isBookkeepingOpen && (
@@ -989,7 +989,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           )}
         </div>
 
-        <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+        <div className="order-5 pt-2 rounded-lg border border-neutral-200 bg-white">
           <button
             type="button"
             onClick={() => setIsSettingOpen((prev) => !prev)}
@@ -997,7 +997,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasSettingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>설정</span>
+            <span>내 정보</span>
             <span aria-hidden>{isSettingOpen ? '▾' : '▸'}</span>
           </button>
           {isSettingOpen && (
@@ -1021,7 +1021,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
         </div>
 
         {!loading && canManageClients ? (
-          <div className="pt-2 rounded-lg border border-neutral-200 bg-white">
+          <div className="order-6 pt-2 rounded-lg border border-neutral-200 bg-white">
             <button
               type="button"
               onClick={() => setIsClientManagementOpen((prev) => !prev)}

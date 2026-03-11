@@ -1,6 +1,7 @@
 import type { AxiosError } from 'axios'
 import http, { getAdminAccessToken } from '@/services/http'
 import type {
+  AdminSensitiveConsentTerm,
   AdminSensitiveProfile,
   AdminSensitiveProfileUpsertPayload,
   AdminSensitiveRevealPayload,
@@ -45,4 +46,18 @@ export async function upsertMySensitiveProfile(payload: AdminSensitiveProfileUps
 export async function revealMySensitiveProfile(payload: AdminSensitiveRevealPayload): Promise<AdminSensitiveRevealResponse> {
   const res = await http.post<AdminSensitiveRevealResponse>(`${BASE}/reveal`, payload, authHeader())
   return res.data
+}
+
+export async function fetchMySensitiveConsentTerms(): Promise<AdminSensitiveConsentTerm[]> {
+  const res = await http.get(`${BASE}/consent-terms`, authHeader())
+  const data = res.data as
+    | AdminSensitiveConsentTerm[]
+    | { items?: AdminSensitiveConsentTerm[]; terms?: AdminSensitiveConsentTerm[] }
+    | null
+    | undefined
+
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.terms)) return data.terms
+  return []
 }
