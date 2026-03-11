@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
+import UiButton from '@/components/common/UiButton'
 import { listMailAccounts } from '@/services/admin/mailService'
 import { logoutAdmin } from '@/services/admin/adminService'
 import {
@@ -16,6 +17,7 @@ import {
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
+import { uiHeaderInputClass } from '@/styles/uiClasses'
 
 const Header = () => {
   const pathname = usePathname()
@@ -146,7 +148,7 @@ const Header = () => {
             {isAdminMailInbox ? (
               <>
                 <select
-                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  className={`${uiHeaderInputClass} w-56`}
                   value={headerMailAccountId}
                   onChange={(e) => {
                     const nextAccountId = e.target.value
@@ -162,7 +164,7 @@ const Header = () => {
                   ))}
                 </select>
                 <input
-                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  className={`${uiHeaderInputClass} w-56`}
                   value={headerKeyword}
                   onChange={(e) => setHeaderKeyword(e.target.value)}
                   placeholder="제목/발신자/본문 검색"
@@ -183,14 +185,14 @@ const Header = () => {
               getErrorMessage={getAdminNotificationErrorMessage}
               onUnreadCountChange={setUnreadNotificationCount}
             />
-            <button
-              type="button"
+            <UiButton
               onClick={() => void handleLogout()}
               disabled={loggingOut}
-              className="inline-flex h-9 items-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+              variant="secondary"
+              size="md"
             >
               {loggingOut ? '로그아웃 중...' : '로그아웃'}
-            </button>
+            </UiButton>
           </div>
         </div>
       </div>

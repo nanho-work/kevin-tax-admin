@@ -509,7 +509,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 type="button"
                 onClick={() => void handleSubmitFolderEdit()}
                 disabled={folderEditLoading}
-                className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+                className="rounded border border-sky-600 bg-sky-600 px-2 py-0.5 text-[10px] text-white hover:bg-sky-700 disabled:opacity-50"
               >
                 {folderEditLoading ? '저장 중...' : '저장'}
               </button>
@@ -617,7 +617,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             <button
               type="button"
               onClick={handleLogout}
-              className="h-6 rounded-md bg-neutral-900 px-2 text-[11px] font-medium text-white hover:bg-neutral-800"
+              className="h-6 rounded-md bg-sky-600 px-2 text-[11px] font-medium text-white hover:bg-sky-700"
             >
               로그아웃
             </button>
@@ -633,7 +633,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             <Link key={menu.href} href={menu.href}>
               <div
                 className={`rounded-lg px-3 py-2 text-sm transition ${
-                  active ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+                  active ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                 }`}
               >
                 {menu.label}
@@ -647,7 +647,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             type="button"
             onClick={() => setIsMailOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasMailPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+              hasMailPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>메일</span>
@@ -661,7 +661,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                     <div
                       className={`rounded-md border px-3 py-2 text-center text-xs transition ${
                         isMenuActive(pathname, searchParams, menu.href)
-                          ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                          ? 'border-sky-600 bg-sky-600 font-medium text-white'
                           : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
                       }`}
                     >
@@ -797,7 +797,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           >
                             +
                             </button>
-                            <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-1000 group-hover:opacity-100">
+                            <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-1000 group-hover:opacity-100">
                               폴더 만들기
                             </span>
                           </div>
@@ -837,7 +837,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                                 type="button"
                                 onClick={() => void handleSubmitFolderCreate(account.id)}
                                 disabled={folderCreateLoading}
-                                className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+                                className="rounded border border-sky-600 bg-sky-600 px-2 py-0.5 text-[10px] text-white hover:bg-sky-700 disabled:opacity-50"
                               >
                                 {folderCreateLoading ? '저장 중...' : '저장'}
                               </button>
@@ -869,7 +869,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                     <div
                       className={`rounded-md border px-3 py-2 text-center text-xs transition ${
                         isMenuActive(pathname, searchParams, mailSettingMenu.href)
-                          ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                          ? 'border-sky-600 bg-sky-600 font-medium text-white'
                           : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
                       }`}
                     >
@@ -887,7 +887,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             type="button"
             onClick={() => setIsCompanyManagementOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasCompanyManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+              hasCompanyManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>외부업무(고객사)</span>
@@ -922,7 +922,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             type="button"
             onClick={() => setIsStaffManagementOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasStaffManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+              hasStaffManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>내부업무</span>
@@ -961,7 +961,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             type="button"
             onClick={() => setIsBookkeepingOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasBookkeepingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+              hasBookkeepingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>외부업무(기장)</span>
@@ -994,7 +994,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             type="button"
             onClick={() => setIsSettingOpen((prev) => !prev)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasSettingPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+              hasSettingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <span>내 정보</span>
@@ -1026,7 +1026,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               type="button"
               onClick={() => setIsClientManagementOpen((prev) => !prev)}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                hasClientManagementPath ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+                hasClientManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
               }`}
             >
               <span>클라이언트 관리</span>

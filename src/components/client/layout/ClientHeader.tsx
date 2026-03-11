@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
+import { uiHeaderInputClass } from '@/styles/uiClasses'
 import { listMailAccounts } from '@/services/client/clientMailService'
 import {
   fetchClientNotificationUnreadCount,
@@ -150,7 +151,7 @@ export default function ClientHeader() {
             {isClientMailInbox ? (
               <>
                 <select
-                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  className={`${uiHeaderInputClass} w-56`}
                   value={headerMailAccountId}
                   onChange={(e) => {
                     const nextAccountId = e.target.value
@@ -166,7 +167,7 @@ export default function ClientHeader() {
                   ))}
                 </select>
                 <input
-                  className="h-9 w-56 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  className={`${uiHeaderInputClass} w-56`}
                   value={headerKeyword}
                   onChange={(e) => setHeaderKeyword(e.target.value)}
                   placeholder="제목/발신자/본문 검색"

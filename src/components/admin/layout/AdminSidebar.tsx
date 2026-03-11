@@ -545,7 +545,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                 type="button"
                 onClick={() => void handleSubmitFolderEdit()}
                 disabled={folderEditLoading}
-                className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+                className="rounded border border-sky-600 bg-sky-600 px-2 py-0.5 text-[10px] text-white hover:bg-sky-700 disabled:opacity-50"
               >
                 {folderEditLoading ? '저장 중...' : '저장'}
               </button>
@@ -702,7 +702,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                 <Link key={section.key} href={section.href}>
                   <div
                     className={`rounded-lg px-3 py-2 text-sm transition ${
-                      isActiveSection ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+                      isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                     }`}
                   >
                     {section.label}
@@ -738,7 +738,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                   type="button"
                   onClick={() => setExpanded((prev) => ({ ...prev, [section.key]: !isOpen }))}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
-                    isActiveSection ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+                    isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                   }`}
                 >
                   <span>{section.label}</span>
@@ -753,7 +753,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                             <div
                               className={`rounded-md border px-3 py-2 text-center text-xs transition ${
                                 isChildActive(pathname, searchParams, child.href)
-                                  ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                                  ? 'border-sky-600 bg-sky-600 font-medium text-white'
                                   : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
                               }`}
                             >
@@ -906,7 +906,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                       >
                                         +
                                       </button>
-                                      <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-1000 group-hover:opacity-100">
+                                      <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-1000 group-hover:opacity-100">
                                         폴더 만들기
                                       </span>
                                     </div>
@@ -946,7 +946,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                           type="button"
                                           onClick={() => void handleSubmitFolderCreate(account.id)}
                                           disabled={folderCreateLoading}
-                                          className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+                                          className="rounded border border-sky-600 bg-sky-600 px-2 py-0.5 text-[10px] text-white hover:bg-sky-700 disabled:opacity-50"
                                         >
                                           {folderCreateLoading ? '저장 중...' : '저장'}
                                         </button>
@@ -978,7 +978,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                               <div
                                 className={`rounded-md border px-3 py-2 text-center text-xs transition ${
                                   isChildActive(pathname, searchParams, mailSettingChild.href)
-                                    ? 'border-neutral-900 bg-neutral-900 font-medium text-white'
+                                    ? 'border-sky-600 bg-sky-600 font-medium text-white'
                                     : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
                                 }`}
                               >

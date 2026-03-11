@@ -3,7 +3,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
+import UiButton from '@/components/common/UiButton'
+import MailAccountSyncActions from '@/components/common/mail/MailAccountSyncActions'
+import MailRuleList from '@/components/common/mail/MailRuleList'
+import MailSettingsTabBar from '@/components/common/mail/MailSettingsTabBar'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { uiInputClass } from '@/styles/uiClasses'
 import { formatKSTDateTime } from '@/utils/dateTime'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import {
@@ -24,8 +29,7 @@ import {
 } from '@/services/admin/mailService'
 import type { MailAccount, MailAccountScopeType, MailAuthType, MailFolder, MailProviderType, MailRule } from '@/types/adminMail'
 
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const inputClass = uiInputClass
 
 type MailDomainOption = 'gmail' | 'outlook' | 'naver' | 'daum' | 'gabia' | 'hiworks' | 'custom'
 type ReceiveProtocol = 'imap' | 'pop3'
@@ -79,23 +83,6 @@ function getInitialSyncStatusLabel(status?: string) {
   return '대기'
 }
 
-function getRuleMatchFieldLabel(field: MailRule['match_field']) {
-  if (field === 'from_email') return '보낸 사람'
-  if (field === 'subject') return '제목'
-  if (field === 'snippet') return '본문'
-  if (field === 'to_email') return '받는 사람'
-  if (field === 'cc_email') return '참조자'
-  return field
-}
-
-function getRuleMatchOperatorLabel(operator: MailRule['match_operator']) {
-  if (operator === 'contains') return '포함'
-  if (operator === 'equals') return '일치'
-  if (operator === 'starts_with') return '시작'
-  if (operator === 'ends_with') return '끝'
-  return operator
-}
-
 const FIXED_SYNC_INTERVAL_MINUTES = 10
 const FIXED_INITIAL_SYNC_BATCH_SIZE = 50
 
@@ -132,7 +119,6 @@ export default function AdminMailAccountsPage() {
   const [mailDomain, setMailDomain] = useState<MailDomainOption>('custom')
   const [receiveProtocol, setReceiveProtocol] = useState<ReceiveProtocol>('imap')
   const [providerType, setProviderType] = useState<MailProviderType>('custom')
-  const [accountScope, setAccountScope] = useState<MailAccountScopeType>('company')
   const [customDomain, setCustomDomain] = useState('')
   const [authType, setAuthType] = useState<MailAuthType>('app_password')
   const [email, setEmail] = useState('')
@@ -143,13 +129,13 @@ export default function AdminMailAccountsPage() {
   const [smtpPort, setSmtpPort] = useState('465')
   const [appPassword, setAppPassword] = useState('')
   const [accountPassword, setAccountPassword] = useState('')
+  const fixedAdminScope: MailAccountScopeType = 'personal'
 
   const resetForm = () => {
     setEditingAccountId(null)
     setMailDomain('custom')
     setReceiveProtocol('imap')
     setProviderType('custom')
-    setAccountScope('company')
     setCustomDomain('')
     setAuthType('app_password')
     setEmail('')
@@ -224,7 +210,16 @@ export default function AdminMailAccountsPage() {
     try {
       setLoading(true)
       const res = await listMailAccounts(true, accountScopeFilter || undefined)
-      setAccounts(filterAdminVisibleMailAccounts(res.items || [], session?.id))
+      const visibleAccounts = filterAdminVisibleMailAccounts(res.items || [], session?.id)
+      const ownerAdminId = Number(session?.id || 0)
+      setAccounts(
+        visibleAccounts.filter(
+          (account) =>
+            account.account_scope === 'personal' &&
+            ownerAdminId > 0 &&
+            Number(account.owner_admin_id || 0) === ownerAdminId
+        )
+      )
       setApiNotice(null)
     } catch (error) {
       const message = getAdminMailErrorMessage(error)
@@ -305,7 +300,7 @@ export default function AdminMailAccountsPage() {
             ? accountPassword.trim() || undefined
             : undefined
       const payload = {
-        account_scope: accountScope,
+        account_scope: fixedAdminScope,
         provider_type: providerType,
         auth_type: authType,
         email: email.trim(),
@@ -337,7 +332,7 @@ export default function AdminMailAccountsPage() {
     try {
       setOauthConnecting(true)
       const res = await startGoogleOAuth({
-        account_scope: accountScope,
+        account_scope: fixedAdminScope,
         sync_enabled: true,
         sync_interval_minutes: FIXED_SYNC_INTERVAL_MINUTES,
       })
@@ -504,7 +499,6 @@ export default function AdminMailAccountsPage() {
     const inferredProtocol: ReceiveProtocol =
       (account.imap_host || '').toLowerCase().includes('pop') ? 'pop3' : 'imap'
     setEditingAccountId(account.id)
-    setAccountScope((account.account_scope || 'company') as MailAccountScopeType)
     setMailDomain(inferredDomain)
     setReceiveProtocol(inferredProtocol)
     setProviderType(getProviderTypeFromDomain(inferredDomain))
@@ -533,28 +527,7 @@ export default function AdminMailAccountsPage() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-1">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setSettingsTab('external')}
-            className={`h-9 rounded-md px-3 text-sm ${
-              settingsTab === 'external' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            외부 메일 연동
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettingsTab('spam')}
-            className={`h-9 rounded-md px-3 text-sm ${
-              settingsTab === 'spam' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            스팸 설정
-          </button>
-        </div>
-      </div>
+      <MailSettingsTabBar value={settingsTab} onChange={setSettingsTab} />
 
       {settingsTab === 'external' ? (
       <>
@@ -562,13 +535,13 @@ export default function AdminMailAccountsPage() {
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{editingAccountId ? `메일 계정 수정 #${editingAccountId}` : '메일 계정 등록'}</h2>
           {editingAccountId ? (
-            <button
-              type="button"
+            <UiButton
               onClick={resetForm}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+              variant="secondary"
+              size="sm"
             >
               수정 취소
-            </button>
+            </UiButton>
           ) : null}
         </div>
         <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[1.35fr_1fr]">
@@ -576,10 +549,7 @@ export default function AdminMailAccountsPage() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <p className="mb-1 text-xs text-zinc-600">계정 범위</p>
-                <select className={inputClass} value={accountScope} onChange={(e) => setAccountScope(e.target.value as MailAccountScopeType)}>
-                  <option value="company">회사 공용 계정</option>
-                  <option value="personal">개인 계정</option>
-                </select>
+                <input className={`${inputClass} bg-zinc-100 text-zinc-600`} value="개인 계정 (어드민 고정)" disabled />
               </div>
               <div>
                 <p className="mb-1 text-xs text-zinc-600">메일 도메인</p>
@@ -716,8 +686,7 @@ export default function AdminMailAccountsPage() {
               </>
             ) : (
               <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
-                <p>회사계정: 공용 메일함으로 팀과 공유됩니다.</p>
-                <p className="mt-1">개인계정: 본인만 조회/동기화 가능합니다.</p>
+                <p>어드민 포털은 개인 계정만 등록/연동할 수 있습니다.</p>
                 <p className="mt-1">OAuth 계정은 Gmail API 방식으로 동기화됩니다.</p>
               </div>
             )}
@@ -730,22 +699,23 @@ export default function AdminMailAccountsPage() {
         </div>
         <div className="mt-4 flex justify-end">
           {isGoogleOAuthMode ? (
-            <button
-              type="button"
+            <UiButton
               onClick={handleStartGoogleOAuth}
               disabled={oauthConnecting}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+              variant="primary"
+              size="lg"
             >
               {oauthConnecting ? '연동 준비 중...' : 'Google로 연동'}
-            </button>
+            </UiButton>
           ) : (
-            <button
+            <UiButton
               type="submit"
               disabled={submitting}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+              variant="primary"
+              size="lg"
             >
               {submitting ? '처리 중...' : editingAccountId ? '계정 수정' : '계정 등록'}
-            </button>
+            </UiButton>
           )}
         </div>
       </form>
@@ -758,7 +728,6 @@ export default function AdminMailAccountsPage() {
             onChange={(e) => setAccountScopeFilter((e.target.value as '' | MailAccountScopeType) || '')}
           >
             <option value="">전체 계정</option>
-            <option value="company">회사 공용</option>
             <option value="personal">개인</option>
           </select>
         </div>
@@ -853,55 +822,20 @@ export default function AdminMailAccountsPage() {
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {account.auth_type === 'oauth' ? (
-                    <p className="w-full text-xs text-zinc-500">OAuth 계정은 Gmail API 방식으로 동기화됩니다.</p>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => handleTestConnection(account.id)}
-                    disabled={testingId === account.id}
-                    className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                  >
-                    {testingId === account.id ? '테스트 중' : '연결 테스트'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleStartInitialSync(account.id)}
-                    disabled={initialSyncStartingId === account.id || account.initial_sync_status === 'running'}
-                    className="rounded-md border border-blue-300 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-                  >
-                    {initialSyncStartingId === account.id ? '시작중' : '과거메일 가져오기'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRefreshInitialSyncStatus(account.id)}
-                    disabled={initialSyncRefreshingId === account.id}
-                    className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                  >
-                    {initialSyncRefreshingId === account.id ? '조회중' : '진행 상태'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCancelInitialSync(account.id)}
-                    disabled={initialSyncCancelingId === account.id || !canCancelInitialSync}
-                    className={`rounded-md px-2.5 py-1 text-xs disabled:cursor-not-allowed ${
-                      canCancelInitialSync
-                        ? 'border border-rose-300 text-rose-700 hover:bg-rose-50'
-                        : 'border border-zinc-200 bg-zinc-100 text-zinc-400'
-                    }`}
-                  >
-                    {initialSyncCancelingId === account.id ? '중지중' : '가져오기 중지'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeactivate(account.id)}
-                    disabled={deletingId === account.id}
-                    className="rounded-md border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                  >
-                    {deletingId === account.id ? '삭제 중' : '삭제'}
-                  </button>
-                </div>
+                <MailAccountSyncActions
+                  authType={account.auth_type}
+                  testing={testingId === account.id}
+                  initialSyncStarting={initialSyncStartingId === account.id}
+                  initialSyncRefreshing={initialSyncRefreshingId === account.id}
+                  initialSyncCanceling={initialSyncCancelingId === account.id}
+                  deleting={deletingId === account.id}
+                  canCancelInitialSync={canCancelInitialSync}
+                  onTestConnection={() => handleTestConnection(account.id)}
+                  onStartInitialSync={() => handleStartInitialSync(account.id)}
+                  onRefreshInitialSyncStatus={() => handleRefreshInitialSyncStatus(account.id)}
+                  onCancelInitialSync={() => handleCancelInitialSync(account.id)}
+                  onDeleteAccount={() => handleDeactivate(account.id)}
+                />
               </li>
             )})}
           </ul>
@@ -952,30 +886,16 @@ export default function AdminMailAccountsPage() {
             이 규칙이 맞으면 다음 규칙은 건너뜀
           </label>
           <div className="mt-2 flex justify-end">
-            <button
-              type="button"
+            <UiButton
               onClick={handleCreateRule}
               disabled={ruleSubmitting}
-              className="h-10 rounded-md bg-zinc-900 px-4 text-sm text-white hover:bg-zinc-800 disabled:opacity-60"
+              variant="primary"
+              size="lg"
             >
               규칙 추가
-            </button>
+            </UiButton>
           </div>
-          <div className="mt-3 space-y-2">
-            {rules.map((rule) => (
-              <div key={rule.id} className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm">
-                <span>{rule.name} · {getRuleMatchFieldLabel(rule.match_field)} {getRuleMatchOperatorLabel(rule.match_operator)} "{rule.match_value}"</span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteRule(rule.id)}
-                  disabled={ruleDeletingId === rule.id}
-                  className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
-          </div>
+          <MailRuleList rules={rules} deletingRuleId={ruleDeletingId} onDeleteRule={handleDeleteRule} />
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { Bell } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import UiButton from '@/components/common/UiButton'
 import type { PortalNotificationItem, PortalNotificationListResponse } from '@/types/portalNotification'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
@@ -287,9 +288,10 @@ export default function PortalNotificationBell({
 
   return (
     <div ref={dropdownRef} className={`relative ${className || ''}`}>
-      <button
-        type="button"
+      <UiButton
         onClick={handleOpen}
+        variant="secondary"
+        size="icon"
         className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-50 ${
           isBellHighlight ? 'animate-pulse ring-2 ring-amber-300/70' : ''
         }`}
@@ -301,45 +303,37 @@ export default function PortalNotificationBell({
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}
-      </button>
+      </UiButton>
 
       {open ? (
         <div className="absolute right-0 z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="border-b border-zinc-200 px-3 py-2">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-zinc-900">알림</p>
-              <button
-                type="button"
+              <UiButton
                 onClick={() => void handleReadAll()}
                 disabled={markingAll || unreadCount === 0}
-                className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                size="sm"
+                variant="secondary"
               >
                 전체 읽음
-              </button>
+              </UiButton>
             </div>
             <div className="mt-2 flex items-center gap-1">
-              <button
-                type="button"
+              <UiButton
                 onClick={() => setListFilter('unread')}
-                className={`inline-flex h-7 items-center rounded-md border px-2 text-xs font-medium transition ${
-                  listFilter === 'unread'
-                    ? 'border-sky-300 bg-sky-50 text-sky-700'
-                    : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
-                }`}
+                size="sm"
+                variant={listFilter === 'unread' ? 'tabActive' : 'tabInactive'}
               >
                 안읽음
-              </button>
-              <button
-                type="button"
+              </UiButton>
+              <UiButton
                 onClick={() => setListFilter('read')}
-                className={`inline-flex h-7 items-center rounded-md border px-2 text-xs font-medium transition ${
-                  listFilter === 'read'
-                    ? 'border-zinc-400 bg-zinc-100 text-zinc-800'
-                    : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
-                }`}
+                size="sm"
+                variant={listFilter === 'read' ? 'soft' : 'tabInactive'}
               >
                 읽음
-              </button>
+              </UiButton>
             </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">

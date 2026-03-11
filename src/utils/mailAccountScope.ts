@@ -13,4 +13,3 @@ export function filterAdminVisibleMailAccounts(
       Number(account.owner_admin_id || 0) === Number(adminId)
   )
 }
-
