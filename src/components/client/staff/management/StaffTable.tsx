@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { toast } from 'react-hot-toast'
 import { AdminOut } from '@/types/admin'
 import {
     getClientStaffs, activateClientStaff,
@@ -18,6 +19,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
     const [showInactive, setShowInactive] = useState(false)
     const [page, setPage] = useState(1)
     const [total, setTotal] = useState(0)
+    const [listError, setListError] = useState<string | null>(null)
     const limit = 10
 
     const [selectedStaff, setSelectedStaff] = useState<AdminOut | null>(null)
@@ -29,8 +31,10 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
             const res = await getClientStaffs(nextPage, limit, nextKeyword)
             setStaffs(res.items)
             setTotal(res.total)
+            setListError(null)
         } catch (err) {
             console.error('직원 목록 불러오기 실패', err)
+            setListError('직원 목록을 불러오지 못했습니다.')
         }
     }
 
@@ -52,7 +56,7 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
             setStaffs(res.items)
             setTotal(res.total)
         } catch (err) {
-            alert('활성/비활성화 실패')
+            toast.error('재직 상태 변경에 실패했습니다.')
             console.error('활성/비활성화 실패:', err)
         }
     }
@@ -107,7 +111,13 @@ export default function StaffTable({ canManage = false }: { canManage?: boolean 
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200">
-                        {visibleStaffs.length === 0 ? (
+                        {listError ? (
+                            <tr>
+                                <td colSpan={9} className="px-3 py-10 text-center text-rose-600">
+                                    {listError}
+                                </td>
+                            </tr>
+                        ) : visibleStaffs.length === 0 ? (
                             <tr>
                                 <td colSpan={9} className="px-3 py-10 text-center text-zinc-500">
                                     {showInactive ? '퇴사한 직원이 없습니다.' : '재직 중인 직원이 없습니다.'}

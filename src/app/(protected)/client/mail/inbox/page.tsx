@@ -9,6 +9,7 @@ import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHt
 import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
 import { resolveMailSnippet } from '@/utils/mailSnippet'
 import {
+  bulkMoveMailMessagesToFolder,
   createMailFolder,
   createMailRule,
   getMailReplyDraft,
@@ -16,7 +17,6 @@ import {
   getClientMailErrorMessage,
   listMailAttachments,
   moveMailMessageToTrash,
-  moveMailMessageToFolder,
   purgeMailMessage,
   getMailMessageDetail,
   importMailAttachments,
@@ -738,17 +738,27 @@ export default function ClientMailInboxPage() {
       return
     }
     const targetIds = [...selectedMessageIds]
-    const results = await Promise.allSettled(
-      targetIds.map((id) => moveMailMessageToFolder(id, { folder_id: targetFolderId }, bulkMoveTargetAccountId))
+    const moveRes = await bulkMoveMailMessagesToFolder(
+      {
+        message_ids: targetIds,
+        folder_id: targetFolderId,
+      },
+      bulkMoveTargetAccountId
     )
-    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const successCount = Number(moveRes.moved_count || 0)
+    const failedCount = Number(moveRes.failed_count || 0)
+    const failedIds = new Set(
+      (moveRes.results || [])
+        .filter((result) => result.status === 'failed')
+        .map((result) => result.message_id)
+    )
     if (successCount > 0) {
       toast.success(`폴더 이동 완료 (${successCount}건)`)
     }
-    if (successCount < targetIds.length) {
-      toast.error(`${targetIds.length - successCount}건 이동 실패`)
+    if (failedCount > 0) {
+      toast.error(`${failedCount}건 이동 실패`)
     }
-    setSelectedMessageIds([])
+    setSelectedMessageIds(targetIds.filter((id) => failedIds.has(id)))
     setBulkMoveFolderId('')
     await loadMessages(page)
     if (detail && targetIds.includes(detail.id)) {
@@ -836,7 +846,13 @@ export default function ClientMailInboxPage() {
             <p className="text-xs text-zinc-600">
               접속 계정: <span className="font-medium text-zinc-900">{currentAccount?.email || '전체 계정'}</span>
               {currentAccount ? (
-                <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-700">
+                <span
+                  className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${
+                    currentAccount.account_scope === 'personal'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-zinc-100 text-zinc-700'
+                  }`}
+                >
                   {currentAccount.account_scope === 'personal' ? '개인' : '법인'}
                 </span>
               ) : null}

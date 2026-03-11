@@ -4,11 +4,14 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import { listMailAccounts } from '@/services/admin/mailService'
+import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 
 const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { session } = useAdminSessionContext()
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string }>>([])
   const [headerMailAccountId, setHeaderMailAccountId] = useState('')
   const [headerKeyword, setHeaderKeyword] = useState('')
@@ -45,13 +48,14 @@ const Header = () => {
     if (!isAdminMailInbox) return
     void listMailAccounts(true)
       .then((res) => {
-        const items = (res.items || []).map((item) => ({ id: item.id, email: item.email }))
+        const visibleItems = filterAdminVisibleMailAccounts(res.items || [], session?.id)
+        const items = visibleItems.map((item) => ({ id: item.id, email: item.email }))
         setMailAccounts(items)
       })
       .catch(() => {
         setMailAccounts([])
       })
-  }, [isAdminMailInbox])
+  }, [isAdminMailInbox, session?.id])
 
   useEffect(() => {
     if (!isAdminMailInbox) return

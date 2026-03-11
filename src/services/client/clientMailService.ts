@@ -30,6 +30,8 @@ import type {
   MailInitialSyncStatusResponse,
   MailMessageDetail,
   MailMessageDeleteResponse,
+  MailMessageBulkMoveFolderPayload,
+  MailMessageBulkMoveFolderResponse,
   MailMessageMoveFolderPayload,
   MailMessageMoveFolderResponse,
   MailMessageLinkCompanyPayload,
@@ -223,6 +225,15 @@ export async function moveMailMessageToFolder(
 ): Promise<MailMessageMoveFolderResponse> {
   void mailAccountId
   const res = await clientHttp.post<MailMessageMoveFolderResponse>(`${BASE}/messages/${messageId}/move-folder`, payload)
+  return res.data
+}
+
+export async function bulkMoveMailMessagesToFolder(
+  payload: MailMessageBulkMoveFolderPayload,
+  mailAccountId?: number
+): Promise<MailMessageBulkMoveFolderResponse> {
+  void mailAccountId
+  const res = await clientHttp.post<MailMessageBulkMoveFolderResponse>(`${BASE}/messages/bulk-move-folder`, payload)
   return res.data
 }
 

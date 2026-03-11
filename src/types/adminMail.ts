@@ -309,6 +309,23 @@ export interface MailMessageMoveFolderResponse {
   folder_name?: string | null
 }
 
+export interface MailMessageBulkMoveFolderPayload {
+  message_ids: number[]
+  folder_id?: number | null
+}
+
+export interface MailMessageBulkMoveFolderResponse {
+  message: string
+  moved_count: number
+  failed_count: number
+  results: Array<{
+    message_id: number
+    status: 'moved' | 'failed'
+    detail?: string | null
+    folder_name?: string | null
+  }>
+}
+
 export interface MailAttachmentListResponse {
   total: number
   items: MailAttachment[]

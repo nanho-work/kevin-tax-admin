@@ -2,11 +2,19 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Mail, Mails, SendHorizontal, SquarePen, Settings, Trash2 } from 'lucide-react'
+import { toast } from 'react-hot-toast'
 import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import { logoutAdmin } from '@/services/admin/adminService'
-import { createMailFolder, listMailAccounts, listMailFolders, listMailMessages } from '@/services/admin/mailService'
+import {
+  createMailFolder,
+  deleteMailFolder,
+  listMailAccounts,
+  listMailFolders,
+  listMailMessages,
+  updateMailFolder,
+} from '@/services/admin/mailService'
 import { format } from 'date-fns'
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
@@ -71,7 +79,6 @@ const menuSections: MenuSection[] = [
       { label: '기타신고', href: '/admin/company-withholding/etc' },
     ],
   },
-  { key: 'gpt', label: 'GPT', href: '/admin/gpt' },
   {
     key: 'setting',
     label: '설정',
@@ -89,7 +96,6 @@ function getActiveSection(pathname: string): string {
   if (pathname.startsWith('/admin/tax-schedule')) return 'schedule'
   if (pathname.startsWith('/admin/staff')) return 'leave'
   if (pathname.startsWith('/admin/company-withholding')) return 'company-withholding'
-  if (pathname.startsWith('/admin/gpt')) return 'gpt'
   if (pathname.startsWith('/admin/setting')) return 'setting'
   if (pathname.startsWith('/admin/dashboard')) return 'dashboard'
   return ''
@@ -158,6 +164,15 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const [folderCreateName, setFolderCreateName] = useState('')
   const [folderCreateLoading, setFolderCreateLoading] = useState(false)
   const [folderCreateError, setFolderCreateError] = useState<string | null>(null)
+  const [folderEditTarget, setFolderEditTarget] = useState<{ accountId: number; folderId: number; name: string } | null>(null)
+  const [folderEditName, setFolderEditName] = useState('')
+  const [folderEditLoading, setFolderEditLoading] = useState(false)
+  const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
+  const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
+  const selectedMailAccountId = useMemo(() => {
+    const raw = Number(searchParams.get('account_id') || '')
+    return Number.isFinite(raw) && raw > 0 ? raw : null
+  }, [searchParams])
 
   const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     `/admin/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
@@ -253,16 +268,38 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   }, [pathname])
 
   useEffect(() => {
-    const selectedAccountId = Number(searchParams.get('account_id') || '')
-    if (!Number.isFinite(selectedAccountId) || selectedAccountId <= 0) return
-    setExpandedMailAccounts((prev) => (prev[selectedAccountId] ? prev : { ...prev, [selectedAccountId]: true }))
-  }, [searchParams])
+    if (!selectedMailAccountId) return
+    setExpandedMailAccounts((prev) => (prev[selectedMailAccountId] ? prev : { ...prev, [selectedMailAccountId]: true }))
+  }, [selectedMailAccountId])
 
   useEffect(() => {
     const refresh = () => setMailCountsRefreshTick((prev) => prev + 1)
     window.addEventListener(MAIL_COUNTS_REFRESH_EVENT, refresh)
     return () => window.removeEventListener(MAIL_COUNTS_REFRESH_EVENT, refresh)
   }, [])
+
+  useEffect(() => {
+    if (!folderActionMenuKey) return
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-folder-action-root="true"]')) return
+      setFolderActionMenuKey(null)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFolderActionMenuKey(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [folderActionMenuKey])
 
   useEffect(() => {
     if (sessionLoading || !session) return
@@ -278,31 +315,67 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
         }))
         setMailAccounts(accounts)
 
+        const unreadResults = await Promise.all(
+          accounts.map(async (account) => {
+            try {
+              const inboxUnreadRes = await listMailMessages({
+                page: 1,
+                size: 1,
+                mail_account_id: account.id,
+                mailbox_type: 'inbox',
+                is_read: false,
+              })
+              return [account.id, inboxUnreadRes.total ?? 0] as const
+            } catch {
+              return [account.id, 0] as const
+            }
+          })
+        )
+
+        const detailedTargetIds = accounts
+          .filter((account) => Boolean(expandedMailAccounts[account.id]) || account.id === selectedMailAccountId)
+          .map((account) => account.id)
+
+        const detailedResults = await Promise.all(
+          detailedTargetIds.map(async (accountId) => {
+            try {
+              const [allRes, sentRes, trashRes, folderRes] = await Promise.all([
+                listMailMessages({ page: 1, size: 1, mail_account_id: accountId }),
+                listMailMessages({ page: 1, size: 1, mail_account_id: accountId, direction: 'outbound' }),
+                listMailMessages({ page: 1, size: 1, mail_account_id: accountId, include_trash: true }),
+                listMailFolders(true, accountId),
+              ])
+              return {
+                accountId,
+                all: allRes.total ?? 0,
+                sent: sentRes.total ?? 0,
+                trash: trashRes.total ?? 0,
+                folders: (folderRes.items || [])
+                  .map((item) => ({ id: item.id, name: item.name }))
+                  .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+              }
+            } catch {
+              return { accountId, all: 0, sent: 0, trash: 0, folders: [] as Array<{ id: number; name: string }> }
+            }
+          })
+        )
+
+        const unreadMap = new Map(unreadResults)
+        const detailedMap = new Map(detailedResults.map((item) => [item.accountId, item] as const))
+
         const nextCounts: Record<number, { all: number; inboxUnread: number; sent: number; trash: number }> = {}
         const nextFolders: Record<number, Array<{ id: number; name: string }>> = {}
         await Promise.all(
           accounts.map(async (account) => {
-            try {
-              const [allRes, inboxUnreadRes, sentRes, trashRes, folderRes] = await Promise.all([
-                listMailMessages({ page: 1, size: 1, mail_account_id: account.id }),
-                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, mailbox_type: 'inbox', is_read: false }),
-                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, direction: 'outbound' }),
-                listMailMessages({ page: 1, size: 1, mail_account_id: account.id, include_trash: true }),
-                listMailFolders(true, account.id),
-              ])
-              nextCounts[account.id] = {
-                all: allRes.total ?? 0,
-                inboxUnread: inboxUnreadRes.total ?? 0,
-                sent: sentRes.total ?? 0,
-                trash: trashRes.total ?? 0,
-              }
-              nextFolders[account.id] = (folderRes.items || [])
-                .map((item) => ({ id: item.id, name: item.name }))
-                .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-            } catch {
-              nextCounts[account.id] = { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
-              nextFolders[account.id] = []
+            const previous = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
+            const detailed = detailedMap.get(account.id)
+            nextCounts[account.id] = {
+              all: detailed?.all ?? previous.all,
+              inboxUnread: unreadMap.get(account.id) ?? 0,
+              sent: detailed?.sent ?? previous.sent,
+              trash: detailed?.trash ?? previous.trash,
             }
+            nextFolders[account.id] = detailed?.folders ?? mailFoldersByAccount[account.id] ?? []
           })
         )
         setMailAccountCounts(nextCounts)
@@ -315,7 +388,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     }
 
     void loadMailCounts()
-  }, [session, sessionLoading, pathname, searchParams, mailCountsRefreshTick])
+  }, [session, sessionLoading, mailCountsRefreshTick, expandedMailAccounts, selectedMailAccountId])
 
   const activeSection = getActiveSection(pathname)
   const sidebarTitle = user?.companyName ? `${user.companyName} 관리자` : '관리자'
@@ -361,12 +434,187 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       }))
       window.dispatchEvent(new CustomEvent(MAIL_COUNTS_REFRESH_EVENT))
       handleCancelFolderCreate()
-    } catch {
-      setFolderCreateError('폴더 생성에 실패했습니다.')
+    } catch (error) {
+      const detail = (error as any)?.response?.data?.detail
+      setFolderCreateError(typeof detail === 'string' && detail.trim() ? detail : '폴더 생성에 실패했습니다.')
     } finally {
       setFolderCreateLoading(false)
     }
   }
+
+  const reloadFoldersForAccount = async (accountId: number) => {
+    const folderRes = await listMailFolders(true, accountId)
+    setMailFoldersByAccount((prev) => ({
+      ...prev,
+      [accountId]: (folderRes.items || [])
+        .map((item) => ({ id: item.id, name: item.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+    }))
+  }
+
+  const handleStartFolderEdit = (accountId: number, folderId: number, name: string) => {
+    setFolderActionMenuKey(null)
+    setFolderEditTarget({ accountId, folderId, name })
+    setFolderEditName(name)
+  }
+
+  const handleCancelFolderEdit = () => {
+    setFolderEditTarget(null)
+    setFolderEditName('')
+  }
+
+  const handleSubmitFolderEdit = async () => {
+    if (!folderEditTarget) return
+    const trimmed = folderEditName.trim()
+    if (!trimmed) {
+      toast.error('폴더 이름을 입력해 주세요.')
+      return
+    }
+    try {
+      setFolderEditLoading(true)
+      await updateMailFolder(folderEditTarget.folderId, { name: trimmed })
+      await reloadFoldersForAccount(folderEditTarget.accountId)
+      if (
+        pathname === '/admin/mail/inbox' &&
+        searchParams.get('mailbox') === 'custom' &&
+        searchParams.get('account_id') === String(folderEditTarget.accountId) &&
+        searchParams.get('folder') === folderEditTarget.name
+      ) {
+        const nextParams = new URLSearchParams(searchParams.toString())
+        nextParams.set('folder', trimmed)
+        router.replace(`${pathname}?${nextParams.toString()}`)
+      }
+      window.dispatchEvent(new CustomEvent(MAIL_COUNTS_REFRESH_EVENT))
+      toast.success('폴더명을 변경했습니다.')
+      handleCancelFolderEdit()
+    } catch {
+      toast.error('폴더명 변경에 실패했습니다.')
+    } finally {
+      setFolderEditLoading(false)
+    }
+  }
+
+  const handleDeleteFolder = async (accountId: number, folderId: number, folderName: string) => {
+    if (!window.confirm(`"${folderName}" 폴더를 삭제할까요?\n폴더 내 메일은 받은메일함으로 이동됩니다.`)) return
+    const key = `${accountId}-${folderId}`
+    try {
+      setFolderDeleteLoadingKey(key)
+      await deleteMailFolder(folderId)
+      await reloadFoldersForAccount(accountId)
+      if (
+        pathname === '/admin/mail/inbox' &&
+        searchParams.get('mailbox') === 'custom' &&
+        searchParams.get('account_id') === String(accountId) &&
+        searchParams.get('folder') === folderName
+      ) {
+        router.replace(buildMailAccountHref(accountId, 'inbox'))
+      }
+      window.dispatchEvent(new CustomEvent(MAIL_COUNTS_REFRESH_EVENT))
+      toast.success('폴더를 삭제했습니다.')
+      setFolderActionMenuKey(null)
+      if (folderEditTarget?.folderId === folderId) {
+        handleCancelFolderEdit()
+      }
+    } catch {
+      toast.error('폴더 삭제에 실패했습니다.')
+    } finally {
+      setFolderDeleteLoadingKey(null)
+    }
+  }
+
+  const renderFolderRows = (accountId: number) =>
+    (mailFoldersByAccount[accountId] || []).map((folder) => {
+      const isEditing =
+        folderEditTarget?.accountId === accountId && folderEditTarget.folderId === folder.id
+      const folderKey = `${accountId}-${folder.id}`
+      if (isEditing) {
+        return (
+          <div key={folder.id} className="ml-4 mt-1 space-y-1 rounded border border-neutral-200 bg-neutral-50 p-2">
+            <input
+              value={folderEditName}
+              onChange={(e) => setFolderEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleSubmitFolderEdit()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  handleCancelFolderEdit()
+                }
+              }}
+              placeholder="폴더 이름"
+              className="h-7 w-full rounded border border-neutral-300 bg-white px-2 text-[11px] text-neutral-900 outline-none focus:border-neutral-500"
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={handleCancelFolderEdit}
+                className="rounded border border-neutral-300 bg-white px-2 py-0.5 text-[10px] text-neutral-700 hover:bg-neutral-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmitFolderEdit()}
+                disabled={folderEditLoading}
+                className="rounded border border-neutral-900 bg-neutral-900 px-2 py-0.5 text-[10px] text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {folderEditLoading ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </div>
+        )
+      }
+      return (
+        <div key={folder.id} className="group ml-4 flex items-center gap-1">
+          <Link href={buildMailFolderHref(accountId, folder.name)} className="min-w-0 flex-1">
+            <div
+              className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${
+                isMailFolderMenuActive(accountId, folder.name)
+                  ? 'bg-neutral-100 font-medium text-neutral-900'
+                  : 'text-neutral-600 hover:bg-neutral-50'
+              }`}
+            >
+              <span className="truncate">{folder.name}</span>
+            </div>
+          </Link>
+          <div className="relative" data-folder-action-root="true">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setFolderActionMenuKey((prev) => (prev === folderKey ? null : folderKey))
+              }}
+              className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] text-neutral-600 opacity-0 transition group-hover:opacity-100 hover:bg-neutral-50"
+              aria-label="폴더 메뉴"
+            >
+              ⋯
+            </button>
+            {folderActionMenuKey === folderKey ? (
+              <div className="absolute right-0 top-6 z-20 min-w-20 rounded-md border border-neutral-200 bg-white p-1 shadow-md">
+                <button
+                  type="button"
+                  onClick={() => handleStartFolderEdit(accountId, folder.id, folder.name)}
+                  className="block w-full rounded px-2 py-1 text-left text-[11px] text-neutral-700 hover:bg-neutral-50"
+                >
+                  이름 변경
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteFolder(accountId, folder.id, folder.name)}
+                  disabled={folderDeleteLoadingKey === folderKey}
+                  className="block w-full rounded px-2 py-1 text-left text-[11px] text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                >
+                  {folderDeleteLoadingKey === folderKey ? '삭제중' : '삭제'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )
+    })
 
   const handleLogout = async () => {
     try {
@@ -586,13 +834,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                       )}
                                     </div>
                                   </Link>
-                                  {(mailFoldersByAccount[account.id] || []).map((folder) => (
-                                    <Link key={folder.id} href={buildMailFolderHref(account.id, folder.name)}>
-                                      <div className={`ml-4 flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailFolderMenuActive(account.id, folder.name) ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                                        <span className="truncate">{folder.name}</span>
-                                      </div>
-                                    </Link>
-                                  ))}
+                                  {renderFolderRows(account.id)}
                                   <Link href={buildMailAccountHref(account.id, 'sent')}>
                                     <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                                       <MailboxMenuLabel type="sent" label="보낸메일함" />
@@ -716,13 +958,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                       </div>
                                     </div>
                                   ) : null}
-                                  {(mailFoldersByAccount[account.id] || []).map((folder) => (
-                                    <Link key={folder.id} href={buildMailFolderHref(account.id, folder.name)}>
-                                      <div className={`ml-4 flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailFolderMenuActive(account.id, folder.name) ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
-                                        <span className="truncate">{folder.name}</span>
-                                      </div>
-                                    </Link>
-                                  ))}
+                                  {renderFolderRows(account.id)}
                                   <Link href={buildMailAccountHref(account.id, 'sent')}>
                                     <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'sent') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                                       <MailboxMenuLabel type="sent" label="보낸메일함" />

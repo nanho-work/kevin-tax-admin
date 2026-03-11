@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
-import { formatKSTDateTime, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { formatKSTDateTime } from '@/utils/dateTime'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import {
   cancelMailAccountInitialSync,
@@ -14,11 +14,9 @@ import {
   deleteMailAccount,
   getMailAccountInitialSyncStatus,
   getAdminMailErrorMessage,
-  listMailActionLogs,
   listMailFolders,
   listMailAccounts,
   listMailRules,
-  listMailSyncLogs,
   startGoogleOAuth,
   startMailAccountInitialSync,
   testMailAccountConnection,
@@ -43,8 +41,8 @@ const mailDomainOptions: Array<{ label: string; value: MailDomainOption }> = [
 ]
 
 const authOptions: Array<{ label: string; value: MailAuthType }> = [
-  { label: '앱 비밀번호', value: 'app_password' },
-  { label: '일반 비밀번호', value: 'password' },
+  { label: '앱전용 비밀번호', value: 'app_password' },
+  { label: '메일 비밀번호', value: 'password' },
 ]
 
 const getProviderTypeFromDomain = (domain: MailDomainOption): MailProviderType => {
@@ -116,8 +114,6 @@ export default function AdminMailAccountsPage() {
   const [apiNotice, setApiNotice] = useState<string | null>(null)
   const [folders, setFolders] = useState<MailFolder[]>([])
   const [rules, setRules] = useState<MailRule[]>([])
-  const [syncLogs, setSyncLogs] = useState<Array<{ id: number; status: string; synced_count: number; started_at: string }>>([])
-  const [actionLogs, setActionLogs] = useState<Array<{ id: number; action: string; actor_type: string; created_at: string; detail?: string | null }>>([])
   const [ruleNameInput, setRuleNameInput] = useState('')
   const [ruleMatchField, setRuleMatchField] = useState<'from_email' | 'subject' | 'snippet' | 'to_email' | 'cc_email'>('from_email')
   const [ruleMatchOperator, setRuleMatchOperator] = useState<'contains' | 'equals' | 'starts_with' | 'ends_with'>('contains')
@@ -245,27 +241,12 @@ export default function AdminMailAccountsPage() {
 
   const loadRuleAndFolderData = async () => {
     try {
-      const [folderRes, ruleRes, syncLogRes, actionLogRes] = await Promise.all([
+      const [folderRes, ruleRes] = await Promise.all([
         listMailFolders(true),
         listMailRules({ is_active: true }),
-        listMailSyncLogs({ page: 1, size: 10 }),
-        listMailActionLogs({ page: 1, size: 10 }),
       ])
       setFolders(folderRes.items || [])
       setRules(ruleRes.items || [])
-      setSyncLogs((syncLogRes.items || []).map((item) => ({
-        id: item.id,
-        status: item.status,
-        synced_count: item.synced_count,
-        started_at: item.started_at,
-      })))
-      setActionLogs((actionLogRes.items || []).map((item) => ({
-        id: item.id,
-        action: item.action,
-        actor_type: item.actor_type,
-        created_at: item.created_at,
-        detail: item.detail,
-      })))
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
     }
@@ -477,7 +458,7 @@ export default function AdminMailAccountsPage() {
 
   const handleCreateRule = async () => {
     if (!ruleNameInput.trim() || !ruleMatchValue.trim()) {
-      toast.error('자동분류 이름과 찾을 내용을 입력해 주세요.')
+      toast.error('규칙 이름과 찾을 내용을 입력해 주세요.')
       return
     }
     try {
@@ -496,7 +477,7 @@ export default function AdminMailAccountsPage() {
       setRuleNameInput('')
       setRuleMatchValue('')
       setRuleTargetCompanyId('')
-      toast.success('자동분류를 추가했습니다.')
+      toast.success('정리 규칙을 추가했습니다.')
       await loadRuleAndFolderData()
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
@@ -509,7 +490,7 @@ export default function AdminMailAccountsPage() {
     try {
       setRuleDeletingId(ruleId)
       await deleteMailRule(ruleId)
-      toast.success('자동분류를 삭제했습니다.')
+      toast.success('정리 규칙을 삭제했습니다.')
       await loadRuleAndFolderData()
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
@@ -633,7 +614,7 @@ export default function AdminMailAccountsPage() {
                     disabled={mailDomain !== 'custom'}
                   />
                   <div>
-                    <p className="mb-1 text-xs text-zinc-600">인증 방식</p>
+                    <p className="mb-1 text-xs text-zinc-600">로그인 방식</p>
                     <select className={inputClass} value={authType} onChange={(e) => setAuthType(e.target.value as MailAuthType)}>
                       {authOptions.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
@@ -649,17 +630,17 @@ export default function AdminMailAccountsPage() {
                     <input className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="예: 홍길동" />
                   </div>
                   <div>
-                    <p className="mb-1 text-xs text-zinc-600">앱 비밀번호</p>
+                    <p className="mb-1 text-xs text-zinc-600">앱전용 비밀번호</p>
                     <input
                       className={`${inputClass} ${authType === 'app_password' ? '' : 'bg-zinc-100 text-zinc-500'}`}
                       value={appPassword}
                       onChange={(e) => setAppPassword(e.target.value)}
-                      placeholder={authType === 'app_password' ? '앱 비밀번호 입력' : '인증방식을 앱 비밀번호로 선택하면 입력'}
+                      placeholder={authType === 'app_password' ? '앱전용 비밀번호 입력' : '로그인 방식을 앱전용 비밀번호로 선택하면 입력'}
                       disabled={authType !== 'app_password'}
                     />
                   </div>
                   <div>
-                    <p className="mb-1 text-xs text-zinc-600">비밀번호</p>
+                    <p className="mb-1 text-xs text-zinc-600">메일 비밀번호</p>
                     <input
                       className={`${inputClass} ${authType === 'password' ? '' : 'bg-zinc-100 text-zinc-500'}`}
                       value={accountPassword}
@@ -730,7 +711,7 @@ export default function AdminMailAccountsPage() {
                   <p className="text-[11px] text-zinc-500">메일사 정책에 따라 다를 수 있으니, 안내 문서를 우선으로 확인하세요.</p>
                 </div>
                 <p className="mt-3 text-xs text-zinc-500">
-                  일반 비밀번호: 메일 로그인 비밀번호 / 앱 비밀번호: 2단계 인증 계정 전용 비밀번호
+                  메일 비밀번호: 메일 로그인 비밀번호 / 앱전용 비밀번호: 2단계 인증 계정 전용 비밀번호
                 </p>
               </>
             ) : (
@@ -817,7 +798,13 @@ export default function AdminMailAccountsPage() {
                       {(account.imap_host || '').toLowerCase().includes('pop3') ? 'POP3' : 'IMAP'} · {account.provider_type}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-1">
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[11px] ${
+                          account.account_scope === 'personal'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-zinc-100 text-zinc-600'
+                        }`}
+                      >
                         {account.account_scope === 'personal' ? '개인' : '회사 공용'}
                       </span>
                       {account.auth_type === 'oauth' ? (
@@ -927,10 +914,10 @@ export default function AdminMailAccountsPage() {
       <>
       <div className="grid grid-cols-1 gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-zinc-900">자동분류 설정</h3>
-          <p className="mt-1 text-xs text-zinc-500">조건에 맞는 메일을 자동으로 폴더 이동 또는 고객사 연결 처리합니다.</p>
+          <h3 className="text-sm font-semibold text-zinc-900">자동 정리 규칙</h3>
+          <p className="mt-1 text-xs text-zinc-500">조건에 맞는 메일을 자동으로 폴더 이동하거나 거래처에 연결합니다.</p>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-            <input className={inputClass} value={ruleNameInput} onChange={(e) => setRuleNameInput(e.target.value)} placeholder="자동분류 이름" />
+            <input className={inputClass} value={ruleNameInput} onChange={(e) => setRuleNameInput(e.target.value)} placeholder="규칙 이름" />
             <select className={inputClass} value={ruleMailAccountId} onChange={(e) => setRuleMailAccountId(e.target.value ? Number(e.target.value) : '')}>
               <option value="">적용 계정: 전체</option>
               {accounts.map((account) => (
@@ -938,31 +925,31 @@ export default function AdminMailAccountsPage() {
               ))}
             </select>
             <select className={inputClass} value={ruleMatchField} onChange={(e) => setRuleMatchField(e.target.value as any)}>
-              <option value="from_email">찾을 위치: 보낸 사람</option>
-              <option value="subject">찾을 위치: 제목</option>
-              <option value="snippet">찾을 위치: 본문</option>
-              <option value="to_email">찾을 위치: 받는 사람</option>
-              <option value="cc_email">찾을 위치: 참조자</option>
+              <option value="from_email">어디에서 찾을지: 보낸 사람</option>
+              <option value="subject">어디에서 찾을지: 제목</option>
+              <option value="snippet">어디에서 찾을지: 본문</option>
+              <option value="to_email">어디에서 찾을지: 받는 사람</option>
+              <option value="cc_email">어디에서 찾을지: 참조자</option>
             </select>
             <select className={inputClass} value={ruleMatchOperator} onChange={(e) => setRuleMatchOperator(e.target.value as any)}>
-              <option value="contains">찾는 방식: 포함</option>
-              <option value="equals">찾는 방식: 일치</option>
-              <option value="starts_with">찾는 방식: 시작</option>
-              <option value="ends_with">찾는 방식: 끝</option>
+              <option value="contains">찾는 방법: 포함</option>
+              <option value="equals">찾는 방법: 일치</option>
+              <option value="starts_with">찾는 방법: 시작</option>
+              <option value="ends_with">찾는 방법: 끝</option>
             </select>
             <input className={inputClass} value={ruleMatchValue} onChange={(e) => setRuleMatchValue(e.target.value)} placeholder="찾을 내용 (예: @naver.com, 세금계산서)" />
-            <input className={inputClass} value={rulePriority} onChange={(e) => setRulePriority(e.target.value)} placeholder="적용 순서 (기본 100, 숫자 작을수록 먼저)" />
+            <input className={inputClass} value={rulePriority} onChange={(e) => setRulePriority(e.target.value)} placeholder="적용 순서 (숫자가 작을수록 먼저)" />
             <select className={inputClass} value={ruleTargetFolderId} onChange={(e) => setRuleTargetFolderId(e.target.value ? Number(e.target.value) : '')}>
               <option value="">이동할 폴더: 없음</option>
               {folders.map((folder) => (
                 <option key={folder.id} value={folder.id}>{folder.name}</option>
               ))}
             </select>
-            <input className={inputClass} value={ruleTargetCompanyId} onChange={(e) => setRuleTargetCompanyId(e.target.value)} placeholder="연결할 고객사 ID (선택)" />
+            <input className={inputClass} value={ruleTargetCompanyId} onChange={(e) => setRuleTargetCompanyId(e.target.value)} placeholder="연결할 거래처 번호(선택)" />
           </div>
           <label className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
             <input type="checkbox" checked={ruleStopProcessing} onChange={(e) => setRuleStopProcessing(e.target.checked)} />
-            이 조건이 맞으면 다음 자동분류는 건너뜀
+            이 규칙이 맞으면 다음 규칙은 건너뜀
           </label>
           <div className="mt-2 flex justify-end">
             <button
@@ -971,7 +958,7 @@ export default function AdminMailAccountsPage() {
               disabled={ruleSubmitting}
               className="h-10 rounded-md bg-zinc-900 px-4 text-sm text-white hover:bg-zinc-800 disabled:opacity-60"
             >
-              자동분류 추가
+              규칙 추가
             </button>
           </div>
           <div className="mt-3 space-y-2">
@@ -992,30 +979,6 @@ export default function AdminMailAccountsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-zinc-900">최근 동기화 로그</h3>
-          <div className="mt-3 space-y-2">
-            {syncLogs.length === 0 ? <p className="text-sm text-zinc-500">로그 없음</p> : null}
-            {syncLogs.map((log) => (
-              <p key={log.id} className="text-xs text-zinc-600">
-                #{log.id} · {log.status} · {log.synced_count}건 · {formatKSTDateTimeAssumeUTC(log.started_at)}
-              </p>
-            ))}
-          </div>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-zinc-900">최근 액션 로그</h3>
-          <div className="mt-3 space-y-2">
-            {actionLogs.length === 0 ? <p className="text-sm text-zinc-500">로그 없음</p> : null}
-            {actionLogs.map((log) => (
-              <p key={log.id} className="text-xs text-zinc-600">
-                #{log.id} · {log.action} · {log.actor_type} · {formatKSTDateTimeAssumeUTC(log.created_at)}
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
       </>
       ) : null}
     </section>

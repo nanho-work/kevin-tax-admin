@@ -42,7 +42,9 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/create')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 등록' }
   if (pathname.startsWith('/client/client-management/list')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 목록' }
   if (pathname.startsWith('/client/client-management/templates')) return { parent: '클라이언트 관리', child: '샘플양식 업로드' }
+  if (pathname.startsWith('/client/client-management/consent-terms')) return { parent: '클라이언트 관리', child: '동의약관 관리' }
   if (pathname.startsWith('/client/client-management/mail-ops-dashboard')) return { parent: '클라이언트 관리', child: '메일운영대시보드' }
+  if (pathname.startsWith('/client/client-management/gpt')) return { parent: '클라이언트 관리', child: 'GPT' }
   if (pathname.startsWith('/client/client-management/blog/create')) return { parent: '클라이언트 관리', child: '블로그 작성' }
   if (pathname.startsWith('/client/client-management/blog/list')) return { parent: '클라이언트 관리', child: '블로그 목록' }
   if (pathname.startsWith('/client/client-management/blog/')) return { parent: '클라이언트 관리', child: '블로그 상세' }

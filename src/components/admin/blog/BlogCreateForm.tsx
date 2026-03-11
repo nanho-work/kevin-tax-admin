@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { toast } from 'react-hot-toast'
 
 // 서비스 & 타입 임포트
 import { blogService } from '@/services/admin/blogService'
@@ -86,7 +87,7 @@ export default function BlogCreateForm() {
       }
     } catch (err) {
       console.error('썸네일 업로드 실패:', err)
-      alert('썸네일 업로드에 실패했습니다.')
+      toast.error('썸네일 업로드에 실패했습니다.')
     } finally {
       setLoading(false)
       e.target.value = ''
@@ -97,11 +98,11 @@ export default function BlogCreateForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('제목을 입력하세요.')
+      toast.error('제목을 입력해 주세요.')
       return
     }
     if (!categoryId) {
-      alert('카테고리를 선택하세요.')
+      toast.error('카테고리를 선택해 주세요.')
       return
     }
 
@@ -123,7 +124,7 @@ export default function BlogCreateForm() {
     try {
       setLoading(true)
       const created = await blogService.createPost(payload)
-      alert('블로그 글이 생성되었습니다.')
+      toast.success('블로그 글이 생성되었습니다.')
       // 초기화
       setTitle('')
       setSubtitle('')
@@ -134,7 +135,7 @@ export default function BlogCreateForm() {
       setContent('')
     } catch (err: any) {
       console.error('생성 실패:', err)
-      alert(err?.message || '생성 중 오류가 발생했습니다.')
+      toast.error(err?.message || '생성 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }

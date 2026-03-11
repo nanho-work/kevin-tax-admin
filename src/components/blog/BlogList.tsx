@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'react-hot-toast';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
 
@@ -63,7 +64,7 @@ export default function BlogList() {
         await loadPosts(nextPage);
       }
     } catch (e: any) {
-      alert(e?.response?.data?.detail || e?.message || '삭제 중 오류가 발생했습니다.');
+      toast.error(e?.response?.data?.detail || e?.message || '삭제 중 오류가 발생했습니다.');
     } finally {
       setDeletingId(null);
     }

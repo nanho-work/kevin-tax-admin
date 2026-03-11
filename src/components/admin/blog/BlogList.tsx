@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'react-hot-toast';
 import { blogService } from '@/services/admin/blogService';
 import type { BlogPostResponse } from '@/types/blog';
 
@@ -33,7 +34,7 @@ export default function BlogList() {
         return prevPage;
       });
     } catch (e: any) {
-      alert(e?.message || '삭제 중 오류가 발생했습니다.');
+      toast.error(e?.message || '삭제 중 오류가 발생했습니다.');
     } finally {
       setDeletingId(null);
     }

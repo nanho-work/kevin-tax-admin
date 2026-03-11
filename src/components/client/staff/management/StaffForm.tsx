@@ -164,8 +164,15 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
             setSelectedDepartmentId('')
             setVisibleTeams(teams)
             onSuccess?.()
-        } catch (err) {
-            setMessage({ type: 'error', text: '직원 등록에 실패했습니다.' })
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail
+            const messageText =
+              typeof detail === 'string'
+                ? detail
+                : Array.isArray(detail)
+                  ? detail.map((item: any) => item?.msg).filter(Boolean).join(', ')
+                  : '직원 등록에 실패했습니다.'
+            setMessage({ type: 'error', text: messageText })
         } finally {
             setSubmitting(false)
         }
