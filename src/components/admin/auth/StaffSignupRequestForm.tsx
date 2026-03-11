@@ -205,6 +205,13 @@ export default function StaffSignupRequestForm() {
     () => validateInitialRemainingDays(form.initial_remaining_days),
     [form.initial_remaining_days]
   )
+  const resolvedConsentContent = useMemo(() => {
+    if (!consentTerm?.content) return ''
+    const companyName = companyLookup?.company_name?.trim() || '해당 회사'
+    return consentTerm.content
+      .replaceAll('${company_name}', companyName)
+      .replaceAll('{{company_name}}', companyName)
+  }, [companyLookup?.company_name, consentTerm?.content])
 
   const hasRequiredErrors = REQUIRED_FIELD_ORDER.some((field) => Boolean(requiredErrors[field]))
   const canSubmit =
@@ -642,7 +649,7 @@ export default function StaffSignupRequestForm() {
             <details className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
               <summary className="cursor-pointer text-xs font-medium text-gray-700">개인정보 수집 및 이용 약관 보기</summary>
               <div className="mt-2 max-h-36 overflow-y-auto text-xs leading-5 text-gray-600 whitespace-pre-wrap">
-                {consentTerm.content}
+                {resolvedConsentContent}
               </div>
             </details>
           ) : null}
