@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import {
   cancelApprovalDocument,
@@ -100,6 +101,29 @@ function getApproverStatusLabel(status: string) {
   return status
 }
 
+function getShareTypeLabel(shareType: string) {
+  return shareType === 'cc' ? '참조(CC)' : shareType === 'viewer' ? '열람자' : shareType
+}
+
+function getShareTargetTypeLabel(targetType: string) {
+  if (targetType === 'admin') return '직원'
+  if (targetType === 'team') return '팀'
+  if (targetType === 'client_account') return '클라이언트 계정'
+  return targetType
+}
+
+function getReceiptRecipientTypeLabel(type: string) {
+  return type === 'admin' ? '직원' : type === 'client_account' ? '클라이언트 계정' : type
+}
+
+function getReceiptSourceTypeLabel(type: string) {
+  if (type === 'writer') return '작성자'
+  if (type === 'approver') return '결재자'
+  if (type === 'cc') return '참조'
+  if (type === 'viewer') return '열람자'
+  return '시스템'
+}
+
 function isLeaveStatus(value: string): value is FilterableLeaveStatus {
   return value === 'pending' || value === 'approved' || value === 'rejected' || value === 'canceled'
 }
@@ -120,6 +144,7 @@ function canReview(item: UnifiedItem, viewMode: 'mine' | 'pending') {
 }
 
 export default function AdminMyDocumentsPage() {
+  const router = useRouter()
   const [viewMode, setViewMode] = useState<'mine' | 'pending'>('mine')
   const [status, setStatus] = useState<ApprovalDocumentStatus | ''>('')
   const [page, setPage] = useState(1)
@@ -407,7 +432,7 @@ export default function AdminMyDocumentsPage() {
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_220px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_220px_minmax(0,1fr)_auto]">
           <div className="inline-flex h-10 overflow-hidden rounded-md border border-zinc-300 bg-zinc-50">
             <button
               type="button"
@@ -433,6 +458,13 @@ export default function AdminMyDocumentsPage() {
             {viewMode === 'mine' ? <option value="canceled">취소</option> : null}
           </select>
           <div aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => router.push('/admin/staff/documents/new')}
+            className="h-10 rounded-md border border-sky-300 bg-sky-50 px-3 text-sm font-medium text-sky-700 hover:bg-sky-100"
+          >
+            문서 작성
+          </button>
         </div>
       </div>
 
@@ -680,6 +712,24 @@ export default function AdminMyDocumentsPage() {
                         <p className="text-xs text-zinc-500">승인본 스냅샷 키</p>
                         <p className="mt-1 break-all text-sm text-zinc-700">{detail.snapshot_file_key || '-'}</p>
                       </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">작성자</p>
+                        <p className="mt-1 text-sm text-zinc-700">{detail.writer_name || `#${detail.writer_admin_id}`}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">작성자 팀</p>
+                        <p className="mt-1 text-sm text-zinc-700">{detail.writer_team_name || (detail.writer_team_id ? `#${detail.writer_team_id}` : '-')}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">작성자 부서</p>
+                        <p className="mt-1 text-sm text-zinc-700">
+                          {detail.writer_department_name || (detail.writer_department_id ? `#${detail.writer_department_id}` : '-')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500">작성자 직급</p>
+                        <p className="mt-1 text-sm text-zinc-700">{detail.writer_role_name || (detail.writer_role_id ? `#${detail.writer_role_id}` : '-')}</p>
+                      </div>
                     </div>
                   </div>
 
@@ -729,6 +779,50 @@ export default function AdminMyDocumentsPage() {
                             {approver.comment ? <div className="mt-1 text-xs text-zinc-600">의견: {approver.comment}</div> : null}
                           </div>
                         ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                    <p className="text-xs text-zinc-500">참조/열람 공유</p>
+                    <div className="mt-3 space-y-2">
+                      {(detail.shares || []).length === 0 ? (
+                        <p className="text-sm text-zinc-500">설정된 공유 대상이 없습니다.</p>
+                      ) : (
+                        (detail.shares || []).map((share) => (
+                          <div key={share.id} className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-zinc-900">{getShareTypeLabel(share.share_type)}</span>
+                              <span className="text-xs text-zinc-500">{formatDateTime(share.created_at)}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-zinc-600">
+                              대상: {getShareTargetTypeLabel(share.target_type)} #{share.target_id}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                    <p className="text-xs text-zinc-500">읽음 이력</p>
+                    <div className="mt-3 space-y-2">
+                      {(detail.read_receipts || []).length === 0 ? (
+                        <p className="text-sm text-zinc-500">읽음 이력이 없습니다.</p>
+                      ) : (
+                        [...(detail.read_receipts || [])]
+                          .sort((a, b) => new Date(b.read_at).getTime() - new Date(a.read_at).getTime())
+                          .map((receipt) => (
+                            <div key={receipt.id} className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-zinc-900">
+                                  {receipt.recipient_name || `${getReceiptRecipientTypeLabel(receipt.recipient_type)} #${receipt.recipient_id}`}
+                                </span>
+                                <span className="text-xs text-zinc-500">{formatDateTime(receipt.read_at)}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-zinc-600">권한 출처: {getReceiptSourceTypeLabel(receipt.source_type)}</p>
+                            </div>
+                          ))
                       )}
                     </div>
                   </div>

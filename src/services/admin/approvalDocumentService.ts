@@ -7,6 +7,7 @@ import type {
   ApprovalDocument,
   ApprovalDocumentDetail,
   ApprovalDocumentListResponse,
+  ApprovalDocumentReadReceipt,
   ApprovalDocumentStatus,
   CreateApprovalDocumentPayload,
   ReviewApprovalDocumentPayload,
@@ -64,6 +65,11 @@ export async function fetchMyApprovalDocuments(params: {
 
 export async function fetchApprovalDocumentDetail(documentId: number): Promise<ApprovalDocumentDetail> {
   const res = await http.get<ApprovalDocumentDetail>(`${BASE}${documentId}`, authHeader())
+  return res.data
+}
+
+export async function fetchApprovalDocumentReadReceipts(documentId: number): Promise<ApprovalDocumentReadReceipt[]> {
+  const res = await http.get<ApprovalDocumentReadReceipt[]>(`${BASE}${documentId}/read-receipts`, authHeader())
   return res.data
 }
 

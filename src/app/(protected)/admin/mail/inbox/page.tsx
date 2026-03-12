@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Mail, MailOpen, Paperclip, RefreshCw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import UiButton from '@/components/common/UiButton'
 import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
@@ -38,11 +39,15 @@ import type {
   MailFolder,
   MailMessage,
   MailMessageDetail,
+  MailMessageListParams,
   MailReplyDraftResponse,
 } from '@/types/adminMail'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const BULK_READ_FETCH_SIZE = 100
+const BULK_UPDATE_CHUNK_SIZE = 30
+const PAGE_GROUP_SIZE = 5
 
 function parseEmails(raw: string): string[] {
   return raw
@@ -72,6 +77,7 @@ export default function AdminMailInboxPage() {
   const [linkCompanyId, setLinkCompanyId] = useState('')
   const [apiNotice, setApiNotice] = useState<string | null>(null)
   const [readUpdating, setReadUpdating] = useState(false)
+  const [bulkReadAllLoading, setBulkReadAllLoading] = useState(false)
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [reprocessing, setReprocessing] = useState(false)
   const [replyLoading, setReplyLoading] = useState(false)
@@ -98,6 +104,12 @@ export default function AdminMailInboxPage() {
   const totalPages = Math.max(1, Math.ceil(total / size))
   const currentStart = total === 0 ? 0 : (page - 1) * size + 1
   const currentEnd = total === 0 ? 0 : Math.min(page * size, total)
+  const pageGroupStart = Math.floor((page - 1) / PAGE_GROUP_SIZE) * PAGE_GROUP_SIZE + 1
+  const pageGroupEnd = Math.min(pageGroupStart + PAGE_GROUP_SIZE - 1, totalPages)
+  const visiblePages = Array.from(
+    { length: pageGroupEnd - pageGroupStart + 1 },
+    (_, index) => pageGroupStart + index
+  )
   const searchParams = useSearchParams()
   const listRequestSeqRef = useRef(0)
   const currentAccount =
@@ -153,25 +165,7 @@ export default function AdminMailInboxPage() {
     const requestSeq = ++listRequestSeqRef.current
     try {
       setLoading(true)
-      const requestMailboxType = includeTrash ? undefined : activeMailbox === 'inbox' ? 'inbox' : 'all'
-      const requestDirection = includeTrash ? undefined : activeMailbox === 'sent' ? 'outbound' : undefined
-      const requestFolderName =
-        includeTrash || activeMailbox === 'inbox' || activeMailbox === 'all' || activeMailbox === 'sent'
-          ? undefined
-          : activeMailbox === 'spam'
-            ? activeFolderName || '스팸'
-            : activeFolderName.trim() || undefined
-      const res = await listMailMessages({
-        page: targetPage,
-        size,
-        mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
-        mailbox_type: requestMailboxType,
-        direction: requestDirection,
-        is_read: readFilter === 'read' ? true : readFilter === 'unread' ? false : undefined,
-        folder_name: requestFolderName,
-        keyword: keyword.trim() || undefined,
-        include_trash: includeTrash,
-      })
+      const res = await listMailMessages(buildMessageListParams(targetPage, size))
       if (requestSeq !== listRequestSeqRef.current) return
       setMessages(res.items || [])
       setTotal(res.total || 0)
@@ -185,6 +179,39 @@ export default function AdminMailInboxPage() {
     } finally {
       if (requestSeq !== listRequestSeqRef.current) return
       setLoading(false)
+    }
+  }
+
+  const buildMessageListParams = (
+    targetPage: number,
+    targetSize: number,
+    forcedRead: boolean | undefined = undefined
+  ): MailMessageListParams => {
+    const requestMailboxType = includeTrash ? undefined : activeMailbox === 'inbox' ? 'inbox' : 'all'
+    const requestDirection = includeTrash ? undefined : activeMailbox === 'sent' ? 'outbound' : undefined
+    const requestFolderName =
+      includeTrash || activeMailbox === 'inbox' || activeMailbox === 'all' || activeMailbox === 'sent'
+        ? undefined
+        : activeMailbox === 'spam'
+          ? activeFolderName || '스팸'
+          : activeFolderName.trim() || undefined
+    return {
+      page: targetPage,
+      size: targetSize,
+      mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
+      mailbox_type: requestMailboxType,
+      direction: requestDirection,
+      is_read:
+        typeof forcedRead === 'boolean'
+          ? forcedRead
+          : readFilter === 'read'
+            ? true
+            : readFilter === 'unread'
+              ? false
+              : undefined,
+      folder_name: requestFolderName,
+      keyword: keyword.trim() || undefined,
+      include_trash: includeTrash,
     }
   }
 
@@ -656,6 +683,59 @@ export default function AdminMailInboxPage() {
     }
   }
 
+  const handleMarkAllUnreadAsRead = async () => {
+    if (includeTrash) {
+      toast.error('휴지통에서는 사용할 수 없습니다.')
+      return
+    }
+    if (readFilter === 'read') {
+      toast('이미 읽은 메일만 보고 있습니다.')
+      return
+    }
+    try {
+      setBulkReadAllLoading(true)
+      const unreadIds: number[] = []
+      let targetPage = 1
+      while (true) {
+        const res = await listMailMessages(buildMessageListParams(targetPage, BULK_READ_FETCH_SIZE, false))
+        const items = res.items || []
+        unreadIds.push(...items.map((item) => item.id))
+        if (items.length < BULK_READ_FETCH_SIZE) break
+        targetPage += 1
+      }
+      if (unreadIds.length === 0) {
+        toast('안읽은 메일이 없습니다.')
+        return
+      }
+      let successCount = 0
+      for (let i = 0; i < unreadIds.length; i += BULK_UPDATE_CHUNK_SIZE) {
+        const chunk = unreadIds.slice(i, i + BULK_UPDATE_CHUNK_SIZE)
+        const results = await Promise.allSettled(
+          chunk.map((id) => updateMailMessageRead(id, true, scopedMailAccountId))
+        )
+        successCount += results.filter((result) => result.status === 'fulfilled').length
+      }
+      if (successCount > 0) {
+        toast.success(`전체 읽음 처리 완료 (${successCount}건)`)
+      }
+      if (successCount < unreadIds.length) {
+        toast.error(`${unreadIds.length - successCount}건 처리 실패`)
+      }
+      setSelectedMessageIds([])
+      await loadMessages(page)
+      if (detail && unreadIds.includes(detail.id)) {
+        await loadMessageDetail(detail.id)
+      }
+      if (successCount > 0) {
+        emitMailCountsRefresh()
+      }
+    } catch (error) {
+      toast.error(getAdminMailErrorMessage(error))
+    } finally {
+      setBulkReadAllLoading(false)
+    }
+  }
+
   const handleBulkMoveToTrash = async () => {
     if (selectedMessageIds.length === 0) return
     const targetIds = [...selectedMessageIds]
@@ -957,6 +1037,14 @@ export default function AdminMailInboxPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={bulkReadAllLoading || readFilter === 'read'}
+                  onClick={() => void handleMarkAllUnreadAsRead()}
+                  className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                >
+                  {bulkReadAllLoading ? '전체 읽음 처리중' : '전체 읽음'}
+                </button>
+                <button
+                  type="button"
                   disabled={selectedMessageCount === 0}
                   onClick={() => void handleBulkUpdateRead(false)}
                   className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
@@ -1040,29 +1128,60 @@ export default function AdminMailInboxPage() {
             </tbody>
           </table>
 
-          <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-3 py-3">
+          <div className="grid grid-cols-1 items-center gap-2 border-t border-zinc-200 px-3 py-3 md:grid-cols-[1fr_auto_1fr]">
             <p className="text-xs text-zinc-500">
               총 {total.toLocaleString('ko-KR')}건 · 현재 {currentStart}-{currentEnd}
             </p>
-            <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-            >
-              이전
-            </button>
-            <span className="text-sm text-zinc-600">{page} / {totalPages}</span>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-            >
-              다음
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <UiButton
+                disabled={pageGroupStart <= 1}
+                onClick={() => setPage(Math.max(1, pageGroupStart - PAGE_GROUP_SIZE))}
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+              >
+                &laquo;
+              </UiButton>
+              <UiButton
+                disabled={page <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+              >
+                &lt;
+              </UiButton>
+              {visiblePages.map((pageNumber) => (
+                <UiButton
+                  key={pageNumber}
+                  onClick={() => setPage(pageNumber)}
+                  variant={pageNumber === page ? 'primary' : 'secondary'}
+                  size="sm"
+                  className="min-w-8 px-2.5"
+                >
+                  {pageNumber}
+                </UiButton>
+              ))}
+              <UiButton
+                disabled={page >= totalPages}
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+              >
+                &gt;
+              </UiButton>
+              <UiButton
+                disabled={pageGroupEnd >= totalPages}
+                onClick={() => setPage(Math.min(totalPages, pageGroupStart + PAGE_GROUP_SIZE))}
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+              >
+                &raquo;
+              </UiButton>
             </div>
+            <div aria-hidden="true" />
           </div>
         </div>
 

@@ -40,6 +40,7 @@ const staffManagementMenus = [
   { label: '직원가입신청', href: '/client/staff/signup-requests' },
   { label: '직원휴가관리', href: '/client/staff/leave' },
   { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
+  { label: '공지/업무지시', href: '/client/staff/work-posts' },
   { label: '권한/조직배치', href: '/client/staff/organization' },
   { label: '근태기록 조회', href: '/client/staff/attendance' },
   { label: '초기비밀번호 재설정/잠금해제', href: '/client/staff/account-security' },

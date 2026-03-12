@@ -72,6 +72,9 @@ export default function PortalNotificationBell({
       if (!rawTarget) {
         if (portalPrefix === '/client') {
           if (item.domain === 'approval' || item.domain === 'leave') return withSourceQuery('/client/staff/approvals/documents', item)
+          if (item.domain === 'notice' || item.domain === 'task' || item.source_type === 'work_post') {
+            return withSourceQuery('/client/staff/work-posts', item)
+          }
           if (item.domain === 'signup') return '/client/staff/signup-requests'
           if (item.domain === 'mail') return '/client/mail/inbox'
           return '/client/dashboard'
@@ -79,6 +82,9 @@ export default function PortalNotificationBell({
         if (portalPrefix === '/admin') {
           if (item.domain === 'approval') return withSourceQuery('/admin/staff/documents', item)
           if (item.domain === 'leave') return withSourceQuery('/admin/staff/documents', item)
+          if (item.domain === 'notice' || item.domain === 'task' || item.source_type === 'work_post') {
+            return withSourceQuery('/admin/staff/work-posts', item)
+          }
           if (item.domain === 'mail') return '/admin/mail/inbox'
           return '/admin/dashboard'
         }
@@ -113,6 +119,19 @@ export default function PortalNotificationBell({
       const approvalAdminMatch = rawTarget.match(/^\/admin\/approvals\/documents\/(\d+)\/?$/)
       if (approvalAdminMatch) {
         return withSourceQuery('/admin/staff/documents', item, approvalAdminMatch[1], 'approval_document')
+      }
+      const workPostRawMatch = rawTarget.match(/^\/work-posts\/(\d+)\/?$/)
+      if (workPostRawMatch) {
+        if (portalPrefix === '/client') return withSourceQuery('/client/staff/work-posts', item, workPostRawMatch[1], 'work_post')
+        if (portalPrefix === '/admin') return withSourceQuery('/admin/staff/work-posts', item, workPostRawMatch[1], 'work_post')
+      }
+      const workPostClientMatch = rawTarget.match(/^\/client\/work-posts\/(\d+)\/?$/)
+      if (workPostClientMatch) {
+        return withSourceQuery('/client/staff/work-posts', item, workPostClientMatch[1], 'work_post')
+      }
+      const workPostAdminMatch = rawTarget.match(/^\/admin\/work-posts\/(\d+)\/?$/)
+      if (workPostAdminMatch) {
+        return withSourceQuery('/admin/staff/work-posts', item, workPostAdminMatch[1], 'work_post')
       }
 
       if (rawTarget.startsWith('/client/') || rawTarget.startsWith('/admin/')) {

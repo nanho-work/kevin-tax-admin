@@ -39,11 +39,10 @@ const menuSections: MenuSection[] = [
     key: 'leave',
     label: '내부업무',
     children: [
-      { label: '내휴가관리', href: '/admin/staff/my-leave' },
+      { label: '휴가/근태관리', href: '/admin/staff/attendance' },
       { label: '프로필', href: '/admin/staff/profile' },
-      { label: '내 결재문서', href: '/admin/staff/documents' },
-      { label: '문서작성', href: '/admin/staff/documents/new' },
-      { label: '출퇴근 관리', href: '/admin/staff/attendance' },
+      { label: '전자문서', href: '/admin/staff/documents' },
+      { label: '공지/업무지시', href: '/admin/staff/work-posts' },
     ],
   },
   {

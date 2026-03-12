@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import UiButton from '@/components/common/UiButton'
 import {
   cancelAnnualLeaveRequest,
   createAnnualLeaveRequest,
@@ -377,13 +378,14 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
             ) : null}
           </div>
           <div className="xl:col-span-5 flex justify-end">
-            <button
+            <UiButton
               type="submit"
+              variant="primary"
+              size="md"
               disabled={!canSubmit || submitting}
-              className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
             >
               {submitting ? '신청 중...' : '휴가 신청'}
-            </button>
+            </UiButton>
           </div>
         </form>
       </div>
@@ -480,21 +482,21 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
                       </td>
                       <td className="px-3 py-3 text-center">
                         {item.status === 'pending' ? (
-                          <button
-                            type="button"
+                          <UiButton
                             onClick={() => handleCancel(item.id)}
-                            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                            variant="secondary"
+                            size="xs"
                           >
                             신청 취소
-                          </button>
+                          </UiButton>
                         ) : item.status === 'approved' && (item.cancel_status === 'none' || item.cancel_status === 'rejected') ? (
-                          <button
-                            type="button"
+                          <UiButton
                             onClick={() => handleOpenCancelRequest(item)}
-                            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                            variant="secondary"
+                            size="xs"
                           >
                             {item.cancel_status === 'rejected' ? '취소 재요청' : '승인취소 요청'}
-                          </button>
+                          </UiButton>
                         ) : (
                           <span className="text-zinc-400">-</span>
                         )}
@@ -508,25 +510,25 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-2">
-          <button
-            type="button"
+          <UiButton
             disabled={page <= 1}
             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
+            variant="secondary"
+            size="sm"
           >
             이전
-          </button>
+          </UiButton>
           <span className="text-sm text-zinc-600">
             {page} / {totalPages}
           </span>
-          <button
-            type="button"
+          <UiButton
             disabled={page >= totalPages}
             onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-            className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
+            variant="secondary"
+            size="sm"
           >
             다음
-          </button>
+          </UiButton>
         </div>
       </div>
 
