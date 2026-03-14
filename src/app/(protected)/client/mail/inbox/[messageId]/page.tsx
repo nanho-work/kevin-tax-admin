@@ -387,9 +387,27 @@ export default function ClientMailMessageDetailPage() {
     if (!detail) return
     try {
       setAttachmentActionLoadingId(attachmentId)
-      await importMailAttachments(detail.id, { attachment_ids: [attachmentId] })
-      await refreshAttachmentById(attachmentId)
-      toast.success('첨부파일을 가져왔습니다.')
+      const importResult = await importMailAttachments(detail.id, { attachment_ids: [attachmentId] })
+      const itemResult = importResult.results?.find((row) => row.attachment_id === attachmentId)
+      const refreshed = await refreshAttachmentById(attachmentId)
+      const isDownloaded = refreshed?.download_status === 'downloaded'
+
+      if (isDownloaded) {
+        toast.success('첨부파일을 가져왔습니다.')
+        return
+      }
+
+      if (itemResult?.status === 'skipped') {
+        toast.error(itemResult.detail || '첨부파일을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        return
+      }
+
+      if (itemResult?.status === 'failed') {
+        toast.error(itemResult.detail || '첨부파일 가져오기에 실패했습니다.')
+        return
+      }
+
+      toast.error('첨부파일 가져오기가 완료되지 않았습니다. 다시 시도해 주세요.')
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
