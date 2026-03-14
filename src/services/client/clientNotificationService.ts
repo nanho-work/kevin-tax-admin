@@ -67,13 +67,13 @@ export async function listClientNotifications(params?: {
   const page = params?.page ?? 1
   const limit = params?.limit ?? 20
   const offset = Math.max(0, (page - 1) * limit)
+  const status = (params?.status || '').toLowerCase()
+  const unreadOnly = status === 'unread' ? true : status === 'read' ? false : undefined
   const res = await clientHttp.get(BASE, {
     params: {
-      page,
       limit,
       offset,
-      status: params?.status,
-      receipt_status: params?.status,
+      unread_only: unreadOnly,
     },
   })
   return normalizeNotificationListResponse(res.data)

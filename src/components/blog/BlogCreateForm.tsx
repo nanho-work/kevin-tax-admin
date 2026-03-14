@@ -12,7 +12,7 @@ import type {
   BlogPostCreate,
 } from '@/types/blog'
 
-import TiptapEditor from '../editor/TiptapEditor'
+import RichTextEditor from '../editor/RichTextEditor'
 
 // 간단 슬러그 변환 (제목 → slug). 백엔드가 자동 생성한다면 빈 문자열로 넘겨도 됨.
 const slugify = (s: string) =>
@@ -240,7 +240,7 @@ export default function BlogCreateForm() {
           <h2 className="text-sm font-semibold text-zinc-900">본문 작성</h2>
           <span className="text-xs text-zinc-500">붙여넣기 이미지 자동 업로드 지원</span>
         </div>
-        <TiptapEditor value={content} onChange={setContent} />
+        <RichTextEditor value={content} onChange={setContent} preset="blog" />
       </section>
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4">

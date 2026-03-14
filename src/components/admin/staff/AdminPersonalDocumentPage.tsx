@@ -206,7 +206,6 @@ export default function AdminPersonalDocumentPage() {
   const [showSensitiveRevealPassword, setShowSensitiveRevealPassword] = useState(false)
   const [revealingSensitive, setRevealingSensitive] = useState(false)
   const [activeTab, setActiveTab] = useState<ProfileTab>('basic')
-  const [certificateFiles, setCertificateFiles] = useState<File[]>([])
   const [sensitiveForm, setSensitiveForm] = useState({
     resident_number: '',
     bank_name: '',
@@ -708,10 +707,10 @@ export default function AdminPersonalDocumentPage() {
     return applyCompanyNameTemplate(payrollConsentTerm.content, sessionCompanyName)
   }, [payrollConsentTerm?.content, sessionCompanyName])
 
-  const handleCertificateFileSelect = (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    setCertificateFiles((prev) => [...prev, ...Array.from(files)])
-  }
+  const certificateDocuments = useMemo(
+    () => documents.filter((doc) => doc.doc_type_code !== 'id_card' && doc.doc_type_code !== 'bank_account'),
+    [documents]
+  )
 
   return (
     <section className="space-y-4">
@@ -1258,12 +1257,15 @@ export default function AdminPersonalDocumentPage() {
                     multiple
                     accept=".pdf,image/*"
                     className={inputClass}
+                    disabled
                     onChange={(e) => {
-                      handleCertificateFileSelect(e.target.files)
                       e.currentTarget.value = ''
                     }}
                   />
                 </label>
+                <p className="mt-2 text-xs text-zinc-500">
+                  서버 기준으로 자격증 전용 업로드 API가 아직 없어, 현재는 조회 전용으로 표시됩니다.
+                </p>
               </div>
 
               <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
@@ -1271,33 +1273,25 @@ export default function AdminPersonalDocumentPage() {
                   <thead className="bg-zinc-50 text-xs text-zinc-500">
                     <tr>
                       <th className="px-3 py-3 text-left">파일명</th>
-                      <th className="px-3 py-3 text-center">형식</th>
-                      <th className="px-3 py-3 text-center">크기</th>
-                      <th className="px-3 py-3 text-center">작업</th>
+                      <th className="px-3 py-3 text-center">문서유형</th>
+                      <th className="px-3 py-3 text-center">업로드일시</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
-                    {certificateFiles.length === 0 ? (
+                    {loading ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-10 text-center text-zinc-500">등록된 자격증 파일이 없습니다.</td>
+                        <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">조회 중...</td>
+                      </tr>
+                    ) : certificateDocuments.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-10 text-center text-zinc-500">등록된 자격증 문서가 없습니다.</td>
                       </tr>
                     ) : (
-                      certificateFiles.map((file) => (
-                        <tr key={`${file.name}-${file.lastModified}`}>
-                          <td className="px-3 py-3 text-zinc-700">{file.name}</td>
-                          <td className="px-3 py-3 text-center text-zinc-700">{file.type || '-'}</td>
-                          <td className="px-3 py-3 text-center text-zinc-700">{(file.size / 1024).toFixed(0)}KB</td>
-                          <td className="px-3 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCertificateFiles((prev) => prev.filter((item) => item !== file))
-                              }}
-                              className="inline-flex h-8 items-center rounded-md border border-rose-300 bg-rose-50 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
-                            >
-                              제거
-                            </button>
-                          </td>
+                      certificateDocuments.map((doc) => (
+                        <tr key={doc.id}>
+                          <td className="px-3 py-3 text-zinc-700">{doc.file_name}</td>
+                          <td className="px-3 py-3 text-center text-zinc-700">{doc.doc_type_code}</td>
+                          <td className="px-3 py-3 text-center text-zinc-700">{formatDateTime(doc.uploaded_at)}</td>
                         </tr>
                       ))
                     )}

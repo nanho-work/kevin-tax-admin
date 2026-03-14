@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { toast } from 'react-hot-toast'
+import RichTextEditor from '@/components/editor/RichTextEditor'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { fetchCompanyTaxList } from '@/services/admin/company'
 import { formatKSTDateTime } from '@/utils/dateTime'
+import { htmlToPlainText } from '@/utils/htmlPlainText'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import {
   deleteMailDraft,
@@ -14,6 +16,7 @@ import {
   listMailDrafts,
   saveMailDraft,
   sendMail,
+  uploadMailComposeAttachment,
 } from '@/services/admin/mailService'
 import type { MailAccount, MailDraft } from '@/types/adminMail'
 
@@ -63,7 +66,7 @@ export default function AdminMailComposePage() {
   const [toInput, setToInput] = useState('')
   const [ccInput, setCcInput] = useState('')
   const [subject, setSubject] = useState('')
-  const [bodyText, setBodyText] = useState('')
+  const [bodyHtml, setBodyHtml] = useState('')
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([])
   const [isDraggingAttachment, setIsDraggingAttachment] = useState(false)
   const [isAddressBookOpen, setIsAddressBookOpen] = useState(false)
@@ -255,20 +258,30 @@ export default function AdminMailComposePage() {
       toast.error('제목을 입력해 주세요.')
       return
     }
-    if (attachmentFiles.length > 0) {
-      toast.error('현재 메일 발송 첨부 업로드 API 연동 전입니다. 첨부 기능은 다음 패치에서 연결됩니다.')
-      return
-    }
-
     try {
       setSubmitting(true)
+      const normalizedBodyHtml = bodyHtml.trim()
+      const normalizedBodyText = htmlToPlainText(normalizedBodyHtml)
+      const uploadedAttachmentS3Keys =
+        attachmentFiles.length > 0
+          ? (
+              await Promise.all(
+                attachmentFiles.map((file) => uploadMailComposeAttachment(file))
+              )
+            )
+              .map((item) => item.s3_key)
+              .filter((value) => Boolean(value))
+          : []
+
       const res = await sendMail({
         mail_account_id: mailAccountId,
         company_id: typeof selectedCompanyId === 'number' ? selectedCompanyId : undefined,
         to_emails: resolvedToEmails,
         cc_emails: resolvedCcEmails,
         subject: subject.trim(),
-        body_text: bodyText.trim() || undefined,
+        body_text: normalizedBodyText || undefined,
+        body_html: normalizedBodyHtml || undefined,
+        attachment_s3_keys: uploadedAttachmentS3Keys.length > 0 ? uploadedAttachmentS3Keys : undefined,
         attachment_mode: 'attachment',
         queue_on_fail: true,
       })
@@ -285,7 +298,7 @@ export default function AdminMailComposePage() {
       setCcInput('')
       setSelectedCompanyId('')
       setSubject('')
-      setBodyText('')
+      setBodyHtml('')
       setAttachmentFiles([])
       if (selectedDraftId) {
         try {
@@ -310,6 +323,8 @@ export default function AdminMailComposePage() {
     if (!resolvedCcEmails) return
     try {
       setDraftSaving(true)
+      const normalizedBodyHtml = bodyHtml.trim()
+      const normalizedBodyText = htmlToPlainText(normalizedBodyHtml)
       const res = await saveMailDraft({
         draft_id: selectedDraftId ?? undefined,
         mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
@@ -317,7 +332,8 @@ export default function AdminMailComposePage() {
         to_emails: resolvedToEmails,
         cc_emails: resolvedCcEmails,
         subject: subject.trim() || undefined,
-        body_text: bodyText.trim() || undefined,
+        body_text: normalizedBodyText || undefined,
+        body_html: normalizedBodyHtml || undefined,
       })
       setSelectedDraftId(res.id)
       toast.success('임시보관 저장 완료')
@@ -341,7 +357,7 @@ export default function AdminMailComposePage() {
       setToInput('')
       setCcInput('')
       setSubject(draft.subject || '')
-      setBodyText(draft.body_text || '')
+      setBodyHtml(draft.body_html || draft.body_text || '')
       toast.success('임시보관 메일을 불러왔습니다.')
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
@@ -516,42 +532,42 @@ export default function AdminMailComposePage() {
                 className="hidden"
                 onChange={handleAttachmentFileChange}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-stretch gap-2">
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setIsDraggingAttachment(true)
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault()
+                    setIsDraggingAttachment(false)
+                  }}
+                  onDrop={handleAttachmentDrop}
+                  className={`flex min-h-9 min-w-[240px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition ${
+                    isDraggingAttachment
+                      ? 'border-zinc-500 bg-zinc-50 text-zinc-800'
+                      : 'border-zinc-300 bg-white text-zinc-500'
+                  }`}
+                >
+                  파일 드래그
+                </div>
                 <button
                   type="button"
                   onClick={() => attachmentInputRef.current?.click()}
                   className="h-9 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50"
                 >
-                  파일 첨부
+                  파일첨부
                 </button>
                 <button
                   type="button"
                   className="h-9 rounded-md border border-zinc-200 bg-zinc-100 px-3 text-sm text-zinc-500"
                   onClick={() => toast('내 파일함 연동은 다음 패치에서 연결됩니다.')}
                 >
-                  내 파일함
+                  내파일함
                 </button>
                 {attachmentFiles.length > 0 ? (
-                  <span className="text-xs text-zinc-600">{attachmentFiles.length}개 선택됨</span>
+                  <span className="flex h-9 items-center text-xs text-zinc-600">{attachmentFiles.length}개 선택됨</span>
                 ) : null}
-              </div>
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  setIsDraggingAttachment(true)
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  setIsDraggingAttachment(false)
-                }}
-                onDrop={handleAttachmentDrop}
-                className={`rounded-md border border-dashed px-3 py-3 text-xs transition ${
-                  isDraggingAttachment
-                    ? 'border-zinc-500 bg-zinc-50 text-zinc-800'
-                    : 'border-zinc-300 bg-white text-zinc-500'
-                }`}
-              >
-                파일을 여기로 드래그하거나, `파일 첨부` 버튼으로 선택하세요.
               </div>
               {attachmentFiles.length > 0 ? (
                 <ul className="space-y-1">
@@ -580,13 +596,9 @@ export default function AdminMailComposePage() {
         </div>
 
         <div className="flex-1 px-4 py-3">
-          <textarea
-            rows={18}
-            value={bodyText}
-            onChange={(e) => setBodyText(e.target.value)}
-            className="h-full min-h-[360px] w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-            placeholder="메일 본문을 입력하세요."
-          />
+          <div className="min-h-[360px] overflow-hidden rounded-md bg-white">
+            <RichTextEditor value={bodyHtml} onChange={setBodyHtml} preset="mail" />
+          </div>
         </div>
 
         <div className="border-t border-zinc-200 bg-zinc-50/70 px-4 py-3">

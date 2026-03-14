@@ -1,5 +1,5 @@
-import ClientAnnualLeaveManagementSection from '@/components/client/staff/leave/ClientAnnualLeaveManagementSection'
+import ClientStaffAttendanceLeavePage from '@/components/client/staff/ClientStaffAttendanceLeavePage'
 
 export default function ClientStaffLeavePage() {
-  return <ClientAnnualLeaveManagementSection />
+  return <ClientStaffAttendanceLeavePage />
 }

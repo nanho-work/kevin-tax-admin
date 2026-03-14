@@ -123,9 +123,17 @@ interface TiptapEditorProps {
   /** ⛳️ 하위호환: 기존 content prop도 허용 (value가 우선) */
   content?: string;
   onChange?: (value: string) => void;
+  placeholder?: string;
+  enableImageUpload?: boolean;
 }
 
-export default function TiptapEditor({ value, content, onChange }: TiptapEditorProps) {
+export default function TiptapEditor({
+  value,
+  content,
+  onChange,
+  placeholder = '내용을 입력하세요...',
+  enableImageUpload = true,
+}: TiptapEditorProps) {
   // value가 있으면 우선 사용, 없으면 content, 둘 다 없으면 빈 문자열
   const inputValue = value ?? content ?? '';
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -145,7 +153,7 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
         allowBase64: true,
       }),
       Placeholder.configure({
-        placeholder: '내용을 입력하세요...',
+        placeholder,
       }),
       TextAlign.configure({
         types: ['heading', 'paragraph'],
@@ -170,6 +178,8 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
         const event = evt as ClipboardEvent;
         const cd = event.clipboardData;
         if (!cd) return false;
+
+        if (!enableImageUpload) return false;
 
         const imageItems = Array.from(cd.items || []).filter((item) => item.type.startsWith('image/'));
         if (imageItems.length > 0) {
@@ -234,24 +244,27 @@ export default function TiptapEditor({ value, content, onChange }: TiptapEditorP
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
         <Toolbar
           editor={editor}
-          onImageUpload={() => fileInputRef.current?.click()}
+          onImageUpload={enableImageUpload ? () => fileInputRef.current?.click() : undefined}
+          showImageButton={enableImageUpload}
         />
       </div>
 
       {/* Editor content */}
       <EditorContent editor={editor} className="min-h-[200px] p-3" />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={async (event) => {
-          const file = event.target.files?.[0]
-          if (!file) return
-          await handleImageFileSelect(file)
-          event.target.value = ''
-        }}
-      />
+      {enableImageUpload ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (event) => {
+            const file = event.target.files?.[0]
+            if (!file) return
+            await handleImageFileSelect(file)
+            event.target.value = ''
+          }}
+        />
+      ) : null}
     </div>
   );
 }

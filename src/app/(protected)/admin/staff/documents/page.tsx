@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import DOMPurify from 'isomorphic-dompurify'
 import { toast } from 'react-hot-toast'
 import {
   cancelApprovalDocument,
@@ -63,6 +64,14 @@ function formatDate(value?: string | null) {
 
 function formatDateTime(value?: string | null) {
   return formatKSTDateTimeAssumeUTC(value)
+}
+
+function toSafeHtmlContent(content?: string | null) {
+  const raw = String(content || '').trim()
+  if (!raw) return '-'
+  const hasTag = /<[^>]+>/.test(raw)
+  const normalized = hasTag ? raw : raw.replace(/\n/g, '<br />')
+  return DOMPurify.sanitize(normalized)
 }
 
 function getStatusMeta(status: UnifiedStatus) {
@@ -735,7 +744,10 @@ export default function AdminMyDocumentsPage() {
 
                   <div className="rounded-lg border border-zinc-200 bg-white p-4">
                     <p className="text-xs text-zinc-500">본문</p>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">{detail.content || '-'}</div>
+                    <div
+                      className="mt-2 text-sm text-zinc-800"
+                      dangerouslySetInnerHTML={{ __html: toSafeHtmlContent(detail.content) }}
+                    />
                     {detail.rejected_reason ? (
                       <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                         반려 사유: {detail.rejected_reason}

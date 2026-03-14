@@ -39,11 +39,11 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/staff/register')) return { parent: '내부업무', child: '직원등록' }
   if (pathname.startsWith('/client/staff/signup-requests')) return { parent: '내부업무', child: '직원가입신청' }
   if (pathname.startsWith('/client/staff/profile-status')) return { parent: '내부업무', child: '직원정보수정/재직상태' }
-  if (pathname.startsWith('/client/staff/leave')) return { parent: '내부업무', child: '직원휴가관리' }
+  if (pathname.startsWith('/client/staff/leave')) return { parent: '내부업무', child: '직원 근태/휴가 관리' }
   if (pathname.startsWith('/client/staff/approvals/documents')) return { parent: '내부업무', child: '결재 문서 승인' }
   if (pathname.startsWith('/client/staff/approvals')) return { parent: '내부업무', child: '결재 문서 승인' }
   if (pathname.startsWith('/client/staff/organization')) return { parent: '내부업무', child: '권한/조직배치' }
-  if (pathname.startsWith('/client/staff/attendance')) return { parent: '내부업무', child: '근태기록 조회' }
+  if (pathname.startsWith('/client/staff/attendance')) return { parent: '내부업무', child: '직원 근태/휴가 관리' }
   if (pathname.startsWith('/client/staff/account-security')) return { parent: '내부업무', child: '초기비밀번호 재설정/잠금해제' }
   if (pathname.startsWith('/client/staff')) return { parent: '내부업무', child: '직원목록/검색' }
   if (pathname.startsWith('/client/client-management/company-create')) return { parent: '클라이언트 관리', child: '클라이언트(업체) 등록' }

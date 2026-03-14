@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
-import { getAdminAccessToken } from '@/services/http'
+import RichTextEditor from '@/components/editor/RichTextEditor'
+import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
 import {
   createApprovalDocument,
   getApprovalDocumentErrorMessage,
@@ -62,8 +63,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || ''
 function createEmptyApproverRow(seed = Date.now() + Math.floor(Math.random() * 10000)): ApproverRow {
   return {
     id: seed,
-    approver_title: '직급',
-    approver_name: '이름',
+    approver_title: '',
+    approver_name: '',
     approver_type: 'client',
     approver_id: '',
     rank_order: DEFAULT_HIGH_RANK_ORDER,
@@ -105,6 +106,19 @@ function sortApprovers(rows: ApproverRow[]): ApproverRow[] {
   return copied
 }
 
+async function getWithFallback(urls: string[], headers: Record<string, string>) {
+  let lastError: unknown = null
+  for (const url of urls) {
+    try {
+      const res = await axios.get(url, { headers, params: { offset: 0, limit: 300, page: 1 } })
+      return res.data
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError
+}
+
 export default function AdminDocumentCreatePage() {
   const router = useRouter()
   const { session } = useAdminSessionContext()
@@ -128,37 +142,105 @@ export default function AdminDocumentCreatePage() {
   useEffect(() => {
     let mounted = true
     const loadApproverSources = async () => {
-      const token = getAdminAccessToken()
-      if (!token || !API_BASE) return
-      const headers = { Authorization: `Bearer ${token}` }
+      const adminToken = getAdminAccessToken()
+      const clientToken = getClientAccessToken()
+      if ((!adminToken && !clientToken) || !API_BASE) return
 
       setLoadingApproverSources(true)
       try {
         const [staffRes, teamRes, clientAccountRes] = await Promise.allSettled([
-          axios.get(`${API_BASE}/admin/staffs`, {
-            headers,
-            params: { offset: 0, limit: 300 },
-          }),
-          axios.get(`${API_BASE}/admin/teams`, {
-            headers,
-            params: { offset: 0, limit: 300 },
-          }),
-          axios.get(`${API_BASE}/admin/client-accounts`, {
-            headers,
-            params: { is_active: true, page: 1, limit: 300 },
-          }),
+          (async () => {
+            if (adminToken) {
+              return getWithFallback(
+                [
+                  `${API_BASE}/admin/staffs/`,
+                  `${API_BASE}/admin/staffs`,
+                ],
+                { Authorization: `Bearer ${adminToken}` }
+              )
+            }
+            return getWithFallback(
+              [
+                `${API_BASE}/client/staffs/`,
+                `${API_BASE}/client/staffs`,
+              ],
+              { Authorization: `Bearer ${clientToken}` }
+            )
+          })(),
+          (async () => {
+            if (adminToken) {
+              return getWithFallback(
+                [
+                  `${API_BASE}/admin/teams/`,
+                  `${API_BASE}/admin/teams`,
+                ],
+                { Authorization: `Bearer ${adminToken}` }
+              )
+            }
+            return getWithFallback(
+              [
+                `${API_BASE}/client/teams/`,
+                `${API_BASE}/client/teams`,
+              ],
+              { Authorization: `Bearer ${clientToken}` }
+            )
+          })(),
+          (async () => {
+            const attempts: Array<Promise<unknown>> = []
+            if (adminToken) {
+              attempts.push(
+                getWithFallback(
+                  [
+                    `${API_BASE}/admin/client-accounts/`,
+                    `${API_BASE}/admin/client-accounts`,
+                  ],
+                  { Authorization: `Bearer ${adminToken}` }
+                )
+              )
+            }
+            if (clientToken) {
+              attempts.push(
+                getWithFallback(
+                  [
+                    `${API_BASE}/client/client-accounts/`,
+                    `${API_BASE}/client/client-accounts`,
+                  ],
+                  { Authorization: `Bearer ${clientToken}` }
+                )
+              )
+            }
+            if (attempts.length === 0) {
+              throw new Error('No token for client account list')
+            }
+            for (const attempt of attempts) {
+              try {
+                return await attempt
+              } catch {
+                continue
+              }
+            }
+            throw new Error('Failed to load client accounts')
+          })(),
         ])
 
         if (!mounted) return
 
         if (staffRes.status === 'fulfilled') {
-          setStaffs(normalizeList<AdminOut>(staffRes.value.data))
+          const staffRows = normalizeList<AdminOut>(staffRes.value)
+          // 서버 라우트 매칭 실패 시에도 최소 1명(본인)은 선택 가능하도록 보정
+          if (staffRows.length === 0 && session) {
+            setStaffs([session as AdminOut])
+          } else {
+            setStaffs(staffRows)
+          }
+        } else if (session) {
+          setStaffs([session as AdminOut])
         }
         if (teamRes.status === 'fulfilled') {
-          setTeams(normalizeList<TeamOut>(teamRes.value.data))
+          setTeams(normalizeList<TeamOut>(teamRes.value))
         }
         if (clientAccountRes.status === 'fulfilled') {
-          setClientAccounts(normalizeList<ClientAccountOut>(clientAccountRes.value.data))
+          setClientAccounts(normalizeList<ClientAccountOut>(clientAccountRes.value))
         }
       } finally {
         if (mounted) setLoadingApproverSources(false)
@@ -168,7 +250,7 @@ export default function AdminDocumentCreatePage() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [session])
 
   const teamOptionMap = useMemo(() => new Map(teams.map((team) => [team.id, team.name])), [teams])
   const staffOptionMap = useMemo(() => {
@@ -419,7 +501,22 @@ export default function AdminDocumentCreatePage() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-zinc-900">결재선 설정</p>
+            <p className="mt-1 text-xs text-zinc-500">회사 &gt; 클라이언트 &gt; 부서 &gt; 팀 &gt; 이름 리스트에서 선택합니다.</p>
+          </div>
+          <button
+            type="button"
+            onClick={addApproverRow}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100"
+          >
+            결재선 추가
+          </button>
+        </div>
+
         <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_minmax(0,1fr)_auto]">
             <div className="rounded-md border border-zinc-200 bg-white p-3">
               <p className="text-sm font-semibold text-zinc-900">기안 정보</p>
@@ -440,57 +537,58 @@ export default function AdminDocumentCreatePage() {
             </div>
 
             <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white md:justify-self-end">
-              <table className="w-auto border-collapse text-center">
+              <table className="w-auto table-fixed border-collapse text-center">
                 <tbody>
                   <tr>
                     <th
                       rowSpan={2}
-                      className="w-10 border-r border-zinc-200 bg-zinc-50 px-1 py-2 text-[11px] font-semibold text-zinc-700"
+                      className="w-10 border-r border-zinc-200 bg-zinc-50 p-0 text-[11px] font-semibold text-zinc-700 align-middle"
                     >
-                      <span style={{ writingMode: 'vertical-rl', textOrientation: 'upright' }}>승인</span>
+                      <span style={{ writingMode: 'vertical-rl', textOrientation: 'upright', lineHeight: 1.1 }}>결 재</span>
                     </th>
                     {approvers.map((row) => (
-                      <td key={`title-${row.id}`} className="min-w-20 border-b border-zinc-200 px-1.5 py-2">
-                        <div className="flex flex-col items-center gap-1">
+                      <td key={`title-${row.id}`} className="min-w-24 border-b border-zinc-200 p-0">
+                        <div className="flex h-8 items-center justify-center px-1.5">
                           <span className="text-sm font-medium text-zinc-900">{row.approver_title}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectingApproverId(row.id)
-                              setApproverKeyword('')
-                            }}
-                            className="rounded border border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                          >
-                            선택
-                          </button>
                         </div>
                       </td>
                     ))}
                   </tr>
                   <tr>
                     {approvers.map((row) => (
-                      <td key={`name-${row.id}`} className="min-w-20 px-1.5 py-3 text-sm text-zinc-400">
-                        {row.approver_name}
+                      <td key={`name-${row.id}`} className="min-w-24 p-0 align-middle text-sm text-zinc-400">
+                        <div className="flex h-12 items-center justify-center px-1.5">
+                          {row.approver_id ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectingApproverId(row.id)
+                                setApproverKeyword('')
+                              }}
+                              className="text-sm text-zinc-400 hover:text-zinc-600"
+                            >
+                              {row.approver_name}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectingApproverId(row.id)
+                                setApproverKeyword('')
+                              }}
+                              aria-label="결재자 선택"
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-300 text-base leading-none text-zinc-500 hover:bg-zinc-100"
+                            >
+                              +
+                            </button>
+                          )}
+                        </div>
                       </td>
                     ))}
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-zinc-900">결재선 설정</p>
-              <p className="mt-1 text-xs text-zinc-500">회사 &gt; 클라이언트 &gt; 부서 &gt; 팀 &gt; 이름 리스트에서 선택합니다.</p>
-            </div>
-            <button
-              type="button"
-              onClick={addApproverRow}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100"
-            >
-              결재선 추가
-            </button>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
@@ -736,13 +834,7 @@ export default function AdminDocumentCreatePage() {
 
         <div className="mt-4">
           <label className="mb-1 block text-xs text-zinc-600">본문</label>
-          <textarea
-            rows={12}
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-            value={form.content}
-            onChange={(e) => setForm((prev) => ({ ...prev, content: e.target.value }))}
-            placeholder="결재 문서 내용을 입력해 주세요."
-          />
+          <RichTextEditor value={form.content} onChange={(value) => setForm((prev) => ({ ...prev, content: value }))} preset="document" />
         </div>
 
         <div className="mt-4">

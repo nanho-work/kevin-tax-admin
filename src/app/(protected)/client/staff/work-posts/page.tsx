@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import RichTextEditor from '@/components/editor/RichTextEditor'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
   createClientWorkPost,
@@ -129,9 +130,15 @@ function formatDateTime(value?: string | null): string {
 export default function ClientWorkPostsPage() {
   const searchParams = useSearchParams()
 
-  const sourceType = searchParams.get('source_type') || ''
+  const sourceType = (searchParams.get('source_type') || '').toLowerCase()
   const sourceId = Number(searchParams.get('source_id') || searchParams.get('post_id') || '')
-  const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && (!sourceType || sourceType === 'work_post') ? sourceId : null
+  const isWorkPostSource =
+    !sourceType ||
+    sourceType === 'work_post' ||
+    sourceType === 'work-post' ||
+    sourceType === 'work_posts' ||
+    sourceType === 'work-posts'
+  const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && isWorkPostSource ? sourceId : null
 
   const [postType, setPostType] = useState<WorkPostType | ''>('')
   const [postStatus, setPostStatus] = useState<WorkPostStatus | ''>('')
@@ -349,6 +356,7 @@ export default function ClientWorkPostsPage() {
   const buildTargetsPayload = (): WorkPostTargetIn[] | null => {
     const normalized: WorkPostTargetIn[] = []
     const dedupe = new Set<string>()
+    const activeStaffIdSet = new Set(staffs.filter((staff) => staff.is_active).map((staff) => Number(staff.id)))
 
     for (const row of targets) {
       if (!row.target_type) continue
@@ -356,6 +364,10 @@ export default function ClientWorkPostsPage() {
         const parsed = Number(row.target_id)
         if (!Number.isFinite(parsed) || parsed <= 0) {
           toast.error('대상 ID가 필요한 항목은 값을 선택해 주세요.')
+          return null
+        }
+        if (row.target_type === 'admin' && !activeStaffIdSet.has(parsed)) {
+          toast.error('비활성(퇴사) 직원은 수신 대상으로 선택할 수 없습니다.')
           return null
         }
         const key = `${row.target_type}:${parsed}`
@@ -772,14 +784,8 @@ export default function ClientWorkPostsPage() {
             </div>
 
             <div className="mt-3">
-              <label className="mb-1 block text-xs text-zinc-600">본문(HTML)</label>
-              <textarea
-                rows={8}
-                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
-                value={form.body_html}
-                onChange={(e) => setForm((prev) => ({ ...prev, body_html: e.target.value }))}
-                placeholder="본문을 입력해 주세요."
-              />
+              <label className="mb-1 block text-xs text-zinc-600">본문</label>
+              <RichTextEditor value={form.body_html} onChange={(value) => setForm((prev) => ({ ...prev, body_html: value }))} preset="workPost" />
             </div>
 
             <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
@@ -831,11 +837,13 @@ export default function ClientWorkPostsPage() {
                           onChange={(e) => updateTargetRow(row.rowId, { target_id: e.target.value })}
                         >
                           <option value="">직원 선택</option>
-                          {staffs.map((staff) => (
+                          {staffs
+                            .filter((staff) => staff.is_active)
+                            .map((staff) => (
                             <option key={staff.id} value={staff.id}>
                               {staff.name} ({staff.login_id || staff.email})
                             </option>
-                          ))}
+                            ))}
                         </select>
                       ) : row.target_type === 'company' ? (
                         <select
@@ -926,4 +934,3 @@ export default function ClientWorkPostsPage() {
     </section>
   )
 }
-

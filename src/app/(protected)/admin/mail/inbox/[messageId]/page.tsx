@@ -124,6 +124,7 @@ export default function AdminMailMessageDetailPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const [selectedAttachment, setSelectedAttachment] = useState<MailMessageDetail['attachments'][number] | null>(null)
   const [autoImportIfMissing, setAutoImportIfMissing] = useState(true)
+  const [companySaveTitle, setCompanySaveTitle] = useState('')
 
   const backHref = useMemo(() => {
     const params = new URLSearchParams(searchParams.toString())
@@ -547,6 +548,7 @@ export default function AdminMailMessageDetailPage() {
     setSelectedCompanyId(null)
     setCompanyKeyword('')
     setAutoImportIfMissing(true)
+    setCompanySaveTitle('')
     setCompanySavePanelOpen(true)
     await loadCompanyOptions('')
   }
@@ -557,6 +559,7 @@ export default function AdminMailMessageDetailPage() {
     setSelectedAttachment(null)
     setSelectedCompanyId(null)
     setCompanyKeyword('')
+    setCompanySaveTitle('')
   }
 
   useEffect(() => {
@@ -586,10 +589,13 @@ export default function AdminMailMessageDetailPage() {
 
     try {
       setCompanySaveLoading(true)
+      const normalizedTitle = companySaveTitle.trim()
       await saveMailAttachmentsToCompany(detail.id, {
         company_id: selectedCompanyId,
         attachment_ids: [selectedAttachment.id],
         auto_import_if_missing: autoImportIfMissing,
+        title: normalizedTitle || undefined,
+        title_by_attachment_id: normalizedTitle ? { [selectedAttachment.id]: normalizedTitle } : undefined,
       })
       toast.success('고객사 기타문서로 저장했습니다.')
       closeCompanySavePanel()
@@ -963,6 +969,15 @@ export default function AdminMailMessageDetailPage() {
                 <p className="mt-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-900">
                   {selectedAttachment?.original_file_name || '-'}
                 </p>
+              </div>
+              <div>
+                <p className="text-xs text-zinc-500">저장 제목(선택)</p>
+                <input
+                  value={companySaveTitle}
+                  onChange={(e) => setCompanySaveTitle(e.target.value)}
+                  placeholder="비우면 기본 제목으로 저장됩니다."
+                  className="mt-1 h-9 w-full rounded border border-zinc-300 px-2 text-sm"
+                />
               </div>
               <div>
                 <p className="text-xs text-zinc-500">고객사 검색</p>

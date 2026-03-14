@@ -10,6 +10,48 @@ export interface ClientStaffPaginatedResponse<T> {
   limit: number
 }
 
+export type ClientAttendanceBoardPeriod = 'week' | 'month'
+
+export interface ClientAttendanceBoardColumn {
+  date: string
+  weekday: string
+  weekday_index: number
+}
+
+export interface ClientAttendanceBoardDay {
+  date: string
+  check_in: string | null
+  check_out: string | null
+  worked_minutes: number
+}
+
+export interface ClientAttendanceBoardItem {
+  admin_id: number
+  admin_name: string
+  team_id: number | null
+  role_id: number | null
+  days: ClientAttendanceBoardDay[]
+}
+
+export interface ClientAttendanceBoardResponse {
+  period: ClientAttendanceBoardPeriod
+  anchor_date: string
+  date_from: string
+  date_to: string
+  columns: ClientAttendanceBoardColumn[]
+  items: ClientAttendanceBoardItem[]
+  staff_total: number
+}
+
+export interface ClientAttendanceBoardParams {
+  period?: ClientAttendanceBoardPeriod
+  anchor_date?: string
+  team_id?: number
+  keyword?: string
+  offset?: number
+  limit?: number
+}
+
 export async function getClientStaffs(
   page: number = 1,
   limit: number = 20,
@@ -74,5 +116,12 @@ export async function activateClientStaff(
   id: number
 ): Promise<{ message: string }> {
   const res = await clientHttp.put(`${CLIENT_STAFF_BASE}/${id}/activate`)
+  return res.data
+}
+
+export async function getClientStaffAttendanceBoard(
+  params: ClientAttendanceBoardParams
+): Promise<ClientAttendanceBoardResponse> {
+  const res = await clientHttp.get(`${CLIENT_STAFF_BASE}/attendance/board`, { params })
   return res.data
 }

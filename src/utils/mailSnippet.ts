@@ -18,11 +18,15 @@ export function toCleanMailSnippet(raw?: string | null): string {
     .replace(/&gt;/gi, '>')
 
   // Strip obvious HTML/image payloads from preview text.
+  text = text.replace(/\/\*[\s\S]*?\*\//g, ' ')
   text = text.replace(/<img[^>]*>/gi, ' ')
   text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
   text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
   text = text.replace(/<[^>]+>/g, ' ')
   text = text.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, ' ')
+  // Drop css selector blocks and css declarations that leak from HTML template mails.
+  text = text.replace(/[@.#\w\-\[\]\(\)\s,:>*+~"'=]{0,160}\{[^{}]{0,1200}\}/gi, ' ')
+  text = text.replace(/\b[a-z-]{2,40}\s*:\s*[^;]{1,200};/gi, ' ')
   text = text.replace(
     /\b(?:img|span|div|p|table|tr|td|font|a)\b\s+(?:[a-z-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s]+)\s*)+/gi,
     ' '
@@ -48,12 +52,20 @@ export function toCleanMailSnippet(raw?: string | null): string {
     .join(' ')
 
   text = text
+    .replace(/[\u00A0\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, ' ')
     .replace(/[{}<>]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
   if (!text) return '텍스트 미리보기가 없습니다.'
   if (/^[A-Za-z0-9+/=._-]{40,}$/.test(text)) return '텍스트 미리보기가 없습니다.'
+  if (
+    /(?:box-sizing|x-apple-data-detectors|mso-hide|desktop_hide|image_block|cellpadding|cellspacing|@media)/i.test(
+      text.slice(0, 260)
+    )
+  ) {
+    return '텍스트 미리보기가 없습니다.'
+  }
 
   return text
 }

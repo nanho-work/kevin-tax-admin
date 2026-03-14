@@ -345,17 +345,37 @@ export interface MailAttachmentImportResponse {
   }>
 }
 
+export interface MailComposeAttachmentUploadResponse {
+  message: string
+  file_name: string
+  s3_key: string
+  content_type?: string | null
+  file_size: number
+  preview_url?: string | null
+  download_url?: string | null
+}
+
 export interface MailAttachmentSaveToCompanyPayload {
   company_id: number
   attachment_ids: number[]
   auto_import_if_missing?: boolean
+  title?: string
+  title_by_attachment_id?: Record<number, string>
 }
 
 export interface MailAttachmentSaveToCompanyResponse {
   message: string
-  company_id?: number
-  attachment_ids?: number[]
-  saved_count?: number
+  company_id: number
+  saved_count: number
+  failed_count: number
+  results: Array<{
+    attachment_id: number
+    status: 'saved' | 'failed'
+    title?: string | null
+    detail?: string | null
+    document_id?: number | null
+    file_key?: string | null
+  }>
 }
 
 export interface MailSendPayload {

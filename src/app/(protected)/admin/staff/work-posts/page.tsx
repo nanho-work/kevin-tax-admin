@@ -65,9 +65,15 @@ function formatDateTime(value?: string | null): string {
 export default function AdminWorkPostsInboxPage() {
   const searchParams = useSearchParams()
 
-  const sourceType = searchParams.get('source_type') || ''
+  const sourceType = (searchParams.get('source_type') || '').toLowerCase()
   const sourceId = Number(searchParams.get('source_id') || searchParams.get('post_id') || '')
-  const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && (!sourceType || sourceType === 'work_post') ? sourceId : null
+  const isWorkPostSource =
+    !sourceType ||
+    sourceType === 'work_post' ||
+    sourceType === 'work-post' ||
+    sourceType === 'work_posts' ||
+    sourceType === 'work-posts'
+  const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && isWorkPostSource ? sourceId : null
 
   const [postType, setPostType] = useState<WorkPostType | ''>('')
   const [status, setStatus] = useState<WorkPostReceiptStatus | ''>('')
@@ -352,4 +358,3 @@ export default function AdminWorkPostsInboxPage() {
     </section>
   )
 }
-

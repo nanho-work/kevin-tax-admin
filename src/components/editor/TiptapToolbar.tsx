@@ -22,12 +22,13 @@ import '@tiptap/extension-table-cell';
 interface ToolbarProps {
   editor: Editor | null;
   onImageUpload?: () => void;
+  showImageButton?: boolean;
   sticky?: boolean; // 상단 고정 옵션
 }
 
 const Separator = () => <span className="mx-2 h-5 w-px bg-gray-300" />;
 
-export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, sticky }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, showImageButton = true, sticky }) => {
   if (!editor) return null;
 
   const setHeading = (level: 0 | 1 | 2 | 3) => {
@@ -315,15 +316,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, sticky 
         <LinkIcon size={18} />
       </button>
 
-      <button
-        type="button"
-        onClick={onImageUpload}
-        className="btn hover:bg-gray-100"
-        title="이미지 삽입"
-        aria-label="이미지 삽입"
-      >
-        <ImageIcon size={18} />
-      </button>
+      {showImageButton ? (
+        <button
+          type="button"
+          onClick={onImageUpload}
+          className="btn hover:bg-gray-100"
+          title="이미지 삽입"
+          aria-label="이미지 삽입"
+        >
+          <ImageIcon size={18} />
+        </button>
+      ) : null}
     </div>
   );
 };

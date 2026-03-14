@@ -1,5 +1,5 @@
-import ClientStaffMenuPage from '@/components/client/staff/ClientStaffMenuPage'
+import { redirect } from 'next/navigation'
 
 export default function ClientStaffAttendancePage() {
-  return <ClientStaffMenuPage />
+  redirect('/client/staff/leave')
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Mail, MailOpen, Paperclip, RefreshCw } from 'lucide-react'
+import { CheckCheck, FolderInput, Mail, MailOpen, Paperclip, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import UiButton from '@/components/common/UiButton'
@@ -1016,7 +1016,10 @@ export default function AdminMailInboxPage() {
                     onClick={() => void handleBulkMoveToFolder()}
                     className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                   >
-                    이동
+                    <span className="inline-flex items-center gap-1">
+                      <FolderInput className="h-3.5 w-3.5" />
+                      이동
+                    </span>
                   </button>
                 </div>
                 <button
@@ -1025,31 +1028,45 @@ export default function AdminMailInboxPage() {
                   onClick={() => void handleBulkMoveToTrash()}
                   className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                 >
-                  휴지통 이동
+                  <span className="inline-flex items-center gap-1">
+                    <Trash2 className="h-3.5 w-3.5" />
+                    삭제
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  disabled={selectedMessageCount === 0}
-                  onClick={() => void handleBulkUpdateRead(true)}
-                  className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  읽음
-                </button>
+                {selectedMessageCount > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkUpdateRead(true)}
+                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <MailOpen className="h-3.5 w-3.5" />
+                        읽음
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkUpdateRead(false)}
+                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <Mail className="h-3.5 w-3.5" />
+                        안읽음
+                      </span>
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   disabled={bulkReadAllLoading || readFilter === 'read'}
                   onClick={() => void handleMarkAllUnreadAsRead()}
                   className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-50 disabled:opacity-50"
                 >
-                  {bulkReadAllLoading ? '전체 읽음 처리중' : '전체 읽음'}
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedMessageCount === 0}
-                  onClick={() => void handleBulkUpdateRead(false)}
-                  className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  안읽음
+                  <span className="inline-flex items-center gap-1">
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    {bulkReadAllLoading ? '전체 읽음 처리중' : '전체 읽음'}
+                  </span>
                 </button>
                 <button
                   type="button"

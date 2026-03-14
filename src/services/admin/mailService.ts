@@ -8,6 +8,7 @@ import type {
   MailAccountUpdatePayload,
   MailAttachmentImportPayload,
   MailAttachmentImportResponse,
+  MailComposeAttachmentUploadResponse,
   MailAttachmentSaveToCompanyPayload,
   MailAttachmentSaveToCompanyResponse,
   MailAttachmentListResponse,
@@ -297,6 +298,17 @@ export async function saveMailAttachmentsToCompany(
 
 export async function sendMail(payload: MailSendPayload): Promise<MailSendResponse> {
   const res = await adminHttp.post<MailSendResponse>(`${BASE}/send`, payload)
+  return res.data
+}
+
+export async function uploadMailComposeAttachment(file: File): Promise<MailComposeAttachmentUploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await adminHttp.post<MailComposeAttachmentUploadResponse>(`${BASE}/compose/attachments`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
   return res.data
 }
 
