@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
 import UiButton from '@/components/common/UiButton'
 import RichTextEditor from '@/components/editor/RichTextEditor'
 import { getClientStaffs } from '@/services/client/clientStaffService'
@@ -172,6 +173,8 @@ export default function ClientWorkPostsPage() {
   })
   const [targets, setTargets] = useState<TargetDraftRow[]>([makeTargetRow()])
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const pendingFileInputId = useId()
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<number | null>(null)
@@ -220,6 +223,11 @@ export default function ClientWorkPostsPage() {
     setPendingFiles([])
   }, [])
 
+  const openCreateEditor = useCallback(() => {
+    resetEditorForCreate()
+    setIsEditorOpen(true)
+  }, [resetEditorForCreate])
+
   const applyEditorFromDetail = useCallback((detail: WorkPostDetail) => {
     setEditorMode('edit')
     setForm({
@@ -242,6 +250,15 @@ export default function ClientWorkPostsPage() {
     )
     setPendingFiles([])
   }, [])
+
+  const openEditEditor = useCallback(() => {
+    if (!selectedPost) {
+      toast.error('수정할 게시글을 먼저 선택해 주세요.')
+      return
+    }
+    applyEditorFromDetail(selectedPost)
+    setIsEditorOpen(true)
+  }, [applyEditorFromDetail, selectedPost])
 
   const loadReferences = useCallback(async () => {
     try {
@@ -332,6 +349,17 @@ export default function ClientWorkPostsPage() {
     void loadSelectedPost(selectedPostId)
   }, [selectedPostId, loadSelectedPost])
 
+  useEffect(() => {
+    if (!isEditorOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsEditorOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isEditorOpen])
+
   const updateTargetRow = (rowId: string, patch: Partial<TargetDraftRow>) => {
     setTargets((prev) =>
       prev.map((row) => {
@@ -352,6 +380,21 @@ export default function ClientWorkPostsPage() {
       return prev.filter((row) => row.rowId !== rowId)
     })
   }
+
+  const appendPendingFiles = useCallback((files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return
+    setPendingFiles((prev) => {
+      const next = [...prev]
+      const existing = new Set(prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`))
+      for (const file of Array.from(files)) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`
+        if (existing.has(key)) continue
+        existing.add(key)
+        next.push(file)
+      }
+      return next
+    })
+  }, [])
 
   const buildTargetsPayload = (): WorkPostTargetIn[] | null => {
     const normalized: WorkPostTargetIn[] = []
@@ -437,6 +480,7 @@ export default function ClientWorkPostsPage() {
       await loadPosts()
       await loadSelectedPost(saved.id)
       applyEditorFromDetail(saved)
+      setIsEditorOpen(false)
     } catch (error) {
       toast.error(getClientWorkPostErrorMessage(error))
     } finally {
@@ -456,6 +500,7 @@ export default function ClientWorkPostsPage() {
       setSelectedPost(null)
       setSelectedReceipts([])
       resetEditorForCreate()
+      setIsEditorOpen(false)
       await loadPosts()
     } catch (error) {
       toast.error(getClientWorkPostErrorMessage(error))
@@ -511,15 +556,15 @@ export default function ClientWorkPostsPage() {
           </div>
           <div className="flex items-center gap-2">
             <UiButton
-              variant={editorMode === 'create' ? 'primary' : 'secondary'}
-              onClick={resetEditorForCreate}
+              variant={editorMode === 'create' && isEditorOpen ? 'primary' : 'secondary'}
+              onClick={openCreateEditor}
             >
               새 글 작성
             </UiButton>
             <UiButton
               variant="secondary"
               disabled={!selectedPost}
-              onClick={() => selectedPost && applyEditorFromDetail(selectedPost)}
+              onClick={openEditEditor}
             >
               선택 글 수정
             </UiButton>
@@ -603,7 +648,7 @@ export default function ClientWorkPostsPage() {
           </div>
         </div>
 
-        <div className="space-y-4 xl:col-span-8">
+        <div className="xl:col-span-8">
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <h2 className="text-base font-semibold text-zinc-900">선택 게시글 상세</h2>
             {!selectedPostId ? (
@@ -716,12 +761,27 @@ export default function ClientWorkPostsPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      {isEditorOpen ? <button type="button" aria-label="작성 패널 닫기" className="fixed inset-0 z-40 bg-black/30" onClick={() => setIsEditorOpen(false)} /> : null}
+      <aside
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-2xl border-l border-neutral-200 bg-white shadow-2xl transition-transform duration-200 ${
+          isEditorOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
             <h2 className="text-base font-semibold text-zinc-900">
               {editorMode === 'create' ? '새 게시글 작성' : '게시글 수정'}
             </h2>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <UiButton size="xs" variant="secondary" onClick={() => setIsEditorOpen(false)}>
+              닫기
+            </UiButton>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs text-zinc-600">유형</label>
                 <select
@@ -840,9 +900,9 @@ export default function ClientWorkPostsPage() {
                           {staffs
                             .filter((staff) => staff.is_active)
                             .map((staff) => (
-                            <option key={staff.id} value={staff.id}>
-                              {staff.name} ({staff.login_id || staff.email})
-                            </option>
+                              <option key={staff.id} value={staff.id}>
+                                {staff.name} ({staff.login_id || staff.email})
+                              </option>
                             ))}
                         </select>
                       ) : row.target_type === 'company' ? (
@@ -893,17 +953,26 @@ export default function ClientWorkPostsPage() {
 
             <div className="mt-3">
               <label className="mb-1 block text-xs text-zinc-600">첨부파일</label>
-              <input
-                type="file"
-                multiple
-                className={inputClass}
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || [])
-                  if (files.length === 0) return
-                  setPendingFiles((prev) => [...prev, ...files])
-                  e.currentTarget.value = ''
-                }}
-              />
+              <input id={pendingFileInputId} type="file" multiple className="hidden" onChange={(e) => {
+                appendPendingFiles(e.target.files)
+                e.currentTarget.value = ''
+              }} />
+              <div className="flex flex-wrap items-stretch gap-2">
+                <FileDropzone
+                  onFilesDrop={appendPendingFiles}
+                  className="flex min-h-10 min-w-[240px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition"
+                  idleClassName="border-zinc-300 bg-white text-zinc-500"
+                  activeClassName="border-zinc-500 bg-zinc-50 text-zinc-800"
+                >
+                  파일을 드래그해서 첨부
+                </FileDropzone>
+                <label
+                  htmlFor={pendingFileInputId}
+                  className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                >
+                  파일 선택
+                </label>
+              </div>
               {pendingFiles.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {pendingFiles.map((file, index) => (
@@ -919,18 +988,18 @@ export default function ClientWorkPostsPage() {
                 </div>
               ) : null}
             </div>
+          </div>
 
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <UiButton variant="secondary" onClick={resetEditorForCreate}>
-                초기화
-              </UiButton>
-              <UiButton variant="primary" disabled={submitting} onClick={() => void handleSubmit()}>
-                {submitting ? '저장 중...' : editorMode === 'create' ? '등록' : '수정'}
-              </UiButton>
-            </div>
+          <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-5 py-4">
+            <UiButton variant="secondary" onClick={resetEditorForCreate}>
+              초기화
+            </UiButton>
+            <UiButton variant="primary" disabled={submitting} onClick={() => void handleSubmit()}>
+              {submitting ? '저장 중...' : editorMode === 'create' ? '등록' : '수정'}
+            </UiButton>
           </div>
         </div>
-      </div>
+      </aside>
     </section>
   )
 }

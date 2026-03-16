@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
@@ -89,6 +89,7 @@ export default function AdminWorkPostsInboxPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [statusSubmitting, setStatusSubmitting] = useState<Exclude<WorkPostReceiptStatus, 'unread'> | null>(null)
   const [hiding, setHiding] = useState(false)
+  const noticeAutoReadReceiptRef = useRef<number | null>(null)
 
   const selectedInboxItem = useMemo(
     () => items.find((item) => item.post_id === selectedPostId) || null,
@@ -155,20 +156,33 @@ export default function AdminWorkPostsInboxPage() {
     void loadDetail(selectedPostId)
   }, [selectedPostId, loadDetail])
 
-  const handleUpdateStatus = async (nextStatus: Exclude<WorkPostReceiptStatus, 'unread'>) => {
+  const handleUpdateStatus = async (
+    nextStatus: Exclude<WorkPostReceiptStatus, 'unread'>,
+    options?: { silent?: boolean }
+  ) => {
     if (!selectedPostId) return
     try {
       setStatusSubmitting(nextStatus)
       await updateAdminWorkPostReceiptStatus(selectedPostId, nextStatus)
-      toast.success('상태가 변경되었습니다.')
+      if (!options?.silent) toast.success('상태가 변경되었습니다.')
       await loadInbox()
       await loadDetail(selectedPostId)
     } catch (error) {
-      toast.error(getAdminWorkPostErrorMessage(error))
+      if (!options?.silent) toast.error(getAdminWorkPostErrorMessage(error))
     } finally {
       setStatusSubmitting(null)
     }
   }
+
+  useEffect(() => {
+    if (!selectedPostId || !selectedPost || !selectedInboxItem) return
+    if (selectedPost.post_type !== 'notice') return
+    if (selectedInboxItem.status !== 'unread') return
+    if (noticeAutoReadReceiptRef.current === selectedInboxItem.receipt_id) return
+
+    noticeAutoReadReceiptRef.current = selectedInboxItem.receipt_id
+    void handleUpdateStatus('read', { silent: true })
+  }, [selectedPostId, selectedPost, selectedInboxItem])
 
   const handleHide = async () => {
     if (!selectedPostId) return
@@ -267,7 +281,13 @@ export default function AdminWorkPostsInboxPage() {
 
         <div className="xl:col-span-8">
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
-            <h2 className="text-base font-semibold text-zinc-900">게시글 상세</h2>
+            <h2 className="text-base font-semibold text-zinc-900">
+              {selectedPost?.post_type === 'notice'
+                ? '공지글 상세'
+                : selectedPost?.post_type === 'task'
+                  ? '업무지시 상세'
+                  : '게시글 상세'}
+            </h2>
             {!selectedPostId ? (
               <p className="mt-2 text-sm text-zinc-500">왼쪽 목록에서 게시글을 선택해 주세요.</p>
             ) : detailLoading ? (
@@ -276,6 +296,9 @@ export default function AdminWorkPostsInboxPage() {
               <p className="mt-2 text-sm text-zinc-500">게시글 상세를 불러오지 못했습니다.</p>
             ) : (
               <div className="mt-3 space-y-4">
+                {(() => {
+                  const isNoticePost = selectedPost.post_type === 'notice'
+                  return (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-700">{postTypeLabelMap[selectedPost.post_type]}</span>
@@ -286,23 +309,29 @@ export default function AdminWorkPostsInboxPage() {
                     ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
-                    <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('read')}>
-                      읽음
-                    </UiButton>
-                    <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('ack')}>
-                      확인
-                    </UiButton>
-                    <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('in_progress')}>
-                      진행중
-                    </UiButton>
-                    <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('done')}>
-                      완료
-                    </UiButton>
+                    {!isNoticePost ? (
+                      <>
+                        <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('read')}>
+                          읽음
+                        </UiButton>
+                        <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('ack')}>
+                          확인
+                        </UiButton>
+                        <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('in_progress')}>
+                          진행중
+                        </UiButton>
+                        <UiButton size="xs" disabled={statusSubmitting !== null} onClick={() => void handleUpdateStatus('done')}>
+                          완료
+                        </UiButton>
+                      </>
+                    ) : null}
                     <UiButton size="xs" variant="danger" disabled={hiding} onClick={() => void handleHide()}>
                       숨김
                     </UiButton>
                   </div>
                 </div>
+                  )
+                })()}
 
                 <div>
                   <p className="text-sm font-semibold text-zinc-900">{selectedPost.title}</p>

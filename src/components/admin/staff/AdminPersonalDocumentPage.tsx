@@ -5,6 +5,7 @@ import { Camera, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { changeAdminPassword, deleteMyProfileImage, uploadMyProfileImage } from '@/services/admin/adminService'
 import {
+  fetchMySensitiveConsents,
   fetchMySensitiveConsentTerms,
   fetchMySensitiveProfile,
   getAdminSensitiveProfileErrorMessage,
@@ -24,7 +25,11 @@ import type {
   PersonalDocumentDocType,
   PersonalDocumentStatusItem,
 } from '@/types/personalDocument'
-import type { AdminSensitiveConsentTerm, AdminSensitiveProfile } from '@/types/adminSensitiveProfile'
+import type {
+  AdminSensitiveConsentRecord,
+  AdminSensitiveConsentTerm,
+  AdminSensitiveProfile,
+} from '@/types/adminSensitiveProfile'
 
 const DOC_TYPES: Array<{ code: PersonalDocumentDocType; label: string }> = [
   { code: 'id_card', label: '신분증' },
@@ -178,6 +183,7 @@ export default function AdminPersonalDocumentPage() {
   const [sensitiveLoading, setSensitiveLoading] = useState(false)
   const [hasLoadedSensitive, setHasLoadedSensitive] = useState(false)
   const [sensitiveConsentTerms, setSensitiveConsentTerms] = useState<AdminSensitiveConsentTerm[]>([])
+  const [sensitiveConsentRecords, setSensitiveConsentRecords] = useState<AdminSensitiveConsentRecord[]>([])
   const [sensitiveConsentLoading, setSensitiveConsentLoading] = useState(false)
   const [hasLoadedSensitiveConsents, setHasLoadedSensitiveConsents] = useState(false)
   const [sensitiveConsents, setSensitiveConsents] = useState({
@@ -312,10 +318,15 @@ export default function AdminPersonalDocumentPage() {
   const loadSensitiveConsentTerms = useCallback(async () => {
     try {
       setSensitiveConsentLoading(true)
-      const terms = await fetchMySensitiveConsentTerms()
+      const [terms, consentRecords] = await Promise.all([
+        fetchMySensitiveConsentTerms(),
+        fetchMySensitiveConsents(),
+      ])
       setSensitiveConsentTerms(terms)
+      setSensitiveConsentRecords(consentRecords)
     } catch {
       setSensitiveConsentTerms([])
+      setSensitiveConsentRecords([])
     } finally {
       setHasLoadedSensitiveConsents(true)
       setSensitiveConsentLoading(false)
@@ -459,7 +470,8 @@ export default function AdminPersonalDocumentPage() {
 
   const handleSaveSensitiveProfile = async () => {
     const residentDigits = sensitiveForm.resident_number.replace(/\D/g, '')
-    const residentWillUpdate = sensitiveEditMode.resident_number && residentDigits.length > 0
+    const hasResidentStored = Boolean(sensitiveProfile?.has_resident_number || sensitiveProfile?.resident_number_masked)
+    const residentWillUpdate = !hasResidentStored && residentDigits.length > 0
     if (residentWillUpdate && residentDigits.length !== 13) {
       toast.error('주민번호는 숫자 13자리로 입력해 주세요.')
       return
@@ -681,7 +693,7 @@ export default function AdminPersonalDocumentPage() {
   )
   const residentRegistered = sensitiveFieldRegistered.resident_number
   const accountRegistered = sensitiveFieldRegistered.account_number
-  const showResidentInput = !residentRegistered || sensitiveEditMode.resident_number
+  const showResidentInput = !residentRegistered
   const showAccountInput = !accountRegistered || sensitiveEditMode.account_number
   const rrnConsentTerm = useMemo(
     () => sensitiveConsentTerms.find((term) => term.code === RRN_CONSENT_CODE) || null,
@@ -691,8 +703,93 @@ export default function AdminPersonalDocumentPage() {
     () => sensitiveConsentTerms.find((term) => term.code === PAYROLL_CONSENT_CODE) || null,
     [sensitiveConsentTerms]
   )
-  const canEditResidentField = Boolean(rrnConsentTerm && sensitiveConsents.rrn)
-  const canEditPayrollFields = Boolean(payrollConsentTerm && sensitiveConsents.payroll)
+
+  const hasLatestConsent = useCallback(
+    (code: string, term: AdminSensitiveConsentTerm | null) => {
+      if (!term) return false
+
+      const normalizeCode = (value?: string | null) => String(value || '').trim().toLowerCase()
+      const targetCode = normalizeCode(code)
+
+      const matchedRecords = sensitiveConsentRecords.filter((record) => {
+        const recordCode = normalizeCode(
+          (record as any).code ??
+            (record as any).term_code ??
+            (record as any).consent_code ??
+            (record as any).consent_term_code
+        )
+        if (!recordCode || recordCode !== targetCode) return false
+
+        const agreedFlag = (record as any).is_agreed ?? (record as any).agreed ?? (record as any).consented
+        const statusValue = String((record as any).status || '').toLowerCase()
+        const isAgreed =
+          agreedFlag === true ||
+          statusValue === 'agreed' ||
+          statusValue === 'active' ||
+          statusValue === 'done'
+
+        return isAgreed
+      })
+
+      if (matchedRecords.length === 0) return false
+
+      const hasMatchedLatest = matchedRecords.some((record) => {
+        const recordTermId = Number((record as any).term_id ?? (record as any).consent_term_id ?? (record as any).latest_term_id)
+        const recordTermVersion = Number(
+          (record as any).term_version ??
+            (record as any).consent_term_version ??
+            (record as any).latest_term_version ??
+            (record as any).version
+        )
+
+        if (Number.isFinite(recordTermId) && recordTermId === term.id) return true
+        if (Number.isFinite(recordTermVersion) && recordTermVersion === term.version) return true
+        return false
+      })
+
+      if (hasMatchedLatest) return true
+
+      const hasExplicitVersionInfo = matchedRecords.some((record) => {
+        const recordTermId = Number((record as any).term_id ?? (record as any).consent_term_id ?? (record as any).latest_term_id)
+        const recordTermVersion = Number(
+          (record as any).term_version ??
+            (record as any).consent_term_version ??
+            (record as any).latest_term_version ??
+            (record as any).version
+        )
+        return Number.isFinite(recordTermId) || Number.isFinite(recordTermVersion)
+      })
+
+      // 레거시 이력(버전 정보 없음)만 있는 경우에는 동의 완료로 간주한다.
+      if (!hasExplicitVersionInfo) return true
+
+      return false
+    },
+    [sensitiveConsentRecords]
+  )
+
+  const isLatestRrnAgreed = useMemo(
+    () => hasLatestConsent(RRN_CONSENT_CODE, rrnConsentTerm),
+    [hasLatestConsent, rrnConsentTerm]
+  )
+  const isLatestPayrollAgreed = useMemo(
+    () => hasLatestConsent(PAYROLL_CONSENT_CODE, payrollConsentTerm),
+    [hasLatestConsent, payrollConsentTerm]
+  )
+
+  useEffect(() => {
+    setSensitiveConsents({
+      rrn: isLatestRrnAgreed,
+      payroll: isLatestPayrollAgreed,
+    })
+  }, [isLatestRrnAgreed, isLatestPayrollAgreed])
+
+  const showRrnConsentCheckbox = Boolean(rrnConsentTerm) && !isLatestRrnAgreed
+  const showPayrollConsentCheckbox = Boolean(payrollConsentTerm) && !isLatestPayrollAgreed
+  const showConsentContainer = sensitiveConsentLoading || showRrnConsentCheckbox || showPayrollConsentCheckbox
+
+  const canEditResidentField = Boolean(rrnConsentTerm && (sensitiveConsents.rrn || isLatestRrnAgreed))
+  const canEditPayrollFields = Boolean(payrollConsentTerm && (sensitiveConsents.payroll || isLatestPayrollAgreed))
   const sessionCompanyName =
     (session as any)?.client?.company_name?.trim() ||
     (session as any)?.company_name?.trim() ||
@@ -878,66 +975,72 @@ export default function AdminPersonalDocumentPage() {
                 </button>
               </div>
               {sensitiveLoading ? <p className="mt-3 text-sm text-zinc-500">불러오는 중...</p> : null}
-              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-sm font-semibold text-zinc-900">개인정보 처리 동의</p>
-                {sensitiveConsentLoading ? <p className="mt-2 text-xs text-zinc-500">동의 약관을 불러오는 중...</p> : null}
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="rounded-md border border-zinc-200 bg-white p-3">
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={sensitiveConsents.rrn}
-                        onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, rrn: e.target.checked }))}
-                        disabled={!rrnConsentTerm}
-                        className="mt-0.5"
-                      />
-                      <span className="text-xs text-zinc-700">
-                        주민번호 처리 동의
-                        {rrnConsentTerm ? (
-                          <span className="ml-1 text-zinc-500">(v{rrnConsentTerm.version})</span>
-                        ) : (
-                          <span className="ml-1 text-rose-600">(약관 미등록)</span>
-                        )}
-                      </span>
-                    </label>
-                    {resolvedRrnConsentContent ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
-                        <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
-                          {resolvedRrnConsentContent}
-                        </div>
-                      </details>
+              {showConsentContainer ? (
+                <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-sm font-semibold text-zinc-900">개인정보 처리 동의</p>
+                  {sensitiveConsentLoading ? <p className="mt-2 text-xs text-zinc-500">동의 약관을 불러오는 중...</p> : null}
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {showRrnConsentCheckbox ? (
+                      <div className="rounded-md border border-zinc-200 bg-white p-3">
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={sensitiveConsents.rrn}
+                            onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, rrn: e.target.checked }))}
+                            disabled={!rrnConsentTerm}
+                            className="mt-0.5"
+                          />
+                          <span className="text-xs text-zinc-700">
+                            주민번호 처리 동의
+                            {rrnConsentTerm ? (
+                              <span className="ml-1 text-zinc-500">(v{rrnConsentTerm.version})</span>
+                            ) : (
+                              <span className="ml-1 text-rose-600">(약관 미등록)</span>
+                            )}
+                          </span>
+                        </label>
+                        {resolvedRrnConsentContent ? (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
+                            <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
+                              {resolvedRrnConsentContent}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
                     ) : null}
-                  </div>
-                  <div className="rounded-md border border-zinc-200 bg-white p-3">
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={sensitiveConsents.payroll}
-                        onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, payroll: e.target.checked }))}
-                        disabled={!payrollConsentTerm}
-                        className="mt-0.5"
-                      />
-                      <span className="text-xs text-zinc-700">
-                        통장정보 처리 동의 (계좌번호/은행명/예금주)
-                        {payrollConsentTerm ? (
-                          <span className="ml-1 text-zinc-500">(v{payrollConsentTerm.version})</span>
-                        ) : (
-                          <span className="ml-1 text-rose-600">(약관 미등록)</span>
-                        )}
-                      </span>
-                    </label>
-                    {resolvedPayrollConsentContent ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
-                        <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
-                          {resolvedPayrollConsentContent}
-                        </div>
-                      </details>
+                    {showPayrollConsentCheckbox ? (
+                      <div className="rounded-md border border-zinc-200 bg-white p-3">
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={sensitiveConsents.payroll}
+                            onChange={(e) => setSensitiveConsents((prev) => ({ ...prev, payroll: e.target.checked }))}
+                            disabled={!payrollConsentTerm}
+                            className="mt-0.5"
+                          />
+                          <span className="text-xs text-zinc-700">
+                            통장정보 처리 동의 (계좌번호/은행명/예금주)
+                            {payrollConsentTerm ? (
+                              <span className="ml-1 text-zinc-500">(v{payrollConsentTerm.version})</span>
+                            ) : (
+                              <span className="ml-1 text-rose-600">(약관 미등록)</span>
+                            )}
+                          </span>
+                        </label>
+                        {resolvedPayrollConsentContent ? (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[11px] text-zinc-500">약관 보기</summary>
+                            <div className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-4 text-zinc-600">
+                              {resolvedPayrollConsentContent}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
-              </div>
+              ) : null}
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="md:col-span-2">
                   <div className="mb-1 flex items-center justify-between">
@@ -948,22 +1051,6 @@ export default function AdminPersonalDocumentPage() {
                       ) : null}
                     </div>
                     <div className="flex items-center gap-1">
-                      {residentRegistered ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (sensitiveEditMode.resident_number) {
-                              cancelSensitiveFieldEdit('resident_number')
-                              return
-                            }
-                            startSensitiveFieldEdit('resident_number')
-                          }}
-                          className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
-                          disabled={!canEditResidentField}
-                        >
-                          {sensitiveEditMode.resident_number ? '취소' : '수정'}
-                        </button>
-                      ) : null}
                       {!showResidentInput ? (
                         revealedSensitive.resident_number ? (
                           <button

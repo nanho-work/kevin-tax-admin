@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
   createCompanyAccount as createAdminCompanyAccount,
@@ -314,11 +315,9 @@ export default function CompanyDetailForm({
   const [deletingDocumentCode, setDeletingDocumentCode] = useState<string | null>(null)
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null)
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<string>(resolvedDocumentTypes[0].code)
-  const [isDragOverDocument, setIsDragOverDocument] = useState(false)
   const [documentsExpanded, setDocumentsExpanded] = useState(true)
   const [customDocTypeInput, setCustomDocTypeInput] = useState('')
   const [customDocFile, setCustomDocFile] = useState<File | null>(null)
-  const [isDragOverCustomDoc, setIsDragOverCustomDoc] = useState(false)
   const [customDocuments, setCustomDocuments] = useState<LocalCustomDocument[]>([])
   const [loadingCustomDocs, setLoadingCustomDocs] = useState(false)
   const [uploadingCustomDoc, setUploadingCustomDoc] = useState(false)
@@ -1313,32 +1312,18 @@ export default function CompanyDetailForm({
                       className="hidden"
                       onChange={(e) => setCustomDocFile(e.target.files?.[0] || null)}
                     />
-                    <label
-                      onDragOver={(e) => {
-                        e.preventDefault()
-                        setIsDragOverCustomDoc(true)
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault()
-                        setIsDragOverCustomDoc(false)
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        setIsDragOverCustomDoc(false)
-                        setCustomDocFile(e.dataTransfer.files?.[0] || null)
-                      }}
+                    <FileDropzone
+                      onFilesDrop={(files) => setCustomDocFile(files[0] || null)}
                       onClick={() => customDocFileInputRef.current?.click()}
-                      className={`flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
-                        isDragOverCustomDoc
-                          ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
-                          : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-                      }`}
+                      className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                      idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
+                      activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
                       title={customDocFile?.name || '파일 드래그 또는 클릭 선택'}
                     >
                       <span className="max-w-[440px] truncate">
                         {customDocFile?.name || '파일 드래그 또는 클릭 선택'}
                       </span>
-                    </label>
+                    </FileDropzone>
                   </div>
 
                   <input
@@ -1497,29 +1482,15 @@ export default function CompanyDetailForm({
                       className="hidden"
                       onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
                     />
-                    <label
-                      onDragOver={(e) => {
-                        e.preventDefault()
-                        setIsDragOverDocument(true)
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault()
-                        setIsDragOverDocument(false)
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        setIsDragOverDocument(false)
-                        setSelectedDocumentFile(e.dataTransfer.files?.[0] || null)
-                      }}
+                    <FileDropzone
+                      onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
                       onClick={() => fileInputRef.current?.click()}
-                      className={`flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
-                        isDragOverDocument
-                          ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
-                          : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-                      }`}
+                      className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                      idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
+                      activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
                     >
                       {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
-                    </label>
+                    </FileDropzone>
                   </div>
                 ) : null}
                 {isCreateMode ? (

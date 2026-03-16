@@ -1,9 +1,5 @@
-import CompanyAccountCreateForm from '@/components/admin/Company/CompanyAccountCreateForm'
+import { redirect } from 'next/navigation'
 
 export default function AdminCompanyAccountNewPage() {
-  return (
-    <div className="min-w-0 overflow-x-auto">
-      <CompanyAccountCreateForm />
-    </div>
-  )
+  redirect('/admin/companies')
 }

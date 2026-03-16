@@ -1,11 +1,6 @@
 
-
-import BlogCreateForm from '@/components/admin/blog/BlogCreateForm';
+import { redirect } from 'next/navigation'
 
 export default function BlogCreatePage() {
-  return (
-    <div >
-      <BlogCreateForm />
-    </div>
-  );
+  redirect('/admin/dashboard')
 }

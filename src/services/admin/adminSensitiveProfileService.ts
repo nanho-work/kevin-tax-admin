@@ -1,6 +1,7 @@
 import type { AxiosError } from 'axios'
 import http, { getAdminAccessToken } from '@/services/http'
 import type {
+  AdminSensitiveConsentRecord,
   AdminSensitiveConsentTerm,
   AdminSensitiveProfile,
   AdminSensitiveProfileUpsertPayload,
@@ -59,5 +60,30 @@ export async function fetchMySensitiveConsentTerms(): Promise<AdminSensitiveCons
   if (Array.isArray(data)) return data
   if (Array.isArray(data?.items)) return data.items
   if (Array.isArray(data?.terms)) return data.terms
+  return []
+}
+
+export async function fetchMySensitiveConsents(): Promise<AdminSensitiveConsentRecord[]> {
+  const res = await http.get(`${BASE}/consents`, authHeader())
+  const data = res.data as
+    | AdminSensitiveConsentRecord[]
+    | {
+        items?: AdminSensitiveConsentRecord[]
+        consents?: AdminSensitiveConsentRecord[]
+        records?: AdminSensitiveConsentRecord[]
+        list?: AdminSensitiveConsentRecord[]
+        results?: AdminSensitiveConsentRecord[]
+        data?: AdminSensitiveConsentRecord[]
+      }
+    | null
+    | undefined
+
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.consents)) return data.consents
+  if (Array.isArray(data?.records)) return data.records
+  if (Array.isArray(data?.list)) return data.list
+  if (Array.isArray(data?.results)) return data.results
+  if (Array.isArray(data?.data)) return data.data
   return []
 }

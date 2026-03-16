@@ -77,3 +77,14 @@ export interface AdminSensitiveConsentTerm {
   effective_from?: string | null
   created_at?: string
 }
+
+export interface AdminSensitiveConsentRecord {
+  id?: number
+  code: string
+  term_id?: number | null
+  term_version?: number | null
+  version?: number | null
+  is_agreed?: boolean
+  agreed_at?: string | null
+  created_at?: string | null
+}

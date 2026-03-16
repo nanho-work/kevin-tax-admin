@@ -91,7 +91,6 @@ export default function AdminMailInboxPage() {
   const [replyCcRaw, setReplyCcRaw] = useState('')
   const [replyBccRaw, setReplyBccRaw] = useState('')
   const [replyQueueOnFail, setReplyQueueOnFail] = useState(true)
-  const [includeInlineAttachments, setIncludeInlineAttachments] = useState(false)
   const [attachmentActionLoadingId, setAttachmentActionLoadingId] = useState<number | null>(null)
   const [includeTrash, setIncludeTrash] = useState(false)
   const [activeMailbox, setActiveMailbox] = useState<'all' | 'inbox' | 'sent' | 'spam' | 'custom'>('all')
@@ -220,7 +219,7 @@ export default function AdminMailInboxPage() {
       setDetailLoading(true)
       const [detailRes, attachmentRes] = await Promise.all([
         getMailMessageDetail(messageId, scopedMailAccountId),
-        listMailAttachments(messageId, includeInlineAttachments, scopedMailAccountId).catch(() => ({ items: [] })),
+        listMailAttachments(messageId, false, scopedMailAccountId).catch(() => ({ items: [] })),
       ])
       setDetail(mergeDetailAttachments(detailRes, attachmentRes.items || []))
       setSelectedAttachmentIds([])
@@ -309,7 +308,7 @@ export default function AdminMailInboxPage() {
   useEffect(() => {
     if (!selectedMessageId) return
     loadMessageDetail(selectedMessageId)
-  }, [selectedMessageId, scopedMailAccountId, includeInlineAttachments])
+  }, [selectedMessageId, scopedMailAccountId])
 
   useEffect(() => {
     setSelectedMessageIds((prev) => prev.filter((id) => messages.some((item) => item.id === id)))
@@ -318,9 +317,7 @@ export default function AdminMailInboxPage() {
   const renderedMail = useMemo(() => {
     const attachments = detail?.attachments || []
     const htmlSource = detail?.body_html_rendered || detail?.body_html || ''
-    const visibleAttachments = includeInlineAttachments
-      ? attachments
-      : attachments.filter((attachment) => !isInlineMailAttachment(attachment))
+    const visibleAttachments = attachments.filter((attachment) => !isInlineMailAttachment(attachment))
     const visibleAttachmentIdSet = new Set(visibleAttachments.map((attachment) => attachment.id))
     const selectedVisibleAttachmentIds = selectedAttachmentIds.filter((id) => visibleAttachmentIdSet.has(id))
     return {
@@ -328,7 +325,7 @@ export default function AdminMailInboxPage() {
       visibleAttachments,
       selectedVisibleAttachmentIds,
     }
-  }, [detail?.body_html, detail?.body_html_rendered, detail?.attachments, selectedAttachmentIds, includeInlineAttachments])
+  }, [detail?.body_html, detail?.body_html_rendered, detail?.attachments, selectedAttachmentIds])
 
   const selectedAttachmentCount = renderedMail.selectedVisibleAttachmentIds.length
   const isAllCurrentPageSelected = messages.length > 0 && messages.every((message) => selectedMessageIds.includes(message.id))
@@ -408,7 +405,7 @@ export default function AdminMailInboxPage() {
     if (!detail) return null
     const [detailRes, attachmentRes] = await Promise.all([
       getMailMessageDetail(detail.id, scopedMailAccountId),
-      listMailAttachments(detail.id, includeInlineAttachments, scopedMailAccountId),
+      listMailAttachments(detail.id, false, scopedMailAccountId),
     ])
     const merged = mergeDetailAttachments(detailRes, attachmentRes.items || [])
     setDetail(merged)
@@ -1450,14 +1447,6 @@ export default function AdminMailInboxPage() {
                 <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-zinc-500">첨부파일</span>
-                    <label className="inline-flex items-center gap-1 text-[11px] text-zinc-600">
-                      <input
-                        type="checkbox"
-                        checked={includeInlineAttachments}
-                        onChange={(e) => setIncludeInlineAttachments(e.target.checked)}
-                      />
-                      인라인 포함
-                    </label>
                   </div>
                   <button
                     type="button"

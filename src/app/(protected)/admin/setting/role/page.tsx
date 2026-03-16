@@ -1,10 +1,5 @@
+import { redirect } from 'next/navigation'
 
-import RoleTable from "@/components/admin/Company/setting/role/RoleTable"
-
-export default function AttendanceLogsPage() {
-  return (
-    <main >
-      <RoleTable />
-    </main>
-  )
+export default function AdminSettingRolePage() {
+  redirect('/admin/dashboard')
 }

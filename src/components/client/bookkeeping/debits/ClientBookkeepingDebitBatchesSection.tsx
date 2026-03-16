@@ -1,8 +1,9 @@
 'use client'
 
-import { type DragEventHandler, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
 import {
   deleteBookkeepingDebitBatch,
   listBookkeepingDebitBatchItems,
@@ -68,8 +69,8 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
   const [sourceName, setSourceName] = useState(getCurrentYearMonth())
   const [memo, setMemo] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
   const [uploadedBatchId, setUploadedBatchId] = useState<number | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [page, setPage] = useState(1)
   const [size] = useState(20)
@@ -199,14 +200,6 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
     }
   }
 
-  const handleDrop: DragEventHandler<HTMLLabelElement> = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setIsDragOver(false)
-    const droppedFile = event.dataTransfer.files?.[0] || null
-    handleFileChange(droppedFile)
-  }
-
   return (
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
@@ -253,30 +246,22 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
         {isUploadMode ? (
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <input type="month" className={inputClass} value={sourceName} onChange={(e) => setSourceName(e.target.value)} />
-            <label
-              onDragOver={(event) => {
-                event.preventDefault()
-                setIsDragOver(true)
-              }}
-              onDragLeave={(event) => {
-                event.preventDefault()
-                setIsDragOver(false)
-              }}
-              onDrop={handleDrop}
-              className={`relative flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition ${
-                isDragOver
-                  ? 'border-zinc-500 bg-zinc-100 text-zinc-900'
-                  : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-              }`}
+            <FileDropzone
+              onFilesDrop={(files) => handleFileChange(files[0] || null)}
+              onClick={() => fileInputRef.current?.click()}
+              className="relative flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+              idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
+              activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
             >
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".xls,.xlsx,.xlsm,.xltx,.xltm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
                 className="hidden"
                 onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
               />
               {file ? file.name : '파일을 드래그 하시거나 파일을 선택해주세요'}
-            </label>
+            </FileDropzone>
             <button
               type="button"
               onClick={handleUpload}

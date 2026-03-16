@@ -105,7 +105,6 @@ export default function ClientMailMessageDetailPage() {
   const [attachmentMode, setAttachmentMode] = useState<'attachment' | 'secure_link'>('attachment')
   const [secureLinkExpireDays, setSecureLinkExpireDays] = useState(7)
   const [secureLinkMaxDownloadCount, setSecureLinkMaxDownloadCount] = useState(5)
-  const [includeInlineAttachments, setIncludeInlineAttachments] = useState(false)
   const [attachmentActionLoadingId, setAttachmentActionLoadingId] = useState<number | null>(null)
   const [previewPanelOpen, setPreviewPanelOpen] = useState(false)
   const [previewPanelUrl, setPreviewPanelUrl] = useState<string | null>(null)
@@ -165,7 +164,7 @@ export default function ClientMailMessageDetailPage() {
       setLoading(true)
       const [detailRes, attachmentRes] = await Promise.all([
         getMailMessageDetail(messageId, scopedMailAccountId),
-        listMailAttachments(messageId, includeInlineAttachments, scopedMailAccountId).catch(() => ({ items: [] })),
+        listMailAttachments(messageId, false, scopedMailAccountId).catch(() => ({ items: [] })),
       ])
       setDetail(mergeDetailAttachments(detailRes, attachmentRes.items || []))
       setErrorMessage(null)
@@ -179,7 +178,7 @@ export default function ClientMailMessageDetailPage() {
 
   useEffect(() => {
     void loadDetail()
-  }, [messageId, scopedMailAccountId, includeInlineAttachments])
+  }, [messageId, scopedMailAccountId])
 
   useEffect(() => {
     const loadFolders = async () => {
@@ -376,7 +375,7 @@ export default function ClientMailMessageDetailPage() {
     if (!detail) return null
     const [detailRes, attachmentRes] = await Promise.all([
       getMailMessageDetail(detail.id, scopedMailAccountId),
-      listMailAttachments(detail.id, includeInlineAttachments, scopedMailAccountId),
+      listMailAttachments(detail.id, false, scopedMailAccountId),
     ])
     const merged = mergeDetailAttachments(detailRes, attachmentRes.items || [])
     setDetail(merged)
@@ -629,11 +628,9 @@ export default function ClientMailMessageDetailPage() {
     const htmlSource = detail?.body_html_rendered || detail?.body_html || ''
     return {
       sanitizedHtml: sanitizeMailBodyHtml(htmlSource, attachments),
-      visibleAttachments: includeInlineAttachments
-        ? attachments
-        : attachments.filter((attachment) => !isInlineMailAttachment(attachment)),
+      visibleAttachments: attachments.filter((attachment) => !isInlineMailAttachment(attachment)),
     }
-  }, [detail?.body_html, detail?.body_html_rendered, detail?.attachments, includeInlineAttachments])
+  }, [detail?.body_html, detail?.body_html_rendered, detail?.attachments])
 
   return (
     <>
@@ -854,14 +851,6 @@ export default function ClientMailMessageDetailPage() {
           <div className="mt-2 rounded-xl border border-zinc-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-zinc-900">첨부파일</p>
-              <label className="inline-flex items-center gap-1 text-xs text-zinc-600">
-                <input
-                  type="checkbox"
-                  checked={includeInlineAttachments}
-                  onChange={(e) => setIncludeInlineAttachments(e.target.checked)}
-                />
-                인라인 포함 보기
-              </label>
             </div>
             {renderedMail.visibleAttachments.length === 0 ? (
               <p className="mt-2 text-sm text-zinc-500">첨부파일이 없습니다.</p>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
 import RichTextEditor from '@/components/editor/RichTextEditor'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import { formatKSTDateTime } from '@/utils/dateTime'
@@ -65,7 +66,6 @@ export default function ClientMailComposePage() {
   const [subject, setSubject] = useState('')
   const [bodyHtml, setBodyHtml] = useState('')
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([])
-  const [isDraggingAttachment, setIsDraggingAttachment] = useState(false)
   const [isAddressBookOpen, setIsAddressBookOpen] = useState(false)
   const [addressBookKeyword, setAddressBookKeyword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -165,12 +165,6 @@ export default function ClientMailComposePage() {
   const handleAttachmentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     appendAttachmentFiles(e.target.files)
     e.target.value = ''
-  }
-
-  const handleAttachmentDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsDraggingAttachment(false)
-    appendAttachmentFiles(e.dataTransfer.files)
   }
 
   const removeAttachmentFile = (index: number) => {
@@ -519,24 +513,14 @@ export default function ClientMailComposePage() {
                 onChange={handleAttachmentFileChange}
               />
               <div className="flex flex-wrap items-stretch gap-2">
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setIsDraggingAttachment(true)
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault()
-                    setIsDraggingAttachment(false)
-                  }}
-                  onDrop={handleAttachmentDrop}
-                  className={`flex min-h-9 min-w-[240px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition ${
-                    isDraggingAttachment
-                      ? 'border-zinc-500 bg-zinc-50 text-zinc-800'
-                      : 'border-zinc-300 bg-white text-zinc-500'
-                  }`}
+                <FileDropzone
+                  onFilesDrop={appendAttachmentFiles}
+                  className="flex min-h-9 min-w-[240px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition"
+                  idleClassName="border-zinc-300 bg-white text-zinc-500"
+                  activeClassName="border-zinc-500 bg-zinc-50 text-zinc-800"
                 >
                   파일 드래그
-                </div>
+                </FileDropzone>
                 <button
                   type="button"
                   onClick={() => attachmentInputRef.current?.click()}
