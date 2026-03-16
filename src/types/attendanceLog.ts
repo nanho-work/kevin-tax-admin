@@ -22,4 +22,9 @@ export interface AttendanceLogListResponse {
 export interface AttendanceResponse {
   message: string
   attendance_log_id: number
+  arrival_status?: 'unknown' | 'on_time' | 'late'
+  late_minutes?: number
+  departure_status?: 'unknown' | 'normal' | 'early_leave'
+  early_leave_minutes?: number
+  worked_minutes?: number
 }
