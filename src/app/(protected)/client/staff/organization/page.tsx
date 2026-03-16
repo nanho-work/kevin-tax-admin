@@ -1,5 +1,5 @@
-import ClientAclMatrixPage from '@/components/client/staff/ClientAclMatrixPage'
+import { redirect } from 'next/navigation'
 
 export default function ClientStaffOrganizationPage() {
-  return <ClientAclMatrixPage />
+  redirect('/client/staff?panel=org')
 }

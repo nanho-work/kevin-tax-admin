@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import { Settings } from 'lucide-react'
 import {
   type ClientAttendanceCalendarDay,
   type ClientAttendanceMonthlySummaryItem,
@@ -286,6 +287,7 @@ export default function ClientStaffAttendanceSection() {
   const [limit] = useState(10)
   const [loading, setLoading] = useState(false)
   const [allBoardMode, setAllBoardMode] = useState<AllBoardMode>('attendance')
+  const [attendanceSettingsOpen, setAttendanceSettingsOpen] = useState(false)
   const [policy, setPolicy] = useState<ClientAttendancePolicy>(DEFAULT_POLICY)
   const [policyForm, setPolicyForm] = useState({
     timezone: 'Asia/Seoul',
@@ -504,6 +506,17 @@ export default function ClientStaffAttendanceSection() {
       document.removeEventListener('mousedown', handler)
     }
   }, [])
+
+  useEffect(() => {
+    if (!attendanceSettingsOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAttendanceSettingsOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [attendanceSettingsOpen])
 
   useEffect(() => {
     if (viewMode !== 'all') return
@@ -1135,6 +1148,15 @@ export default function ClientStaffAttendanceSection() {
                     <p className="text-right text-xs text-zinc-600">
                       전체 {weekStaffTotal.toLocaleString('ko-KR')}명
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceSettingsOpen(true)}
+                      className={secondaryButtonClass}
+                      title="근무정책/예외 설정"
+                    >
+                      <Settings className="mr-1 h-3.5 w-3.5" />
+                      설정
+                    </button>
                   </div>
                 ) : (
                   <p className="text-right text-xs text-zinc-600">
@@ -1144,375 +1166,6 @@ export default function ClientStaffAttendanceSection() {
               </div>
             </div>
           </div>
-          {viewMode === 'all' ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900">근무정책</h3>
-                <button type="button" onClick={handleSavePolicy} disabled={policySaving} className={secondaryButtonClass}>
-                  {policySaving ? '저장 중...' : '정책 저장'}
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">출근 시각</span>
-                  <input
-                    type="time"
-                    className={inputClass}
-                    value={policyForm.work_start_time}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, work_start_time: e.target.value }))}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">퇴근 시각</span>
-                  <input
-                    type="time"
-                    className={inputClass}
-                    value={policyForm.work_end_time}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, work_end_time: e.target.value }))}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">지각 유예(분)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    className={inputClass}
-                    value={policyForm.late_grace_minutes}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, late_grace_minutes: Number(e.target.value || 0) }))}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">타임존</span>
-                  <input
-                    type="text"
-                    className={`${inputClass} bg-zinc-50`}
-                    value={policyForm.timezone}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, timezone: e.target.value }))}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">반차 기준(분)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!policyForm.is_half_day_enabled}
-                    className={`${inputClass} ${!policyForm.is_half_day_enabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-400' : ''}`}
-                    value={policyForm.half_day_minutes}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, half_day_minutes: Number(e.target.value || 0) }))}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">반반차 기준(분)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    disabled={!policyForm.is_quarter_day_enabled}
-                    className={`${inputClass} ${!policyForm.is_quarter_day_enabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-400' : ''}`}
-                    value={policyForm.quarter_day_minutes}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, quarter_day_minutes: Number(e.target.value || 0) }))}
-                  />
-                </label>
-                <label className="flex items-center gap-2 pt-6 text-xs text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={policyForm.is_half_day_enabled}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, is_half_day_enabled: e.target.checked }))}
-                  />
-                  반차 사용
-                </label>
-                <label className="flex items-center gap-2 pt-6 text-xs text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={policyForm.is_quarter_day_enabled}
-                    onChange={(e) => setPolicyForm((prev) => ({ ...prev, is_quarter_day_enabled: e.target.checked }))}
-                  />
-                  반반차 사용
-                </label>
-              </div>
-            </div>
-          ) : null}
-          {viewMode === 'all' && allBoardMode === 'attendance' ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900">
-                  월 집계 요약 ({anchorDate.getFullYear()}년 {anchorDate.getMonth() + 1}월)
-                </h3>
-                {monthlySummaryLoading ? <span className="text-xs text-zinc-500">불러오는 중...</span> : null}
-              </div>
-              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">지각(일/분)</p>
-                  <p className="text-sm font-semibold text-zinc-900">
-                    {monthlySummaryTotals.lateDays.toLocaleString('ko-KR')}일 / {monthlySummaryTotals.lateMinutes.toLocaleString('ko-KR')}분
-                  </p>
-                </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">조퇴(일/분)</p>
-                  <p className="text-sm font-semibold text-zinc-900">
-                    {monthlySummaryTotals.earlyLeaveDays.toLocaleString('ko-KR')}일 /{' '}
-                    {monthlySummaryTotals.earlyLeaveMinutes.toLocaleString('ko-KR')}분
-                  </p>
-                </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">부족 근무</p>
-                  <p className="text-sm font-semibold text-zinc-900">
-                    {formatHoursFromMinutes(monthlySummaryTotals.shortMinutes)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">집계 직원</p>
-                  <p className="text-sm font-semibold text-zinc-900">{monthlySummaryTotals.staffCount.toLocaleString('ko-KR')}명</p>
-                </div>
-              </div>
-              <div className="overflow-x-auto rounded-md border border-zinc-200">
-                <table className="min-w-[680px] w-full text-xs">
-                  <thead className="bg-zinc-50 text-zinc-600">
-                    <tr>
-                      <th className="px-2 py-2 text-left">직원</th>
-                      <th className="px-2 py-2 text-right">출근일수</th>
-                      <th className="px-2 py-2 text-right">지각(일/분)</th>
-                      <th className="px-2 py-2 text-right">조퇴(일/분)</th>
-                      <th className="px-2 py-2 text-right">근무시간</th>
-                      <th className="px-2 py-2 text-right">부족시간</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {monthlySummarySorted.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
-                          월 집계 데이터가 없습니다.
-                        </td>
-                      </tr>
-                    ) : (
-                      monthlySummarySorted.map((item) => (
-                        <tr key={item.admin_id}>
-                          <td className="px-2 py-2">
-                            <p className="font-medium text-zinc-900">{item.admin_name}</p>
-                            <p className="text-[11px] text-zinc-500">
-                              {item.team_id ? teamNameById.get(item.team_id) || '팀 미지정' : '팀 미지정'}
-                            </p>
-                          </td>
-                          <td className="px-2 py-2 text-right text-zinc-700">{Number(item.attendance_days || 0).toLocaleString('ko-KR')}</td>
-                          <td className="px-2 py-2 text-right text-zinc-700">
-                            {Number(item.late_days || 0).toLocaleString('ko-KR')} / {Number(item.total_late_minutes || 0).toLocaleString('ko-KR')}
-                          </td>
-                          <td className="px-2 py-2 text-right text-zinc-700">
-                            {Number(item.early_leave_days || 0).toLocaleString('ko-KR')} /{' '}
-                            {Number(item.total_early_leave_minutes || 0).toLocaleString('ko-KR')}
-                          </td>
-                          <td className="px-2 py-2 text-right font-medium text-zinc-900">{formatHoursFromMinutes(Number(item.total_worked_minutes || 0))}</td>
-                          <td className="px-2 py-2 text-right font-medium text-amber-700">{formatHoursFromMinutes(Number(item.total_short_minutes || 0))}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-          {viewMode === 'all' && allBoardMode === 'attendance' ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900">
-                  월 정산 ({anchorDate.getFullYear()}년 {anchorDate.getMonth() + 1}월)
-                </h3>
-                {monthlySettlementLoading ? <span className="text-xs text-zinc-500">불러오는 중...</span> : null}
-              </div>
-              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">정산 대상 직원</p>
-                  <p className="text-sm font-semibold text-zinc-900">{monthlySettlementTotals.staffCount.toLocaleString('ko-KR')}명</p>
-                </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">총 초과근무</p>
-                  <p className="text-sm font-semibold text-zinc-900">{formatHoursFromMinutes(monthlySettlementTotals.overtimeMinutes)}</p>
-                </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <p className="text-[11px] text-zinc-500">총 지급 기준분</p>
-                  <p className="text-sm font-semibold text-zinc-900">{formatHoursFromMinutes(monthlySettlementTotals.payableMinutes)}</p>
-                </div>
-              </div>
-              <div className="overflow-x-auto rounded-md border border-zinc-200">
-                <table className="min-w-[780px] w-full text-xs">
-                  <thead className="bg-zinc-50 text-zinc-600">
-                    <tr>
-                      <th className="px-2 py-2 text-left">직원</th>
-                      <th className="px-2 py-2 text-right">근무시간</th>
-                      <th className="px-2 py-2 text-right">부족시간</th>
-                      <th className="px-2 py-2 text-right">초과근무</th>
-                      <th className="px-2 py-2 text-right">가중치</th>
-                      <th className="px-2 py-2 text-right">지급 기준분</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {monthlySettlementSorted.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
-                          월 정산 데이터가 없습니다.
-                        </td>
-                      </tr>
-                    ) : (
-                      monthlySettlementSorted.map((item) => {
-                        const overtimeMinutes = Number(
-                          (item.total_overtime_minutes as number | undefined) ?? (item.overtime_minutes as number | undefined) ?? 0
-                        )
-                        const workedMinutes = Number((item.total_worked_minutes as number | undefined) ?? 0)
-                        const shortMinutes = Number((item.total_short_minutes as number | undefined) ?? 0)
-                        const overtimeMultiplier = Number((item.overtime_multiplier as number | undefined) ?? 1)
-                        const payableMinutes = Number(
-                          (item.payable_minutes as number | undefined) ??
-                            (item.total_payable_minutes as number | undefined) ??
-                            (item.weighted_overtime_minutes as number | undefined) ??
-                            Math.max(0, workedMinutes - shortMinutes)
-                        )
-
-                        return (
-                          <tr key={item.admin_id}>
-                            <td className="px-2 py-2">
-                              <p className="font-medium text-zinc-900">{item.admin_name}</p>
-                              <p className="text-[11px] text-zinc-500">
-                                {item.team_id ? teamNameById.get(item.team_id) || '팀 미지정' : '팀 미지정'}
-                              </p>
-                            </td>
-                            <td className="px-2 py-2 text-right text-zinc-700">{formatHoursFromMinutes(workedMinutes)}</td>
-                            <td className="px-2 py-2 text-right text-amber-700">{formatHoursFromMinutes(shortMinutes)}</td>
-                            <td className="px-2 py-2 text-right text-blue-700">{formatHoursFromMinutes(overtimeMinutes)}</td>
-                            <td className="px-2 py-2 text-right text-zinc-700">{overtimeMultiplier.toFixed(2)}x</td>
-                            <td className="px-2 py-2 text-right font-semibold text-zinc-900">{formatHoursFromMinutes(payableMinutes)}</td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-          {viewMode === 'all' && allBoardMode === 'attendance' ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900">
-                  근무 캘린더 오버라이드 ({anchorDate.getFullYear()}년 {anchorDate.getMonth() + 1}월)
-                </h3>
-                {calendarLoading ? <span className="text-xs text-zinc-500">불러오는 중...</span> : null}
-              </div>
-              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">적용 날짜</span>
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={calendarForm.target_date}
-                    onChange={(e) => {
-                      const nextDate = e.target.value
-                      const selected = calendarByDate.get(nextDate)
-                      setCalendarForm((prev) => ({
-                        ...prev,
-                        target_date: nextDate,
-                        day_type: selected?.day_type || prev.day_type,
-                        name: selected?.name || '',
-                        note: selected?.note || '',
-                      }))
-                    }}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-zinc-600">유형</span>
-                  <select
-                    className={inputClass}
-                    value={calendarForm.day_type}
-                    onChange={(e) =>
-                      setCalendarForm((prev) => ({ ...prev, day_type: e.target.value === 'workday' ? 'workday' : 'holiday' }))
-                    }
-                  >
-                    <option value="holiday">휴일</option>
-                    <option value="workday">근무일</option>
-                  </select>
-                </label>
-                <label className="space-y-1 lg:col-span-1">
-                  <span className="text-xs text-zinc-600">명칭</span>
-                  <input
-                    type="text"
-                    className={inputClass}
-                    value={calendarForm.name}
-                    onChange={(e) => setCalendarForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="예: 창립기념일"
-                  />
-                </label>
-                <label className="space-y-1 lg:col-span-2">
-                  <span className="text-xs text-zinc-600">메모</span>
-                  <input
-                    type="text"
-                    className={inputClass}
-                    value={calendarForm.note}
-                    onChange={(e) => setCalendarForm((prev) => ({ ...prev, note: e.target.value }))}
-                    placeholder="선택 입력"
-                  />
-                </label>
-              </div>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={handleSaveCalendarDay} disabled={calendarSaving} className={secondaryButtonClass}>
-                  {calendarSaving ? '저장 중...' : '적용일 저장'}
-                </button>
-                <button type="button" onClick={handleDeleteCalendarDay} disabled={calendarSaving} className={secondaryButtonClass}>
-                  적용일 삭제
-                </button>
-                <p className="text-xs text-zinc-500">기본은 주말 휴무이며, 여기서 특정일을 휴일/근무일로 오버라이드합니다.</p>
-              </div>
-              <div className="overflow-x-auto rounded-md border border-zinc-200">
-                <table className="min-w-[640px] w-full text-xs">
-                  <thead className="bg-zinc-50 text-zinc-600">
-                    <tr>
-                      <th className="px-2 py-2 text-left">날짜</th>
-                      <th className="px-2 py-2 text-left">유형</th>
-                      <th className="px-2 py-2 text-left">명칭</th>
-                      <th className="px-2 py-2 text-left">메모</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {calendarItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-3 py-8 text-center text-zinc-500">
-                          등록된 오버라이드가 없습니다.
-                        </td>
-                      </tr>
-                    ) : (
-                      [...calendarItems]
-                        .sort((a, b) => String(a.target_date).localeCompare(String(b.target_date)))
-                        .map((item) => (
-                          <tr
-                            key={item.id}
-                            className="cursor-pointer hover:bg-zinc-50"
-                            onClick={() =>
-                              setCalendarForm({
-                                target_date: item.target_date,
-                                day_type: item.day_type,
-                                name: item.name || '',
-                                note: item.note || '',
-                              })
-                            }
-                          >
-                            <td className="px-2 py-2 text-zinc-900">{item.target_date}</td>
-                            <td className="px-2 py-2">
-                              <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                  item.day_type === 'holiday' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                                }`}
-                              >
-                                {item.day_type === 'holiday' ? '휴일' : '근무일'}
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-zinc-700">{item.name || '-'}</td>
-                            <td className="px-2 py-2 text-zinc-500">{item.note || '-'}</td>
-                          </tr>
-                        ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
           {viewMode === 'all' ? (
             <>
               <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
@@ -1611,17 +1264,16 @@ export default function ClientStaffAttendanceSection() {
                                   <td key={`${row.admin_id}-${column.date}`} className="border-r border-zinc-100 px-2 py-1.5 text-center align-top">
                                     {hasLog || leaveType ? (
                                       <div className={cellBoxClass}>
+                                        {hasLog ? (
+                                          <div className="mb-0.5 text-[10px] font-medium text-zinc-700">
+                                            {formatTime(day?.check_in)} ~ {formatTime(day?.check_out)}
+                                          </div>
+                                        ) : null}
                                         <div className="mb-0.5 flex items-center justify-between gap-1">
                                           <span className="text-[10px] font-semibold">
                                             {leaveType ? (leaveType === 'half' ? '반차' : '휴가') : '근태'}
                                           </span>
-                                          {isHoliday ? (
-                                            <span className="text-[10px] font-medium text-rose-700">휴일</span>
-                                          ) : hasLog ? (
-                                            <span className="text-[10px] font-medium">
-                                              {formatTime(day?.check_in)} ~ {formatTime(day?.check_out)}
-                                            </span>
-                                          ) : null}
+                                          {isHoliday ? <span className="text-[10px] font-medium text-rose-700">휴일</span> : null}
                                         </div>
                                         {hasTimeline ? (
                                           <div className="mb-1 h-1.5 w-full rounded-full bg-zinc-200/70">
@@ -1935,6 +1587,238 @@ export default function ClientStaffAttendanceSection() {
           </div>
         ) : null}
       </div>
+      {attendanceSettingsOpen && viewMode === 'all' ? (
+        <div className="fixed inset-0 z-40 bg-black/25" onClick={() => setAttendanceSettingsOpen(false)}>
+          <div
+            className="absolute inset-y-0 right-0 w-full max-w-2xl overflow-y-auto border-l border-zinc-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">근무정책 / 근무일 예외 설정</p>
+                <p className="text-xs text-zinc-500">근무 기준 시간과 특정일 예외(휴일/근무일)를 설정합니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttendanceSettingsOpen(false)}
+                className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-900">근무정책</h3>
+                  <button type="button" onClick={handleSavePolicy} disabled={policySaving} className={secondaryButtonClass}>
+                    {policySaving ? '저장 중...' : '정책 저장'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">출근 시각</span>
+                    <input
+                      type="time"
+                      className={inputClass}
+                      value={policyForm.work_start_time}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, work_start_time: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">퇴근 시각</span>
+                    <input
+                      type="time"
+                      className={inputClass}
+                      value={policyForm.work_end_time}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, work_end_time: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">지각 유예(분)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={inputClass}
+                      value={policyForm.late_grace_minutes}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, late_grace_minutes: Number(e.target.value || 0) }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">타임존</span>
+                    <input
+                      type="text"
+                      className={`${inputClass} bg-zinc-50`}
+                      value={policyForm.timezone}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, timezone: e.target.value }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">반차 기준(분)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      disabled={!policyForm.is_half_day_enabled}
+                      className={`${inputClass} ${!policyForm.is_half_day_enabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-400' : ''}`}
+                      value={policyForm.half_day_minutes}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, half_day_minutes: Number(e.target.value || 0) }))}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">반반차 기준(분)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      disabled={!policyForm.is_quarter_day_enabled}
+                      className={`${inputClass} ${!policyForm.is_quarter_day_enabled ? 'cursor-not-allowed bg-zinc-100 text-zinc-400' : ''}`}
+                      value={policyForm.quarter_day_minutes}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, quarter_day_minutes: Number(e.target.value || 0) }))}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 pt-6 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={policyForm.is_half_day_enabled}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, is_half_day_enabled: e.target.checked }))}
+                    />
+                    반차 사용
+                  </label>
+                  <label className="flex items-center gap-2 pt-6 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={policyForm.is_quarter_day_enabled}
+                      onChange={(e) => setPolicyForm((prev) => ({ ...prev, is_quarter_day_enabled: e.target.checked }))}
+                    />
+                    반반차 사용
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-zinc-900">
+                    근무일 예외 설정 ({anchorDate.getFullYear()}년 {anchorDate.getMonth() + 1}월)
+                  </h3>
+                  {calendarLoading ? <span className="text-xs text-zinc-500">불러오는 중...</span> : null}
+                </div>
+                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">적용 날짜</span>
+                    <input
+                      type="date"
+                      className={inputClass}
+                      value={calendarForm.target_date}
+                      onChange={(e) => {
+                        const nextDate = e.target.value
+                        const selected = calendarByDate.get(nextDate)
+                        setCalendarForm((prev) => ({
+                          ...prev,
+                          target_date: nextDate,
+                          day_type: selected?.day_type || prev.day_type,
+                          name: selected?.name || '',
+                          note: selected?.note || '',
+                        }))
+                      }}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">유형</span>
+                    <select
+                      className={inputClass}
+                      value={calendarForm.day_type}
+                      onChange={(e) =>
+                        setCalendarForm((prev) => ({ ...prev, day_type: e.target.value === 'workday' ? 'workday' : 'holiday' }))
+                      }
+                    >
+                      <option value="holiday">휴일</option>
+                      <option value="workday">근무일</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">명칭</span>
+                    <input
+                      type="text"
+                      className={inputClass}
+                      value={calendarForm.name}
+                      onChange={(e) => setCalendarForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="예: 창립기념일"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-zinc-600">메모</span>
+                    <input
+                      type="text"
+                      className={inputClass}
+                      value={calendarForm.note}
+                      onChange={(e) => setCalendarForm((prev) => ({ ...prev, note: e.target.value }))}
+                      placeholder="선택 입력"
+                    />
+                  </label>
+                </div>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={handleSaveCalendarDay} disabled={calendarSaving} className={secondaryButtonClass}>
+                    {calendarSaving ? '저장 중...' : '예외일 저장'}
+                  </button>
+                  <button type="button" onClick={handleDeleteCalendarDay} disabled={calendarSaving} className={secondaryButtonClass}>
+                    예외일 삭제
+                  </button>
+                  <p className="text-xs text-zinc-500">기본 규칙(주말 휴무)에서 제외할 날짜를 휴일/근무일로 지정합니다.</p>
+                </div>
+                <div className="overflow-x-auto rounded-md border border-zinc-200">
+                  <table className="min-w-[640px] w-full text-xs">
+                    <thead className="bg-zinc-50 text-zinc-600">
+                      <tr>
+                        <th className="px-2 py-2 text-left">날짜</th>
+                        <th className="px-2 py-2 text-left">유형</th>
+                        <th className="px-2 py-2 text-left">명칭</th>
+                        <th className="px-2 py-2 text-left">메모</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {calendarItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-8 text-center text-zinc-500">
+                            등록된 예외일이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        [...calendarItems]
+                          .sort((a, b) => String(a.target_date).localeCompare(String(b.target_date)))
+                          .map((item) => (
+                            <tr
+                              key={item.id}
+                              className="cursor-pointer hover:bg-zinc-50"
+                              onClick={() =>
+                                setCalendarForm({
+                                  target_date: item.target_date,
+                                  day_type: item.day_type,
+                                  name: item.name || '',
+                                  note: item.note || '',
+                                })
+                              }
+                            >
+                              <td className="px-2 py-2 text-zinc-900">{item.target_date}</td>
+                              <td className="px-2 py-2">
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    item.day_type === 'holiday' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                                  }`}
+                                >
+                                  {item.day_type === 'holiday' ? '휴일' : '근무일'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 text-zinc-700">{item.name || '-'}</td>
+                              <td className="px-2 py-2 text-zinc-500">{item.note || '-'}</td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

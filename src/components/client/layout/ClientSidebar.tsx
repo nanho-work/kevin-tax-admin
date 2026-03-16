@@ -41,7 +41,6 @@ const staffManagementMenus = [
   { label: '직원 근태/휴가 관리', href: '/client/staff/leave' },
   { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
   { label: '공지/업무지시', href: '/client/staff/work-posts' },
-  { label: '권한/조직배치', href: '/client/staff/organization' },
   { label: '초기비밀번호 재설정/잠금해제', href: '/client/staff/account-security' },
 ]
 

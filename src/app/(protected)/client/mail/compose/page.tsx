@@ -7,6 +7,7 @@ import RichTextEditor from '@/components/editor/RichTextEditor'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import { formatKSTDateTime } from '@/utils/dateTime'
 import { htmlToPlainText } from '@/utils/htmlPlainText'
+import { validateUploadFile } from '@/utils/fileUploadPolicy'
 import {
   deleteMailDraft,
   getClientMailErrorMessage,
@@ -149,10 +150,16 @@ export default function ClientMailComposePage() {
 
   const appendAttachmentFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return
+    const invalidMessages: string[] = []
     setAttachmentFiles((prev) => {
       const next = [...prev]
       const existing = new Set(prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`))
       for (const file of Array.from(files)) {
+        const validation = validateUploadFile(file)
+        if (!validation.valid) {
+          if (validation.message) invalidMessages.push(validation.message)
+          continue
+        }
         const key = `${file.name}-${file.size}-${file.lastModified}`
         if (existing.has(key)) continue
         existing.add(key)
@@ -160,6 +167,11 @@ export default function ClientMailComposePage() {
       }
       return next
     })
+    if (invalidMessages.length > 0) {
+      const [firstMessage] = invalidMessages
+      const suffix = invalidMessages.length > 1 ? ` 외 ${invalidMessages.length - 1}건` : ''
+      toast.error(`${firstMessage}${suffix}`)
+    }
   }
 
   const handleAttachmentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,16 +254,20 @@ export default function ClientMailComposePage() {
       setSubmitting(true)
       const normalizedBodyHtml = bodyHtml.trim()
       const normalizedBodyText = htmlToPlainText(normalizedBodyHtml)
-      const uploadedAttachmentS3Keys =
-        attachmentFiles.length > 0
-          ? (
-              await Promise.all(
-                attachmentFiles.map((file) => uploadMailComposeAttachment(file))
-              )
-            )
-              .map((item) => item.s3_key)
-              .filter((value) => Boolean(value))
-          : []
+      const uploadedAttachmentS3Keys: string[] = []
+      for (const file of attachmentFiles) {
+        const validation = validateUploadFile(file)
+        if (!validation.valid) {
+          throw new Error(validation.message || `${file.name}: 업로드할 수 없는 파일입니다.`)
+        }
+        try {
+          const uploaded = await uploadMailComposeAttachment(file)
+          if (uploaded?.s3_key) uploadedAttachmentS3Keys.push(uploaded.s3_key)
+        } catch (error) {
+          const detailMessage = getClientMailErrorMessage(error)
+          throw new Error(`${file.name}: ${detailMessage}`)
+        }
+      }
 
       const res = await sendMail({
         mail_account_id: mailAccountId,
@@ -290,7 +306,11 @@ export default function ClientMailComposePage() {
         await loadDrafts()
       }
     } catch (error) {
-      toast.error(getClientMailErrorMessage(error))
+      if (error instanceof Error && error.message) {
+        toast.error(error.message)
+      } else {
+        toast.error(getClientMailErrorMessage(error))
+      }
     } finally {
       setSubmitting(false)
     }

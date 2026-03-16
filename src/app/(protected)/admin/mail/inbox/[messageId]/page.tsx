@@ -438,7 +438,7 @@ export default function AdminMailMessageDetailPage() {
       }
 
       if (refreshed.download_status !== 'downloaded') {
-        toast.error('먼저 첨부파일을 가져와 주세요.')
+        toast.error('첨부 캐시가 만료되었거나 아직 가져오지 않았습니다. 다시 가져오기를 눌러주세요.')
         return
       }
 
@@ -458,6 +458,18 @@ export default function AdminMailMessageDetailPage() {
       }
       window.open(targetUrl, '_blank', 'noopener,noreferrer')
     } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status
+        if (status === 403 || status === 404) {
+          const refreshed = await refreshAttachmentById(attachmentId)
+          if (refreshed?.download_status !== 'downloaded') {
+            toast.error('첨부 캐시가 만료되었습니다. 다시 가져오기를 눌러주세요.')
+            return
+          }
+          toast.error('첨부 링크가 만료되었습니다. 다시 시도해 주세요.')
+          return
+        }
+      }
       toast.error(getAdminMailErrorMessage(error))
     } finally {
       setAttachmentActionLoadingId(null)

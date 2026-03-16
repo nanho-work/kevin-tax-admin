@@ -945,69 +945,70 @@ export default function ClientAclMatrixPage() {
     <section className="space-y-4">
       <div className="rounded-lg border border-zinc-200 bg-white p-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-zinc-700">조직도 보기</span>
             <button
               type="button"
-              onClick={() => setActiveTab('org')}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+              onClick={() => setActiveTab((prev) => (prev === 'org' ? 'acl' : 'org'))}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 activeTab === 'org'
                   ? 'bg-zinc-900 text-white'
                   : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
               }`}
             >
-              조직도
+              {activeTab === 'org' ? 'ON' : 'OFF'}
             </button>
+            <span className="text-xs text-zinc-500">
+              {activeTab === 'org' ? '리스트형 + 이동형 조직도' : 'ACL 권한 설정 화면'}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('acl')}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-                activeTab === 'acl'
-                  ? 'bg-zinc-900 text-white'
-                  : 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-              }`}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
             >
-              ACL 권한
+              권한설정
             </button>
+            {activeTab === 'org' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openCreateDrawer('department')}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  부서관리
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCreateDrawer('team')}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  팀관리
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCreateDrawer('role')}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  직급관리
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab('org')}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                조직도 화면으로
+              </button>
+            )}
           </div>
-          {activeTab === 'org' ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => openCreateDrawer('department')}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-              >
-                부서관리
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreateDrawer('team')}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-              >
-                팀관리
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreateDrawer('role')}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-              >
-                직급관리
-              </button>
-            </div>
-          ) : null}
         </div>
       </div>
 
       {activeTab === 'org' ? (
         <section className="space-y-4">
-          <div className="flex justify-center">
-            <div className="inline-flex w-fit flex-col rounded-lg border border-zinc-200 bg-white px-4 py-3 text-center shadow-sm">
-              <p className="text-base font-semibold text-zinc-900">{companyName}</p>
-              <p className="mt-1 text-xs text-zinc-600">
-                대표 <span className="font-medium text-zinc-900">{ownerName}</span>
-              </p>
-            </div>
-          </div>
-
           {orgLoading ? (
             <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-12 text-center text-sm text-zinc-500">조직도 조회 중...</div>
           ) : departments.length === 0 && unassignedTeams.length === 0 ? (
@@ -1016,75 +1017,126 @@ export default function ClientAclMatrixPage() {
               <p className="mt-1 text-xs text-zinc-500">상단 + 버튼으로 부서 또는 팀을 먼저 생성해 주세요.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {departments.length > 0 ? (
-                <div className="flex flex-col items-center">
-                  <div className="h-4 w-px bg-zinc-300" />
-                  <div className="relative inline-flex flex-col items-center">
-                    {departmentLine.width > 0 ? (
-                      <div
-                        className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
-                        style={{ left: `${departmentLine.left}px`, width: `${departmentLine.width}px` }}
-                      />
-                    ) : null}
-                    <div ref={departmentRowRef} className="flex flex-nowrap items-start gap-0">
-                      {departments.map((department) => {
-                        const departmentTeams = teamsByDepartmentId.get(department.id) || []
-                        return (
-                          <div
-                            key={department.id}
-                            className="flex shrink-0 flex-col items-center px-3"
-                            ref={(node) => {
-                              departmentNodeRefs.current[department.id] = node
-                            }}
-                            onDragOver={(event) => {
-                              if (!draggingDepartmentId && !draggingTeamId) return
-                              event.preventDefault()
-                            }}
-                            onDrop={(event) => {
-                              event.preventDefault()
-                              if (draggingDepartmentId) {
-                                void handleDropDepartment(department.id)
-                                return
-                              }
-                              if (draggingTeamId) {
-                                void handleDropTeamToDepartmentEnd(department.id)
-                              }
-                            }}
-                          >
-                            <div className="h-4 w-[2px] bg-zinc-300" />
-                            <div
-                              draggable
-                              onDragStart={() => setDraggingDepartmentId(department.id)}
-                              onDragEnd={() => setDraggingDepartmentId(null)}
-                              className="cursor-move rounded-md border border-zinc-200 bg-white px-4 py-2"
-                            >
-                              <p className="text-sm font-semibold text-zinc-900">{department.name}</p>
-                            </div>
-                            <div className="h-3 w-px bg-zinc-300" />
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+              <div className="space-y-4 xl:col-span-1">
+                <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                  <p className="text-sm font-semibold text-zinc-900">리스트형 조직도</p>
+                  <div className="mt-3 space-y-3">
+                    {departments.map((department) => {
+                      const departmentTeams = teamsByDepartmentId.get(department.id) || []
+                      return (
+                        <div key={`list-dep-${department.id}`} className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-zinc-900">{department.name}</p>
+                            <span className="rounded bg-white px-2 py-0.5 text-[11px] text-zinc-500">
+                              {departmentTeams.length}팀
+                            </span>
+                          </div>
+                          <div className="mt-2 space-y-2">
                             {departmentTeams.length === 0 ? (
-                              <button
-                                type="button"
-                                className="rounded border border-dashed border-zinc-300 px-3 py-1 text-xs text-zinc-500"
-                                onDragOver={(event) => {
-                                  if (!draggingTeamId) return
-                                  event.preventDefault()
-                                }}
-                                onDrop={(event) => {
-                                  if (!draggingTeamId) return
-                                  event.preventDefault()
-                                  void handleDropTeamToDepartmentEnd(department.id)
-                                }}
-                              >
-                                부서 내 팀 없음
-                              </button>
+                              <p className="text-xs text-zinc-400">등록된 팀이 없습니다.</p>
                             ) : (
-                              <div className="inline-flex flex-col items-center">
-                                <div
-                                  className="relative"
-                                  ref={(node) => {
-                                    teamRowRefs.current[`dep-${department.id}`] = node
-                                  }}
+                              departmentTeams.map((team) => {
+                                const members = staffByTeamId.get(team.id) || []
+                                return (
+                                  <div key={`list-team-${team.id}`} className="rounded border border-zinc-200 bg-white px-2.5 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold text-zinc-800">{team.name}</p>
+                                      <span className="text-[11px] text-zinc-500">{members.length}명</span>
+                                    </div>
+                                    {members.length > 0 ? (
+                                      <div className="mt-1.5 space-y-1">
+                                        {members.map((member) => (
+                                          <div key={`list-member-${member.id}`} className="flex items-center justify-between gap-2 text-[11px]">
+                                            <span className="truncate text-zinc-700">{member.name}</span>
+                                            <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
+                                              {member.role_id ? roleNameById.get(member.role_id) || '직급미정' : '직급미정'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="mt-1.5 text-[11px] text-zinc-400">소속 직원 없음</p>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {unassignedTeams.length > 0 ? (
+                      <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                        <p className="text-sm font-semibold text-zinc-900">미분류 팀</p>
+                        <div className="mt-2 space-y-2">
+                          {unassignedTeams.map((team) => {
+                            const members = staffByTeamId.get(team.id) || []
+                            return (
+                              <div key={`list-unassigned-${team.id}`} className="rounded border border-zinc-200 bg-white px-2.5 py-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-semibold text-zinc-800">{team.name}</p>
+                                  <span className="text-[11px] text-zinc-500">{members.length}명</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4 xl:col-span-2">
+                {departments.length > 0 ? (
+                  <div className="flex flex-col items-center rounded-lg border border-zinc-200 bg-white p-4">
+                    <div className="h-4 w-px bg-zinc-300" />
+                    <div className="relative inline-flex flex-col items-center">
+                      {departmentLine.width > 0 ? (
+                        <div
+                          className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                          style={{ left: `${departmentLine.left}px`, width: `${departmentLine.width}px` }}
+                        />
+                      ) : null}
+                      <div ref={departmentRowRef} className="flex flex-nowrap items-start gap-0">
+                        {departments.map((department) => {
+                          const departmentTeams = teamsByDepartmentId.get(department.id) || []
+                          return (
+                            <div
+                              key={department.id}
+                              className="flex shrink-0 flex-col items-center px-3"
+                              ref={(node) => {
+                                departmentNodeRefs.current[department.id] = node
+                              }}
+                              onDragOver={(event) => {
+                                if (!draggingDepartmentId && !draggingTeamId) return
+                                event.preventDefault()
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                if (draggingDepartmentId) {
+                                  void handleDropDepartment(department.id)
+                                  return
+                                }
+                                if (draggingTeamId) {
+                                  void handleDropTeamToDepartmentEnd(department.id)
+                                }
+                              }}
+                            >
+                              <div className="h-4 w-[2px] bg-zinc-300" />
+                              <div
+                                draggable
+                                onDragStart={() => setDraggingDepartmentId(department.id)}
+                                onDragEnd={() => setDraggingDepartmentId(null)}
+                                className="cursor-move rounded-md border border-zinc-200 bg-white px-4 py-2"
+                              >
+                                <p className="text-sm font-semibold text-zinc-900">{department.name}</p>
+                              </div>
+                              <div className="h-3 w-px bg-zinc-300" />
+                              {departmentTeams.length === 0 ? (
+                                <button
+                                  type="button"
+                                  className="rounded border border-dashed border-zinc-300 px-3 py-1 text-xs text-zinc-500"
                                   onDragOver={(event) => {
                                     if (!draggingTeamId) return
                                     event.preventDefault()
@@ -1095,59 +1147,79 @@ export default function ClientAclMatrixPage() {
                                     void handleDropTeamToDepartmentEnd(department.id)
                                   }}
                                 >
-                                  {teamLines[`dep-${department.id}`]?.width ? (
-                                    <div
-                                      className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
-                                      style={{
-                                        left: `${teamLines[`dep-${department.id}`].left}px`,
-                                        width: `${teamLines[`dep-${department.id}`].width}px`,
-                                      }}
-                                    />
-                                  ) : null}
-                                  <div className="flex flex-nowrap items-start gap-0">
-                                    {departmentTeams.map((team) => renderTeamNode(team, department.id))}
+                                  부서 내 팀 없음
+                                </button>
+                              ) : (
+                                <div className="inline-flex flex-col items-center">
+                                  <div
+                                    className="relative"
+                                    ref={(node) => {
+                                      teamRowRefs.current[`dep-${department.id}`] = node
+                                    }}
+                                    onDragOver={(event) => {
+                                      if (!draggingTeamId) return
+                                      event.preventDefault()
+                                    }}
+                                    onDrop={(event) => {
+                                      if (!draggingTeamId) return
+                                      event.preventDefault()
+                                      void handleDropTeamToDepartmentEnd(department.id)
+                                    }}
+                                  >
+                                    {teamLines[`dep-${department.id}`]?.width ? (
+                                      <div
+                                        className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                                        style={{
+                                          left: `${teamLines[`dep-${department.id}`].left}px`,
+                                          width: `${teamLines[`dep-${department.id}`].width}px`,
+                                        }}
+                                      />
+                                    ) : null}
+                                    <div className="flex flex-nowrap items-start gap-0">
+                                      {departmentTeams.map((team) => renderTeamNode(team, department.id))}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {unassignedTeams.length > 0 ? (
-                <div className="pt-2">
-                  <p className="text-sm font-semibold text-zinc-900">미분류 팀</p>
-                  <div className="mt-3">
-                    <div
-                      className="relative flex flex-nowrap items-start gap-0"
-                      ref={(node) => {
-                        teamRowRefs.current['dep-none'] = node
-                      }}
-                      onDragOver={(event) => {
-                        if (!draggingTeamId) return
-                        event.preventDefault()
-                      }}
-                      onDrop={(event) => {
-                        if (!draggingTeamId) return
-                        event.preventDefault()
-                        void handleDropTeamToDepartmentEnd(null)
-                      }}
-                    >
-                      {teamLines['dep-none']?.width ? (
-                        <div
-                          className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
-                          style={{ left: `${teamLines['dep-none'].left}px`, width: `${teamLines['dep-none'].width}px` }}
-                        />
-                      ) : null}
-                      {unassignedTeams.map((team) => renderTeamNode(team, null))}
+                {unassignedTeams.length > 0 ? (
+                  <div className="rounded-lg border border-zinc-200 bg-white p-4 pt-2">
+                    <p className="text-sm font-semibold text-zinc-900">미분류 팀</p>
+                    <div className="mt-3">
+                      <div
+                        className="relative flex flex-nowrap items-start gap-0"
+                        ref={(node) => {
+                          teamRowRefs.current['dep-none'] = node
+                        }}
+                        onDragOver={(event) => {
+                          if (!draggingTeamId) return
+                          event.preventDefault()
+                        }}
+                        onDrop={(event) => {
+                          if (!draggingTeamId) return
+                          event.preventDefault()
+                          void handleDropTeamToDepartmentEnd(null)
+                        }}
+                      >
+                        {teamLines['dep-none']?.width ? (
+                          <div
+                            className="pointer-events-none absolute top-0 h-[2px] bg-zinc-300"
+                            style={{ left: `${teamLines['dep-none'].left}px`, width: `${teamLines['dep-none'].width}px` }}
+                          />
+                        ) : null}
+                        {unassignedTeams.map((team) => renderTeamNode(team, null))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           )}
 

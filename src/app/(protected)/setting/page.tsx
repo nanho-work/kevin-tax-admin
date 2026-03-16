@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function LegacySettingPage() {
-  redirect('/client/staff/organization')
+  redirect('/client/staff?panel=org')
 }
