@@ -157,13 +157,6 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   }, [searchParams])
   const { session, loading } = useClientSessionContext()
   const canManageClients = getClientRoleRank(session) === 0
-  const profile = useMemo(
-    () => ({
-      name: session?.name || '',
-      companyName: (session as any)?.client_company_name || undefined,
-    }),
-    [session]
-  )
   const collapsedQuickMenus = [
     {
       key: 'dashboard',
@@ -219,6 +212,16 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       active: hasSettingPath,
     },
   ] as const
+
+  const handleOpenSectionFromRail = (sectionKey: string) => {
+    if (sectionKey === 'mail') setIsMailOpen(true)
+    if (sectionKey === 'company') setIsCompanyManagementOpen(true)
+    if (sectionKey === 'staff') setIsStaffManagementOpen(true)
+    if (sectionKey === 'bookkeeping') setIsBookkeepingOpen(true)
+    if (sectionKey === 'setting') setIsSettingOpen(true)
+    if (sectionKey === 'client-management') setIsClientManagementOpen(true)
+    onToggleCollapse?.()
+  }
 
   const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     `/client/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
@@ -661,18 +664,20 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             {collapsedQuickMenus.map((item) => {
               const Icon = item.icon
               return (
-                <Link key={item.key} href={item.href} title={item.label}>
-                  <div
-                    className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
-                      item.active
-                        ? 'bg-sky-600 text-white'
-                        : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="mt-1 text-[9px] leading-3">{item.label}</span>
-                  </div>
-                </Link>
+                <button
+                  key={item.key}
+                  type="button"
+                  title={item.label}
+                  onClick={() => handleOpenSectionFromRail(item.key)}
+                  className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
+                    item.active
+                      ? 'bg-sky-600 text-white'
+                      : 'text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="mt-1 text-[9px] leading-3">{item.label}</span>
+                </button>
               )
             })}
           </div>
@@ -683,38 +688,27 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
-      <div className="border-b border-neutral-200 px-5 py-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-neutral-500">{profile.companyName || '고객사'} 관리자</p>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
-            aria-label="사이드바 접기"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-        </div>
-        {loading ? (
-          <>
-            <div className="mt-2 h-4 w-24 animate-pulse rounded bg-neutral-100" />
-            <div className="mt-2 h-3 w-40 animate-pulse rounded bg-neutral-100" />
-          </>
-        ) : (
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <p className="text-xs text-neutral-500">{profile.name ? `${profile.name}님` : '세션 확인 중...'}</p>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <p className="text-xs font-medium text-neutral-500">메뉴</p>
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={handleLogout}
-              className="h-6 rounded-md bg-sky-600 px-2 text-[11px] font-medium text-white hover:bg-sky-700"
+              className="h-7 rounded-md bg-sky-600 px-2 text-[11px] font-medium text-white hover:bg-sky-700"
             >
               로그아웃
             </button>
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
+              aria-label="사이드바 접기"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
           </div>
-        )}
-      </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
+        </div>
         <div className="flex flex-col gap-1">
         {menus.map((menu) => {
           const active = pathname === menu.href

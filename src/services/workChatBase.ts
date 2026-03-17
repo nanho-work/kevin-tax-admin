@@ -1,11 +1,16 @@
 import axios, { type AxiosInstance } from 'axios'
 import type {
+  WorkChatAttachment,
+  WorkChatAttachmentUrlOut,
   WorkChatCreateRoomRequest,
   WorkChatCreateRoomResponse,
   WorkChatMemberType,
   WorkChatMessage,
   WorkChatMessageListResponse,
+  WorkChatReadCursor,
+  WorkChatMessageSearchResponse,
   WorkChatMessageType,
+  WorkChatRoomPreferenceUpdateRequest,
   WorkChatParticipantsResponse,
   WorkChatParticipant,
   WorkChatRoom,
@@ -44,7 +49,7 @@ function normalizeSenderType(value: unknown): WorkChatSenderType {
 }
 
 function normalizeMessageType(value: unknown): WorkChatMessageType {
-  if (value === 'text' || value === 'system') return value
+  if (value === 'text' || value === 'system' || value === 'file' || value === 'image') return value
   return 'text'
 }
 
@@ -83,7 +88,18 @@ function normalizeParticipant(raw: RawRecord, fallbackType: WorkChatMemberType):
     member_id: memberId,
     company_id: raw.company_id == null ? null : toNumber(raw.company_id, 0) || null,
     name: pickName(raw),
-    avatar_url: raw.profile_image_url == null ? null : String(raw.profile_image_url),
+    avatar_url:
+      raw.avatar_url != null
+        ? String(raw.avatar_url)
+        : raw.profile_image_url != null
+          ? String(raw.profile_image_url)
+          : raw.profileImageUrl != null
+            ? String(raw.profileImageUrl)
+            : raw.company_logo_url != null
+              ? String(raw.company_logo_url)
+              : raw.logo_url != null
+                ? String(raw.logo_url)
+                : null,
     subtitle: pickSubtitle(raw),
   }
 }
@@ -111,6 +127,9 @@ function normalizeRoom(raw: RawRecord): WorkChatRoom {
     members: membersRaw
       .map((member: RawRecord) => normalizeParticipant(member, 'admin'))
       .filter((row: WorkChatParticipant) => row.member_id > 0),
+    is_hidden: Boolean(raw.is_hidden),
+    is_muted: Boolean(raw.is_muted),
+    muted_until: raw.muted_until == null ? null : String(raw.muted_until),
     unread_count: unreadCount,
     unread_count_display:
       typeof raw.unread_count_display === 'string'
@@ -129,15 +148,51 @@ function normalizeRoom(raw: RawRecord): WorkChatRoom {
 function normalizeRoomListResponse(data: any): WorkChatRoomListResponse {
   const rawItems = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
   const items = rawItems.map((raw: RawRecord) => normalizeRoom(raw)).filter((row: WorkChatRoom) => row.id > 0)
+  const totalFromPayload =
+    data?.total ??
+    data?.total_count ??
+    data?.count ??
+    data?.pagination?.total ??
+    data?.meta?.total
+  const pageFromPayload =
+    data?.page ??
+    data?.current_page ??
+    data?.pagination?.page ??
+    data?.meta?.page
+  const sizeFromPayload =
+    data?.size ??
+    data?.limit ??
+    data?.page_size ??
+    data?.pagination?.size ??
+    data?.meta?.size
   return {
     items,
-    total: toNumber(data?.total, items.length),
-    page: toNumber(data?.page, 1),
-    size: toNumber(data?.size, items.length || 20),
+    total: toNumber(totalFromPayload, items.length),
+    page: toNumber(pageFromPayload, 1),
+    size: toNumber(sizeFromPayload, items.length || 20),
   }
 }
 
 function normalizeMessage(raw: RawRecord): WorkChatMessage {
+  const rawAttachment = raw.attachment as RawRecord | undefined
+  const attachment: WorkChatAttachment | null =
+    rawAttachment && toNumber(rawAttachment.id ?? rawAttachment.attachment_id) > 0
+      ? {
+          id: toNumber(rawAttachment.id ?? rawAttachment.attachment_id),
+          message_id: toNumber(rawAttachment.message_id),
+          file_name: String(rawAttachment.file_name ?? ''),
+          content_type:
+            rawAttachment.content_type == null ? null : String(rawAttachment.content_type),
+          file_size: toNumber(rawAttachment.file_size, 0),
+          kind:
+            rawAttachment.kind === 'image' || rawAttachment.kind === 'file'
+              ? rawAttachment.kind
+              : null,
+          is_expired: Boolean(rawAttachment.is_expired),
+          expires_at:
+            rawAttachment.expires_at == null ? null : String(rawAttachment.expires_at),
+        }
+      : null
   return {
     id: toNumber(raw.id ?? raw.message_id),
     room_id: toNumber(raw.room_id ?? raw.roomId),
@@ -146,8 +201,10 @@ function normalizeMessage(raw: RawRecord): WorkChatMessage {
       raw.sender_id == null
         ? null
         : toNumber(raw.sender_id, 0),
+    sender_name: raw.sender_name == null ? null : String(raw.sender_name),
     message_type: normalizeMessageType(raw.message_type ?? raw.type),
     body: raw.body == null ? null : String(raw.body),
+    attachment,
     is_deleted: Boolean(raw.is_deleted),
     created_at: String(raw.created_at ?? raw.createdAt ?? ''),
   }
@@ -163,6 +220,41 @@ function normalizeMessageListResponse(data: any): WorkChatMessageListResponse {
         ? null
         : toNumber(data.next_before_message_id, 0) || null,
   }
+}
+
+function normalizeMessageSearchListResponse(data: any): WorkChatMessageSearchResponse {
+  const rawItems = Array.isArray(data?.items) ? data.items : []
+  return {
+    total: toNumber(data?.total, rawItems.length),
+    page: toNumber(data?.page, 1),
+    size: toNumber(data?.size, rawItems.length || 50),
+    items: rawItems.map((raw: RawRecord) => ({
+      message_id: toNumber(raw.message_id ?? raw.id),
+      room_id: toNumber(raw.room_id),
+      sender_type: normalizeSenderType(raw.sender_type),
+      sender_id: raw.sender_id == null ? null : toNumber(raw.sender_id, 0),
+      sender_name: raw.sender_name == null ? null : String(raw.sender_name),
+      message_type: normalizeMessageType(raw.message_type),
+      snippet: String(raw.snippet ?? ''),
+      created_at: String(raw.created_at ?? ''),
+    })),
+  }
+}
+
+function normalizeReadCursors(data: any): WorkChatReadCursor[] {
+  const rawItems = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+  return rawItems
+    .map((raw: RawRecord) => ({
+      room_id: toNumber(raw.room_id ?? raw.roomId),
+      member_type: normalizeMemberType(raw.member_type ?? raw.type),
+      member_id: toNumber(raw.member_id ?? raw.memberId),
+      last_read_message_id:
+        raw.last_read_message_id == null
+          ? null
+          : toNumber(raw.last_read_message_id, 0) || null,
+      read_at: raw.read_at == null ? null : String(raw.read_at),
+    }))
+    .filter((row: WorkChatReadCursor) => row.room_id > 0 && row.member_id > 0)
 }
 
 function normalizeCreateRoomResponse(data: any): WorkChatCreateRoomResponse {
@@ -203,12 +295,14 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       page?: number
       size?: number
       room_type?: WorkChatRoomType | ''
+      include_hidden?: boolean
     }): Promise<WorkChatRoomListResponse> {
       const res = await httpClient.get(`${base}/rooms`, {
         params: {
           page: params?.page ?? 1,
           size: params?.size ?? 20,
           room_type: params?.room_type || undefined,
+          include_hidden: params?.include_hidden ?? undefined,
         },
       })
       return normalizeRoomListResponse(res.data)
@@ -229,14 +323,37 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       })
       return normalizeMessageListResponse(res.data)
     },
+    async searchMessages(
+      roomId: number,
+      params: { q: string; page?: number; size?: number }
+    ): Promise<WorkChatMessageSearchResponse> {
+      const res = await httpClient.get(`${base}/rooms/${roomId}/messages/search`, {
+        params: {
+          q: params.q,
+          page: params.page ?? 1,
+          size: params.size ?? 50,
+        },
+      })
+      return normalizeMessageSearchListResponse(res.data)
+    },
     async sendMessage(roomId: number, body: string): Promise<WorkChatMessage> {
       const res = await httpClient.post(`${base}/rooms/${roomId}/messages`, { body })
       return normalizeMessage(res.data)
+    },
+    async uploadAttachment(roomId: number, file: File): Promise<WorkChatMessage> {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await httpClient.post(`${base}/rooms/${roomId}/attachments`, form)
+      return normalizeMessage(res.data?.message ?? res.data)
     },
     async markRead(roomId: number, lastReadMessageId?: number | null): Promise<void> {
       await httpClient.post(`${base}/rooms/${roomId}/read`, {
         last_read_message_id: lastReadMessageId ?? undefined,
       })
+    },
+    async listReadCursors(roomId: number): Promise<WorkChatReadCursor[]> {
+      const res = await httpClient.get(`${base}/rooms/${roomId}/read-cursors`)
+      return normalizeReadCursors(res.data)
     },
     async listRoomMembers(roomId: number): Promise<WorkChatParticipant[]> {
       try {
@@ -263,8 +380,34 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
     async deleteMessage(messageId: number): Promise<void> {
       await httpClient.delete(`${base}/messages/${messageId}`)
     },
-    async leaveRoom(roomId: number): Promise<void> {
-      await httpClient.post(`${base}/rooms/${roomId}/leave`)
+    async leaveRoom(roomId: number): Promise<{ message: string }> {
+      const res = await httpClient.post<{ message: string }>(`${base}/rooms/${roomId}/leave`)
+      return res.data
+    },
+    async updateRoomPreference(
+      roomId: number,
+      payload: WorkChatRoomPreferenceUpdateRequest
+    ): Promise<WorkChatRoom> {
+      const res = await httpClient.patch(`${base}/rooms/${roomId}/preference`, payload)
+      return normalizeRoom(res.data)
+    },
+    async getAttachmentDownloadUrl(attachmentId: number): Promise<WorkChatAttachmentUrlOut> {
+      const res = await httpClient.get<WorkChatAttachmentUrlOut>(`${base}/attachments/${attachmentId}/download-url`)
+      return res.data
+    },
+    async getAttachmentPreviewUrl(attachmentId: number): Promise<WorkChatAttachmentUrlOut> {
+      const res = await httpClient.get<WorkChatAttachmentUrlOut>(`${base}/attachments/${attachmentId}/preview-url`)
+      return res.data
+    },
+    async saveAttachmentToCompany(
+      attachmentId: number,
+      payload: { company_id: number; title?: string }
+    ): Promise<{ message: string; company_document_id?: number | null }> {
+      const res = await httpClient.post<{ message: string; company_document_id?: number | null }>(
+        `${base}/attachments/${attachmentId}/save-to-company`,
+        payload
+      )
+      return res.data
     },
   }
 }

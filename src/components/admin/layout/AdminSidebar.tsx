@@ -17,7 +17,6 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import {
   createMailFolder,
   deleteMailFolder,
@@ -26,7 +25,6 @@ import {
   listMailMessages,
   updateMailFolder,
 } from '@/services/admin/mailService'
-import { format } from 'date-fns'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { getAdminRoleRank } from '@/utils/roleRank'
@@ -136,22 +134,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const router = useRouter()
   const { session, loading: sessionLoading } = useAdminSessionContext()
 
-  const [user, setUser] = useState<{
-    id: number
-    name: string
-    companyName?: string
-    profile_image_url?: string
-    checkIn?: string
-    checkOut?: string
-    roleLevel?: number
-    roleName?: string
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [checkingOut, setCheckingOut] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [currentTime, setCurrentTime] = useState<string>(() =>
-    new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  )
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
@@ -187,84 +169,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     searchParams.get('account_id') === String(accountId) &&
     searchParams.get('mailbox') === 'custom' &&
     searchParams.get('folder') === folderName
-
-  useEffect(() => {
-    async function fetchAttendance() {
-      if (sessionLoading) return
-      if (!session) {
-        setUser(null)
-        setErrorMessage('사용자 정보를 불러오지 못했습니다.')
-        setLoading(false)
-        return
-      }
-
-      const sessionAccountId = (session as any).account_id ?? (session as any).id
-      if (typeof sessionAccountId !== 'number') {
-        setUser(null)
-        setErrorMessage('사용자 정보를 불러오지 못했습니다.')
-        setLoading(false)
-        return
-      }
-
-      if (!user) {
-        setLoading(true)
-      }
-      setErrorMessage(null)
-      setUser({
-        id: sessionAccountId,
-        name: session.name,
-        companyName:
-          (session as any).client?.company_name ??
-          (session as any).company_name ??
-          (session as any).client_name,
-        profile_image_url: typeof (session as any).profile_image_url === 'string'
-          ? (session as any).profile_image_url
-          : undefined,
-        roleName: (session as any).role_name ?? (session as any).role?.name,
-        roleLevel: getAdminRoleRank(session),
-        checkIn: undefined,
-        checkOut: undefined,
-      })
-
-      try {
-        const today = format(new Date(), 'yyyy-MM-dd')
-        const attendanceRes = await getAttendanceLogs({ date_to: today, limit: 1, offset: 0 })
-        const todayCheckIn = attendanceRes.items?.[0]?.check_in || null
-        const todayCheckOut = attendanceRes.items?.[0]?.check_out || null
-
-        setUser((prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            checkIn: todayCheckIn
-              ? new Date(todayCheckIn).toLocaleTimeString('ko-KR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : undefined,
-            checkOut: todayCheckOut
-              ? new Date(todayCheckOut).toLocaleTimeString('ko-KR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : undefined,
-          }
-        })
-      } catch (attendanceError) {
-        console.warn('근태 정보 조회 실패:', attendanceError)
-      }
-      setLoading(false)
-    }
-    fetchAttendance()
-
-    const timeInterval = setInterval(() => {
-      setCurrentTime(
-        new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      )
-    }, 1000)
-
-    return () => clearInterval(timeInterval)
-  }, [session, sessionLoading])
 
   useEffect(() => {
     const activeKey = getActiveSection(pathname)
@@ -396,7 +300,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   }, [session, sessionLoading, mailCountsRefreshTick, expandedMailAccounts, selectedMailAccountId])
 
   const activeSection = getActiveSection(pathname)
-  const sidebarTitle = user?.companyName ? `${user.companyName} 관리자` : '관리자'
+  const userRoleLevel = session ? getAdminRoleRank(session) : 99
+  const hasUserSession = Boolean(session)
   const collapsedQuickMenus = [
     {
       key: 'dashboard',
@@ -427,6 +332,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       active: activeSection === 'companies',
     },
   ] as const
+
+  const handleOpenSectionFromRail = (sectionKey: string) => {
+    setExpanded((prev) => ({ ...prev, [sectionKey]: true }))
+    onToggleCollapse?.()
+  }
 
   const handleOpenFolderCreate = (accountId: number) => {
     if (folderCreateTargetAccountId === accountId) {
@@ -651,25 +561,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  const handleCheckOut = async () => {
-    if (checkingOut || user?.checkOut) return
-    setCheckingOut(true)
-    try {
-      await checkOutAdmin()
-      const checkoutTime = new Date().toLocaleTimeString('ko-KR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-      setUser((prev) => (prev ? { ...prev, checkOut: checkoutTime } : prev))
-      toast.success('퇴근 처리되었습니다.')
-    } catch (e) {
-      console.warn('퇴근 기록 실패:', e)
-      toast.error('퇴근 처리에 실패했습니다.')
-    } finally {
-      setCheckingOut(false)
-    }
-  }
-
   if (collapsed) {
     return (
       <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
@@ -688,18 +579,20 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
             {collapsedQuickMenus.map((item) => {
               const Icon = item.icon
               return (
-                <Link key={item.key} href={item.href} title={item.label}>
-                  <div
-                    className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
-                      item.active
-                        ? 'bg-sky-600 text-white'
-                        : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="mt-1 text-[9px] leading-3">{item.label}</span>
-                  </div>
-                </Link>
+                <button
+                  key={item.key}
+                  type="button"
+                  title={item.label}
+                  onClick={() => handleOpenSectionFromRail(item.key)}
+                  className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
+                    item.active
+                      ? 'bg-sky-600 text-white'
+                      : 'text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="mt-1 text-[9px] leading-3">{item.label}</span>
+                </button>
               )
             })}
           </div>
@@ -710,9 +603,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
-      <div className="border-b border-neutral-200 px-5 py-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-neutral-500">{sidebarTitle}</p>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <p className="text-xs font-medium text-neutral-500">메뉴</p>
           <button
             type="button"
             onClick={onToggleCollapse}
@@ -722,46 +615,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
             <ChevronLeft className="h-4 w-4" />
           </button>
         </div>
-        {!user && loading ? (
-          <>
-            <div className="mt-2 h-4 w-36 animate-pulse rounded bg-neutral-100" />
-            <div className="mt-2 h-3 w-40 animate-pulse rounded bg-neutral-100" />
-          </>
-        ) : user ? (
-          <div className="mt-2">
-            <div className="flex items-center gap-3">
-              <img
-                src={user.profile_image_url || '/default-profile.png'}
-                alt="사용자 이미지"
-                className="h-12 w-12 rounded-full border border-neutral-200 object-cover"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-neutral-900">
-                  {user.name} {user.roleName || ''}
-                </p>
-                <p className="mt-0.5 text-xs text-neutral-500">출근시간: {user.checkIn ?? '-'}</p>
-                <p className="mt-0.5 text-xs text-neutral-500">퇴근시간: {user.checkOut ?? '-'}</p>
-              </div>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-xs text-neutral-500">현재시간: {currentTime}</p>
-              <button
-                type="button"
-                onClick={() => void handleCheckOut()}
-                disabled={checkingOut || Boolean(user.checkOut)}
-                className="h-6 rounded-md bg-amber-500 px-2 text-[11px] font-medium text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-              >
-                {user.checkOut ? '퇴근완료' : checkingOut ? '처리중' : '퇴근'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-rose-600">{errorMessage ?? '사용자 정보가 없습니다.'}</p>
-        )}
-      </div>
-
-      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="px-1 pb-2 text-xs font-medium text-neutral-500">메뉴</p>
         <div className="space-y-1">
           {menuSections.map((section) => {
             const isActiveSection = activeSection === section.key
@@ -787,8 +640,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
 
             const isOpen = Boolean(expanded[section.key])
             const visibleChildren = section.children?.filter((child) => {
-              if (child.href === '/admin/setting/role' && (user?.roleLevel ?? 99) >= 2) return false
-              if (child.href === '/admin/companies/account' && !user) {
+              if (child.href === '/admin/setting/role' && userRoleLevel >= 2) return false
+              if (child.href === '/admin/companies/account' && !hasUserSession) {
                 return false
               }
               return true

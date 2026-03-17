@@ -3,22 +3,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Eye,
   Building2,
+  File,
   GripHorizontal,
   MessageCircle,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
+  Paperclip,
+  Plus,
+  Save,
   Search,
   UsersRound,
   X,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import { fetchCompanyTaxList } from '@/services/admin/company'
+import { fetchClientCompanyTaxList } from '@/services/client/company'
 import { adminWorkChatApi, getAdminWorkChatErrorMessage } from '@/services/admin/workChatService'
 import { clientWorkChatApi, getClientWorkChatErrorMessage } from '@/services/client/workChatService'
 import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
-import type { WorkChatMessage, WorkChatParticipant, WorkChatParticipantsResponse, WorkChatRoom } from '@/types/workChat'
+import type { CompanyTaxDetail } from '@/types/admin_campany'
+import type {
+  WorkChatCreateRoomRequest,
+  WorkChatMessage,
+  WorkChatMessageSearchItem,
+  WorkChatParticipant,
+  WorkChatParticipantsResponse,
+  WorkChatReadCursor,
+  WorkChatRoom,
+} from '@/types/workChat'
 
 type PortalType = 'admin' | 'client'
 type LauncherTab = 'employees' | 'companies' | 'rooms'
@@ -39,7 +58,6 @@ const CHAT_WINDOW_DEFAULT_WIDTH = Math.round(CHAT_WINDOW_BASE_WIDTH * (2 / 3))
 const CHAT_WINDOW_DEFAULT_HEIGHT = CHAT_WINDOW_BASE_HEIGHT
 const CHAT_WINDOW_MIN_WIDTH = CHAT_WINDOW_DEFAULT_WIDTH
 const CHAT_WINDOW_MIN_HEIGHT = Math.round(CHAT_WINDOW_BASE_HEIGHT * (2 / 3))
-const CHAT_WINDOW_MAX_WIDTH = CHAT_WINDOW_BASE_WIDTH
 const CHAT_WINDOW_MAX_HEIGHT = Math.round(CHAT_WINDOW_BASE_HEIGHT * 1.5)
 const TYPING_AUTO_CLEAR_MS = 1600
 const WS_RECONNECT_MAX_MS = 15000
@@ -54,6 +72,8 @@ type WsTypingState = {
   roomId: number
   name: string
 }
+
+type RoomReadCursorState = Record<string, number>
 
 function formatKoreanDateTime(value?: string | null): string {
   if (!value) return '-'
@@ -123,6 +143,33 @@ function parseServerDate(value: string): Date {
   return new Date(hasTimezone ? normalized : `${normalized}Z`)
 }
 
+function formatFileSize(size: number): string {
+  if (!Number.isFinite(size) || size < 1024) return `${Math.max(0, Math.floor(size || 0))}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)}MB`
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)}GB`
+}
+
+function canPreviewAttachment(contentType?: string | null, fileName?: string | null): boolean {
+  const lowerType = String(contentType || '').toLowerCase()
+  const lowerName = String(fileName || '').toLowerCase()
+  if (lowerType.startsWith('image/')) return true
+  if (lowerType === 'application/pdf' || lowerName.endsWith('.pdf')) return true
+  if (lowerType.startsWith('text/')) return true
+  if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) return true
+  return false
+}
+
+function isImageAttachment(contentType?: string | null, fileName?: string | null, kind?: string | null): boolean {
+  if (kind === 'image') return true
+  const lowerType = String(contentType || '').toLowerCase()
+  const lowerName = String(fileName || '').toLowerCase()
+  if (lowerType.startsWith('image/')) return true
+  return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'].some((ext) =>
+    lowerName.endsWith(ext)
+  )
+}
+
 function buildRoomTitle(room: WorkChatRoom, roomMembers: WorkChatParticipant[]): string {
   if (room.display_name && room.display_name.trim()) return room.display_name
   if (room.name && room.name.trim()) return room.name
@@ -146,6 +193,31 @@ function includeByKeyword(row: WorkChatParticipant, keyword: string): boolean {
   const normalized = keyword.trim().toLowerCase()
   if (!normalized) return true
   return `${row.name} ${row.subtitle || ''}`.toLowerCase().includes(normalized)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function renderHighlightedText(
+  text: string,
+  keyword: string,
+  markClassName: string
+) {
+  const normalized = keyword.trim()
+  if (!normalized) return text
+  const regex = new RegExp(`(${escapeRegExp(normalized)})`, 'ig')
+  const parts = text.split(regex)
+  if (parts.length <= 1) return text
+  return parts.map((part, idx) =>
+    part.toLowerCase() === normalized.toLowerCase() ? (
+      <mark key={`${part}-${idx}`} className={markClassName}>
+        {part}
+      </mark>
+    ) : (
+      <span key={`${part}-${idx}`}>{part}</span>
+    )
+  )
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -175,14 +247,36 @@ function normalizeIncomingMessage(raw: any): WorkChatMessage | null {
     raw?.sender_type === 'system'
       ? raw.sender_type
       : 'system'
-  const messageType = raw?.message_type === 'system' ? 'system' : 'text'
+  const messageType =
+    raw?.message_type === 'system' || raw?.message_type === 'file' || raw?.message_type === 'image'
+      ? raw.message_type
+      : 'text'
+  const attachment = raw?.attachment
+    ? {
+        id: toNumber(raw.attachment.id ?? raw.attachment.attachment_id),
+        message_id: toNumber(raw.attachment.message_id),
+        file_name: String(raw.attachment.file_name ?? ''),
+        content_type:
+          raw.attachment.content_type == null ? null : String(raw.attachment.content_type),
+        file_size: toNumber(raw.attachment.file_size, 0),
+        kind:
+          raw.attachment.kind === 'image' || raw.attachment.kind === 'file'
+            ? raw.attachment.kind
+            : null,
+        is_expired: Boolean(raw.attachment.is_expired),
+        expires_at:
+          raw.attachment.expires_at == null ? null : String(raw.attachment.expires_at),
+      }
+    : null
   return {
     id,
     room_id: roomId,
     sender_type: senderType,
     sender_id: raw?.sender_id == null ? null : toNumber(raw.sender_id, 0),
+    sender_name: raw?.sender_name == null ? null : String(raw.sender_name),
     message_type: messageType,
     body: raw?.body == null ? null : String(raw.body),
+    attachment,
     is_deleted: Boolean(raw?.is_deleted),
     created_at: String(raw?.created_at ?? ''),
   }
@@ -199,6 +293,12 @@ function toUnreadCountDisplay(count: number): string {
   return count > 300 ? '300+' : String(count)
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
 function sortRoomsByRecentMessage(rows: WorkChatRoom[]): WorkChatRoom[] {
   return [...rows].sort((a, b) => {
     const aTs = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
@@ -212,32 +312,49 @@ function normalizeWsRoomPatch(raw: any): (Partial<WorkChatRoom> & { id: number }
   const target = raw?.room ?? raw
   const id = toNumber(target?.id ?? target?.room_id ?? target?.roomId)
   if (id <= 0) return null
+  const hasOwn = (key: string) =>
+    target != null && Object.prototype.hasOwnProperty.call(target, key)
   return {
     id,
-    room_type: target?.room_type ?? target?.roomType,
-    name: target?.name == null ? null : String(target.name),
-    display_name: target?.display_name == null ? undefined : String(target.display_name),
-    unread_count: target?.unread_count == null ? undefined : toNumber(target.unread_count, 0),
+    room_type: hasOwn('room_type') ? target.room_type : hasOwn('roomType') ? target.roomType : undefined,
+    name: hasOwn('name') ? (target.name == null ? null : String(target.name)) : undefined,
+    display_name: hasOwn('display_name') ? (target.display_name == null ? null : String(target.display_name)) : undefined,
+    is_hidden: hasOwn('is_hidden') ? Boolean(target.is_hidden) : undefined,
+    is_muted: hasOwn('is_muted') ? Boolean(target.is_muted) : undefined,
+    muted_until: hasOwn('muted_until')
+      ? target.muted_until == null
+        ? null
+        : String(target.muted_until)
+      : undefined,
+    unread_count: hasOwn('unread_count') ? toNumber(target.unread_count, 0) : undefined,
     unread_count_display:
-      target?.unread_count_display == null ? undefined : String(target.unread_count_display),
+      hasOwn('unread_count_display') ? String(target.unread_count_display ?? '') : undefined,
     last_message_preview:
-      target?.last_message_preview == null
-        ? target?.last_message == null
+      hasOwn('last_message_preview')
+        ? target.last_message_preview == null
           ? null
-          : String(target.last_message)
-        : String(target.last_message_preview),
+          : String(target.last_message_preview)
+        : hasOwn('last_message')
+          ? target.last_message == null
+            ? null
+            : String(target.last_message)
+          : undefined,
     last_message_id:
-      target?.last_message_id == null
-        ? target?.last_message?.id == null
-          ? undefined
-          : toNumber(target.last_message.id, 0) || null
-        : toNumber(target.last_message_id, 0) || null,
+      hasOwn('last_message_id')
+        ? toNumber(target.last_message_id, 0) || null
+        : hasOwn('last_message') && target?.last_message?.id != null
+          ? toNumber(target.last_message.id, 0) || null
+          : undefined,
     last_message_at:
-      target?.last_message_at == null
-        ? target?.created_at == null
+      hasOwn('last_message_at')
+        ? target.last_message_at == null
           ? null
-          : String(target.created_at)
-        : String(target.last_message_at),
+          : String(target.last_message_at)
+        : hasOwn('created_at')
+          ? target.created_at == null
+            ? null
+            : String(target.created_at)
+          : undefined,
   }
 }
 
@@ -288,17 +405,56 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const [messageBody, setMessageBody] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [isMessageComposing, setIsMessageComposing] = useState(false)
   const [roomMembers, setRoomMembers] = useState<WorkChatParticipant[]>([])
   const [roomActionMenuOpen, setRoomActionMenuOpen] = useState(false)
   const [showRoomMembersPanel, setShowRoomMembersPanel] = useState(false)
   const [leavingRoom, setLeavingRoom] = useState(false)
+  const [updatingRoomPreference, setUpdatingRoomPreference] = useState(false)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [dragOverComposer, setDragOverComposer] = useState(false)
+  const [savingAttachmentId, setSavingAttachmentId] = useState<number | null>(null)
+  const [showSaveCompanyPanel, setShowSaveCompanyPanel] = useState(false)
+  const [saveTargetAttachment, setSaveTargetAttachment] = useState<{
+    attachmentId: number
+    fileName: string
+  } | null>(null)
+  const [companySearchKeyword, setCompanySearchKeyword] = useState('')
+  const [companyOptions, setCompanyOptions] = useState<CompanyTaxDetail[]>([])
+  const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false)
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const [saveDocumentTitle, setSaveDocumentTitle] = useState('')
+  const [inlineAttachmentLoadingIds, setInlineAttachmentLoadingIds] = useState<Record<number, boolean>>({})
+  const [imageViewer, setImageViewer] = useState<{
+    url: string
+    fileName: string
+  } | null>(null)
+  const [imageViewerMode, setImageViewerMode] = useState<'fit' | 'original'>('fit')
+  const [imageViewerExpanded, setImageViewerExpanded] = useState(true)
 
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [includeHiddenRooms, setIncludeHiddenRooms] = useState(false)
   const [startingTargetKey, setStartingTargetKey] = useState<string | null>(null)
+  const [showGroupCreateModal, setShowGroupCreateModal] = useState(false)
+  const [groupRoomName, setGroupRoomName] = useState('')
+  const [groupMemberSearchKeyword, setGroupMemberSearchKeyword] = useState('')
+  const [groupSelectedKeys, setGroupSelectedKeys] = useState<Record<string, boolean>>({})
+  const [creatingGroupRoom, setCreatingGroupRoom] = useState(false)
+  const [showGroupCreateTooltip, setShowGroupCreateTooltip] = useState(false)
+  const [showRoomSearchPanel, setShowRoomSearchPanel] = useState(false)
+  const [roomSearchKeyword, setRoomSearchKeyword] = useState('')
+  const [roomSearchResults, setRoomSearchResults] = useState<WorkChatMessageSearchItem[]>([])
+  const [roomSearchTotal, setRoomSearchTotal] = useState(0)
+  const [roomSearchLoading, setRoomSearchLoading] = useState(false)
+  const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(-1)
+  const [activeSearchMessageId, setActiveSearchMessageId] = useState<number | null>(null)
+  const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<number | null>(null)
   const [wsConnected, setWsConnected] = useState(false)
   const [wsConnecting, setWsConnecting] = useState(false)
+  const [wsCloseInfo, setWsCloseInfo] = useState<{ code: number; reason: string } | null>(null)
   const [presenceMap, setPresenceMap] = useState<Record<string, WsPresenceState>>({})
   const [typingMap, setTypingMap] = useState<Record<string, WsTypingState>>({})
+  const [roomReadCursors, setRoomReadCursors] = useState<Record<number, RoomReadCursorState>>({})
 
   const [launcherSize, setLauncherSize] = useState({
     width: LAUNCHER_DEFAULT_WIDTH,
@@ -318,6 +474,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const dragStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const chatWindowRef = useRef<HTMLDivElement | null>(null)
   const roomActionMenuRef = useRef<HTMLDivElement | null>(null)
+  const composeFileInputRef = useRef<HTMLInputElement | null>(null)
   const chatWindowDragStateRef = useRef<{
     startX: number
     startY: number
@@ -335,10 +492,13 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const messageScrollRef = useRef<HTMLDivElement | null>(null)
   const firstOpenedRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const sendInFlightRef = useRef(false)
   const wsReconnectTimerRef = useRef<number | null>(null)
   const wsReconnectDelayRef = useRef(1000)
   const wsPingTimerRef = useRef<number | null>(null)
   const wsConnectedRef = useRef(false)
+  const wsAuthBlockedRef = useRef(false)
+  const wsAuthToastShownRef = useRef<number | null>(null)
   const selectedRoomIdRef = useRef<number | null>(null)
   const openedRef = useRef(false)
   const subscribedRoomIdsRef = useRef<Set<number>>(new Set())
@@ -347,6 +507,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const typingExpiryTimersRef = useRef<Map<string, number>>(new Map())
   const typingSentRef = useRef(false)
   const participantNameMapRef = useRef<Map<string, string>>(new Map())
+  const inlineAttachmentUrlRef = useRef<Record<number, { url: string; expiresAt: number }>>({})
+  const inlineAttachmentLoadingRef = useRef<Set<number>>(new Set())
+  const groupCreateTooltipTimerRef = useRef<number | null>(null)
+  const jumpHighlightTimerRef = useRef<number | null>(null)
+  const nextBeforeMessageIdRef = useRef<number | null>(null)
 
   const storagePositionKey = `work_chat_launcher_position_${portalType}`
   const chatWindowStoragePositionKey = `work_chat_window_position_${portalType}`
@@ -355,6 +520,18 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     () => rooms.find((room) => room.id === selectedRoomId) || null,
     [rooms, selectedRoomId]
   )
+  const selectedRoomReadCursorState = useMemo(
+    () => (selectedRoom ? roomReadCursors[selectedRoom.id] || {} : {}),
+    [roomReadCursors, selectedRoom]
+  )
+  const canSaveToCompany = portalType === 'admin' || portalType === 'client'
+
+  const getCachedInlineAttachmentUrl = useCallback((attachmentId: number): string | null => {
+    const cached = inlineAttachmentUrlRef.current[attachmentId]
+    if (!cached) return null
+    if (cached.expiresAt <= Date.now() + 15_000) return null
+    return cached.url
+  }, [])
 
   const employeeRows = useMemo(() => {
     const rows = [...participants.admins, ...participants.client_accounts].filter(
@@ -384,6 +561,27 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       return title.includes(normalized) || preview.includes(normalized)
     })
   }, [rooms, searchKeyword])
+  const roomSearchMessageIdSet = useMemo(() => {
+    const set = new Set<number>()
+    roomSearchResults.forEach((item) => {
+      if (item.message_id > 0) set.add(item.message_id)
+    })
+    return set
+  }, [roomSearchResults])
+  const activeSearchResult =
+    activeSearchResultIndex >= 0 ? roomSearchResults[activeSearchResultIndex] || null : null
+  const filteredGroupCandidates = useMemo(
+    () => employeeRows.filter((row) => includeByKeyword(row, groupMemberSearchKeyword)),
+    [employeeRows, groupMemberSearchKeyword]
+  )
+  const selectedGroupMembers = useMemo(
+    () =>
+      employeeRows.filter((row) => {
+        const key = `${row.member_type}:${row.member_id}`
+        return Boolean(groupSelectedKeys[key])
+      }),
+    [employeeRows, groupSelectedKeys]
+  )
 
   const typingNamesInSelectedRoom = useMemo(() => {
     if (!selectedRoomId) return []
@@ -408,6 +606,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     if (!selectedRoom) return [] as WorkChatParticipant[]
     return roomMembers.length > 0 ? roomMembers : selectedRoom.members || []
   }, [roomMembers, selectedRoom])
+
+  const selectedRoomCounterpartKeys = useMemo(() => {
+    if (!selectedRoom) return [] as string[]
+    const sourceMembers = selectedRoomMembersForPanel
+    return sourceMembers
+      .filter((member) => !(member.member_type === actor.type && member.member_id === actor.id))
+      .map((member) => toActorKey(member.member_type, member.member_id))
+  }, [actor.id, actor.type, selectedRoom, selectedRoomMembersForPanel])
 
   useEffect(() => {
     const map = new Map<string, string>()
@@ -436,7 +642,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const loadRooms = useCallback(async (options?: { silent?: boolean }) => {
     try {
       if (!options?.silent) setRoomsLoading(true)
-      const res = await api.listRooms({ page: 1, size: 50 })
+      const res = await api.listRooms({ page: 1, size: 50, include_hidden: includeHiddenRooms })
       const next = sortRoomsByRecentMessage(res.items || [])
       setRooms(next)
       return next
@@ -446,7 +652,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     } finally {
       if (!options?.silent) setRoomsLoading(false)
     }
-  }, [api, getErrorMessage])
+  }, [api, getErrorMessage, includeHiddenRooms])
 
   const loadParticipants = useCallback(async (options?: { silent?: boolean }) => {
     try {
@@ -515,6 +721,55 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     [api]
   )
 
+  const mergeRoomReadCursor = useCallback(
+    (roomId: number, cursor: WorkChatReadCursor | { member_type: string; member_id: number; last_read_message_id: number | null }) => {
+      const memberType = cursor.member_type
+      const memberId = Number(cursor.member_id || 0)
+      if (
+        roomId <= 0 ||
+        memberId <= 0 ||
+        (memberType !== 'admin' && memberType !== 'client_account' && memberType !== 'company_account')
+      ) {
+        return
+      }
+      const actorKey = toActorKey(memberType, memberId)
+      const lastReadMessageId =
+        cursor.last_read_message_id == null ? 0 : Math.max(0, Number(cursor.last_read_message_id) || 0)
+      setRoomReadCursors((prev) => {
+        const roomState = prev[roomId] || {}
+        if ((roomState[actorKey] || 0) === lastReadMessageId) return prev
+        return {
+          ...prev,
+          [roomId]: {
+            ...roomState,
+            [actorKey]: lastReadMessageId,
+          },
+        }
+      })
+    },
+    []
+  )
+
+  const loadReadCursors = useCallback(
+    async (roomId: number) => {
+      try {
+        const rows = await api.listReadCursors(roomId)
+        const nextRoomState: RoomReadCursorState = {}
+        rows.forEach((row) => {
+          const actorKey = toActorKey(row.member_type, row.member_id)
+          nextRoomState[actorKey] = Math.max(0, Number(row.last_read_message_id || 0))
+        })
+        setRoomReadCursors((prev) => ({
+          ...prev,
+          [roomId]: nextRoomState,
+        }))
+      } catch {
+        // read-cursors endpoint may be unavailable on older backend builds.
+      }
+    },
+    [api]
+  )
+
   const loadMessages = useCallback(
     async (
       roomId: number,
@@ -555,38 +810,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       setSelectedRoomId(roomId)
       setChatWindowOpen(true)
       setActiveTab('rooms')
-      await Promise.all([loadMessages(roomId), loadRoomMembers(roomId)])
+      await Promise.all([loadMessages(roomId), loadRoomMembers(roomId), loadReadCursors(roomId)])
       requestAnimationFrame(() => {
         if (messageScrollRef.current) {
           messageScrollRef.current.scrollTop = messageScrollRef.current.scrollHeight
         }
       })
     },
-    [loadMessages, loadRoomMembers]
-  )
-
-  const findExistingCompanyBridgeRoom = useCallback(
-    (roomRows: WorkChatRoom[], target: WorkChatParticipant): WorkChatRoom | null => {
-      const byMember = roomRows.find(
-        (room) =>
-          room.room_type === 'company_bridge' &&
-          Array.isArray(room.members) &&
-          room.members.some(
-            (member) =>
-              member.member_type === 'company_account' && member.member_id === target.member_id
-          )
-      )
-      if (byMember) return byMember
-
-      if (target.company_id) {
-        const byCompanyId = roomRows.find(
-          (room) => room.room_type === 'company_bridge' && room.company_id === target.company_id
-        )
-        if (byCompanyId) return byCompanyId
-      }
-      return null
-    },
-    []
+    [loadMessages, loadReadCursors, loadRoomMembers]
   )
 
   const closeChatWindow = useCallback(() => {
@@ -596,7 +827,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     setRoomMembers([])
     setRoomActionMenuOpen(false)
     setShowRoomMembersPanel(false)
+    setShowSaveCompanyPanel(false)
+    setSaveTargetAttachment(null)
+    setImageViewer(null)
     setMessageBody('')
+    setShowRoomSearchPanel(false)
+    setRoomSearchKeyword('')
+    setRoomSearchResults([])
+    setRoomSearchTotal(0)
+    setActiveSearchResultIndex(-1)
+    setActiveSearchMessageId(null)
+    setJumpHighlightMessageId(null)
   }, [])
 
   const handleViewRoomMembers = useCallback(async () => {
@@ -610,16 +851,30 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
 
   const handleLeaveRoom = useCallback(async () => {
     if (!selectedRoom || leavingRoom) return
-    const confirmed = window.confirm('대화방에서 나가시겠습니까?')
+    const confirmed = window.confirm(
+      selectedRoom.room_type === 'company_bridge'
+        ? '회사 채팅방은 퇴장 대신 목록 숨김 처리됩니다. 진행하시겠습니까?'
+        : '대화방에서 나가시겠습니까?'
+    )
     if (!confirmed) return
 
     try {
       setLeavingRoom(true)
-      await api.leaveRoom(selectedRoom.id)
-      setRooms((prev) => prev.filter((room) => room.id !== selectedRoom.id))
+      const res = await api.leaveRoom(selectedRoom.id)
+      if (selectedRoom.room_type === 'company_bridge' && includeHiddenRooms) {
+        setRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id
+              ? { ...room, is_hidden: true }
+              : room
+          )
+        )
+      } else {
+        setRooms((prev) => prev.filter((room) => room.id !== selectedRoom.id))
+      }
       closeChatWindow()
       setActiveTab('rooms')
-      toast.success('대화방에서 나갔습니다.')
+      toast.success(res?.message || '처리되었습니다.')
       void loadRooms({ silent: true })
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -627,44 +882,114 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       setLeavingRoom(false)
       setRoomActionMenuOpen(false)
     }
-  }, [api, closeChatWindow, getErrorMessage, leavingRoom, loadRooms, selectedRoom])
+  }, [api, closeChatWindow, getErrorMessage, includeHiddenRooms, leavingRoom, loadRooms, selectedRoom])
+
+  const handleHideCurrentRoom = useCallback(async () => {
+    if (!selectedRoom || updatingRoomPreference) return
+    const nextHidden = !Boolean(selectedRoom.is_hidden)
+    try {
+      setUpdatingRoomPreference(true)
+      const updatedRoom = await api.updateRoomPreference(selectedRoom.id, { is_hidden: nextHidden })
+      if (nextHidden) {
+        if (includeHiddenRooms) {
+          setRooms((prev) =>
+            prev.map((room) =>
+              room.id === selectedRoom.id
+                ? { ...room, ...updatedRoom, is_hidden: true }
+                : room
+            )
+          )
+        } else {
+          setRooms((prev) => prev.filter((room) => room.id !== selectedRoom.id))
+        }
+        closeChatWindow()
+        setActiveTab('rooms')
+      } else {
+        setRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id
+              ? { ...room, ...updatedRoom, is_hidden: false }
+              : room
+          )
+        )
+      }
+      setRoomActionMenuOpen(false)
+      toast.success(nextHidden ? '채팅방을 목록에서 숨겼습니다.' : '채팅방 숨김을 해제했습니다.')
+      void loadRooms({ silent: true })
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setUpdatingRoomPreference(false)
+    }
+  }, [api, closeChatWindow, getErrorMessage, includeHiddenRooms, loadRooms, selectedRoom, updatingRoomPreference])
+
+  const handleToggleMuteCurrentRoom = useCallback(async () => {
+    if (!selectedRoom || updatingRoomPreference) return
+    const nextMuted = !Boolean(selectedRoom.is_muted)
+    try {
+      setUpdatingRoomPreference(true)
+      const updatedRoom = await api.updateRoomPreference(selectedRoom.id, {
+        is_muted: nextMuted,
+        muted_until: null,
+      })
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === selectedRoom.id
+            ? { ...room, ...updatedRoom }
+            : room
+        )
+      )
+      setRoomActionMenuOpen(false)
+      toast.success(nextMuted ? '알림을 껐습니다.' : '알림을 켰습니다.')
+      void loadRooms({ silent: true })
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setUpdatingRoomPreference(false)
+    }
+  }, [api, getErrorMessage, loadRooms, selectedRoom, updatingRoomPreference])
 
   const handleStartChat = useCallback(
     async (target: WorkChatParticipant) => {
       const key = `${target.member_type}:${target.member_id}`
+      if (startingTargetKey) return
+      const roomType: 'company_bridge' | 'direct' =
+        target.member_type === 'company_account' ? 'company_bridge' : 'direct'
+      const createPayload: WorkChatCreateRoomRequest = {
+        room_type: roomType,
+        members: [
+          {
+            member_type: target.member_type,
+            member_id: target.member_id,
+          },
+        ],
+      }
+      const validateRoomForTarget = async (roomId: number) => {
+        if (!Number.isFinite(roomId) || roomId <= 0) {
+          throw new Error('ROOM_ACCESS_MISMATCH')
+        }
+        const members = await api.listRoomMembers(roomId)
+        const hasTarget = members.some(
+          (member) =>
+            member.member_type === target.member_type &&
+            member.member_id === target.member_id
+        )
+        const hasMe = members.some(
+          (member) =>
+            member.member_type === actor.type &&
+            member.member_id === actor.id
+        )
+        if (!hasTarget || !hasMe) {
+          throw new Error('ROOM_ACCESS_MISMATCH')
+        }
+      }
       try {
         setStartingTargetKey(key)
-
-        if (target.member_type === 'company_account') {
-          const localExisting = findExistingCompanyBridgeRoom(rooms, target)
-          if (localExisting) {
-            await openRoom(localExisting.id)
-            return
-          }
-
-          const refreshed = await api.listRooms({ page: 1, size: 200, room_type: 'company_bridge' })
-          const refreshedRooms = sortRoomsByRecentMessage(refreshed.items || [])
-          setRooms((prev) => {
-            const others = prev.filter((room) => room.room_type !== 'company_bridge')
-            return sortRoomsByRecentMessage([...others, ...refreshedRooms])
-          })
-
-          const refreshedExisting = findExistingCompanyBridgeRoom(refreshedRooms, target)
-          if (refreshedExisting) {
-            await openRoom(refreshedExisting.id)
-            return
-          }
-        }
-
-        const res = await api.createRoom({
-          room_type: target.member_type === 'company_account' ? 'company_bridge' : 'direct',
-          members: [
-            {
-              member_type: target.member_type,
-              member_id: target.member_id,
-            },
-          ],
-        })
+        // 기존 선택 room에서 발생할 수 있는 잔존 polling 호출 차단
+        setSelectedRoomId(null)
+        // company_bridge는 기존 목록/캐시를 신뢰하지 않고
+        // 항상 생성/재사용 API를 먼저 호출해서 현재 actor 멤버십이 보장된 room_id로 진입한다.
+        const res = await api.createRoom(createPayload)
         setRooms((prev) => {
           const base = (res.room || {}) as WorkChatRoom
           if (!base.id) return prev
@@ -677,19 +1002,357 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           const next = [nextRoom, ...prev.filter((room) => room.id !== nextRoom.id)]
           return sortRoomsByRecentMessage(next)
         })
-        await openRoom(res.room.id)
+        const createdRoomId = Number((res?.room as any)?.id || 0)
+        await validateRoomForTarget(createdRoomId)
+        await openRoom(createdRoomId)
         void loadRooms({ silent: true })
       } catch (error) {
-        toast.error(getErrorMessage(error))
-        if (axios.isAxiosError(error) && error.response?.status === 409) {
-          void loadRooms({ silent: true })
+        const isConflict = axios.isAxiosError(error) && error.response?.status === 409
+        const isAccessMismatch =
+          error instanceof Error && error.message === 'ROOM_ACCESS_MISMATCH'
+        if (isConflict || isAccessMismatch) {
+          try {
+            if (isConflict) {
+              // race로 인한 409일 수 있으므로 create를 짧게 재시도한다.
+              for (let retry = 0; retry < 3; retry += 1) {
+                await wait(220 * (retry + 1))
+                try {
+                  const retried = await api.createRoom(createPayload)
+                  const retriedRoomId = Number((retried?.room as any)?.id || 0)
+                  if (retriedRoomId > 0) {
+                    await validateRoomForTarget(retriedRoomId)
+                    setRooms((prev) => {
+                      const base = (retried.room || {}) as WorkChatRoom
+                      const unreadCount = Math.max(0, Number(base.unread_count || 0))
+                      const nextRoom: WorkChatRoom = {
+                        ...base,
+                        unread_count: unreadCount,
+                        unread_count_display:
+                          base.unread_count_display || toUnreadCountDisplay(unreadCount),
+                      }
+                      return sortRoomsByRecentMessage([
+                        nextRoom,
+                        ...prev.filter((room) => room.id !== nextRoom.id),
+                      ])
+                    })
+                    await openRoom(retriedRoomId)
+                    void loadRooms({ silent: true })
+                    return
+                  }
+                } catch (retryError) {
+                  if (
+                    !axios.isAxiosError(retryError) ||
+                    retryError.response?.status !== 409
+                  ) {
+                    throw retryError
+                  }
+                }
+              }
+            }
+
+            const fallbackRoomType = roomType
+            const findExistingRoom = (rows: WorkChatRoom[]) =>
+              rows.find((room) => {
+                if (target.member_type === 'company_account') {
+                  const memberMatched = Array.isArray(room.members)
+                    ? room.members.some(
+                        (member) =>
+                          member.member_type === 'company_account' &&
+                          member.member_id === target.member_id
+                      )
+                    : false
+                  const companyMatched =
+                    target.company_id != null &&
+                    room.company_id != null &&
+                    Number(target.company_id) === Number(room.company_id)
+                  const title = `${room.display_name || ''} ${room.name || ''}`.trim()
+                  const titleMatched = Boolean(target.name?.trim()) && title === target.name.trim()
+                  return memberMatched || companyMatched || titleMatched
+                }
+
+                if (target.member_type === 'admin' || target.member_type === 'client_account') {
+                  if (!Array.isArray(room.members)) return false
+                  const hasTarget = room.members.some(
+                    (member) =>
+                      member.member_type === target.member_type &&
+                      member.member_id === target.member_id
+                  )
+                  const hasMe = room.members.some(
+                    (member) =>
+                      member.member_type === actor.type &&
+                      member.member_id === actor.id
+                  )
+                  return hasTarget && hasMe
+                }
+                return false
+              })
+
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              if (attempt > 0) {
+                await wait(250 * attempt)
+              }
+              const refreshed = await api.listRooms({
+                page: 1,
+                size: 100,
+                room_type: fallbackRoomType,
+                include_hidden: true,
+              })
+              const refreshedRooms = sortRoomsByRecentMessage(refreshed.items || [])
+              setRooms((prev) => {
+                const others = prev.filter((room) => room.room_type !== fallbackRoomType)
+                return sortRoomsByRecentMessage([...others, ...refreshedRooms])
+              })
+              const existing = findExistingRoom(refreshedRooms)
+              if (existing?.id) {
+                await validateRoomForTarget(existing.id)
+                await openRoom(existing.id)
+                void loadRooms({ silent: true })
+                return
+              }
+            }
+
+            // 목록만으로 매칭이 안 되면 멤버 조회로 최종 매칭 시도(백엔드 응답 형태 차이 대응).
+            const memberFallback = await api.listRooms({
+              page: 1,
+              size: 100,
+              room_type: fallbackRoomType,
+              include_hidden: true,
+            })
+            const candidates = sortRoomsByRecentMessage(memberFallback.items || []).slice(0, 30)
+            for (const candidate of candidates) {
+              try {
+                const members = await api.listRoomMembers(candidate.id)
+                const hasTarget = members.some(
+                  (member) =>
+                    member.member_type === target.member_type &&
+                    member.member_id === target.member_id
+                )
+                const hasMe = members.some(
+                  (member) =>
+                  member.member_type === actor.type &&
+                  member.member_id === actor.id
+                )
+                if (hasTarget && hasMe) {
+                  await openRoom(candidate.id)
+                  void loadRooms({ silent: true })
+                  return
+                }
+              } catch {
+                // 접근 불가 방은 skip
+              }
+            }
+          } catch {
+            // Fall through to error handling below.
+          }
+          toast.error('대화방을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.')
+          return
         }
+        toast.error(getErrorMessage(error))
       } finally {
         setStartingTargetKey(null)
       }
     },
-    [api, findExistingCompanyBridgeRoom, getErrorMessage, loadRooms, openRoom, rooms]
+    [actor.id, actor.type, api, getErrorMessage, loadRooms, openRoom, startingTargetKey]
   )
+
+  const handleOpenGroupCreateModal = useCallback(async () => {
+    setShowGroupCreateModal(true)
+    setShowGroupCreateTooltip(false)
+    setGroupRoomName('')
+    setGroupMemberSearchKeyword('')
+    setGroupSelectedKeys({})
+    if (
+      participants.admins.length === 0 &&
+      participants.client_accounts.length === 0 &&
+      participants.company_accounts.length === 0
+    ) {
+      await loadParticipants({ silent: true })
+    }
+  }, [loadParticipants, participants.admins.length, participants.client_accounts.length, participants.company_accounts.length])
+
+  const handleCloseGroupCreateModal = useCallback(() => {
+    setShowGroupCreateModal(false)
+    setGroupMemberSearchKeyword('')
+    setGroupRoomName('')
+    setGroupSelectedKeys({})
+    setCreatingGroupRoom(false)
+  }, [])
+
+  const toggleGroupCandidate = useCallback((target: WorkChatParticipant) => {
+    const key = `${target.member_type}:${target.member_id}`
+    setGroupSelectedKeys((prev) => ({ ...prev, [key]: !prev[key] }))
+  }, [])
+
+  const handleCreateGroupRoom = useCallback(async () => {
+    if (creatingGroupRoom) return
+    if (selectedGroupMembers.length < 2) {
+      toast.error('그룹채팅은 최소 2명을 선택해 주세요.')
+      return
+    }
+    try {
+      setCreatingGroupRoom(true)
+      const res = await api.createRoom({
+        room_type: 'group',
+        name: groupRoomName.trim() || undefined,
+        members: selectedGroupMembers.map((member) => ({
+          member_type: member.member_type,
+          member_id: member.member_id,
+        })),
+      })
+      setRooms((prev) => {
+        const base = (res.room || {}) as WorkChatRoom
+        if (!base.id) return prev
+        const unreadCount = Math.max(0, Number(base.unread_count || 0))
+        const nextRoom: WorkChatRoom = {
+          ...base,
+          unread_count: unreadCount,
+          unread_count_display: base.unread_count_display || toUnreadCountDisplay(unreadCount),
+        }
+        return sortRoomsByRecentMessage([nextRoom, ...prev.filter((room) => room.id !== nextRoom.id)])
+      })
+      handleCloseGroupCreateModal()
+      setActiveTab('rooms')
+      await openRoom(res.room.id)
+      void loadRooms({ silent: true })
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        void loadRooms({ silent: true })
+      }
+    } finally {
+      setCreatingGroupRoom(false)
+    }
+  }, [
+    api,
+    creatingGroupRoom,
+    getErrorMessage,
+    groupRoomName,
+    handleCloseGroupCreateModal,
+    loadRooms,
+    openRoom,
+    selectedGroupMembers,
+  ])
+
+  const jumpToMessageInSelectedRoom = useCallback(
+    async (messageId: number) => {
+      if (!selectedRoom || messageId <= 0) return
+
+      const tryScroll = () => {
+        const target = document.getElementById(`chat-msg-${messageId}`)
+        if (!target) return false
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setJumpHighlightMessageId(messageId)
+        if (jumpHighlightTimerRef.current) {
+          window.clearTimeout(jumpHighlightTimerRef.current)
+        }
+        jumpHighlightTimerRef.current = window.setTimeout(() => {
+          setJumpHighlightMessageId((prev) => (prev === messageId ? null : prev))
+          jumpHighlightTimerRef.current = null
+        }, 1600)
+        return true
+      }
+
+      if (tryScroll()) return
+
+      let cursor = nextBeforeMessageIdRef.current
+      let guard = 0
+      while (cursor && guard < 20) {
+        guard += 1
+        const older = await api.listMessages(selectedRoom.id, {
+          size: 50,
+          before_message_id: cursor,
+        })
+        const olderItems = (older.items || []).sort((a, b) => a.id - b.id)
+        setMessages((prev) => {
+          const merged = [...olderItems, ...prev]
+          const dedup = new Map<number, WorkChatMessage>()
+          merged.forEach((row) => dedup.set(row.id, row))
+          return Array.from(dedup.values()).sort((a, b) => a.id - b.id)
+        })
+        setNextBeforeMessageId(older.next_before_message_id)
+        nextBeforeMessageIdRef.current = older.next_before_message_id
+        cursor = older.next_before_message_id
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (tryScroll()) return
+      }
+
+      toast.error('검색 결과 메시지를 현재 기록에서 찾지 못했습니다.')
+    },
+    [api, selectedRoom]
+  )
+
+  const executeRoomSearch = useCallback(async () => {
+    if (!selectedRoom) return
+    const keyword = roomSearchKeyword.trim()
+    if (keyword.length < 2) {
+      toast.error('검색어는 2자 이상 입력해 주세요.')
+      return
+    }
+    try {
+      setRoomSearchLoading(true)
+      const res = await api.searchMessages(selectedRoom.id, {
+        q: keyword,
+        page: 1,
+        size: 50,
+      })
+      const items = res.items || []
+      setRoomSearchResults(items)
+      setRoomSearchTotal(Number(res.total || items.length || 0))
+      if (items.length === 0) {
+        setActiveSearchResultIndex(-1)
+        setActiveSearchMessageId(null)
+        toast('검색 결과가 없습니다.')
+        return
+      }
+      const firstMessageId = items[0].message_id
+      setActiveSearchResultIndex(0)
+      setActiveSearchMessageId(firstMessageId)
+      await jumpToMessageInSelectedRoom(firstMessageId)
+    } catch (error) {
+      setRoomSearchResults([])
+      setRoomSearchTotal(0)
+      setActiveSearchResultIndex(-1)
+      setActiveSearchMessageId(null)
+      toast.error(getErrorMessage(error))
+    } finally {
+      setRoomSearchLoading(false)
+    }
+  }, [api, getErrorMessage, jumpToMessageInSelectedRoom, roomSearchKeyword, selectedRoom])
+
+  const moveSearchResult = useCallback(
+    (direction: -1 | 1) => {
+      if (roomSearchResults.length === 0) return
+      const len = roomSearchResults.length
+      const current = activeSearchResultIndex < 0 ? 0 : activeSearchResultIndex
+      const next = (current + direction + len) % len
+      const target = roomSearchResults[next]
+      setActiveSearchResultIndex(next)
+      setActiveSearchMessageId(target?.message_id ?? null)
+      if (target?.message_id) {
+        void jumpToMessageInSelectedRoom(target.message_id)
+      }
+    },
+    [activeSearchResultIndex, jumpToMessageInSelectedRoom, roomSearchResults]
+  )
+
+  const handleGroupCreateButtonMouseEnter = useCallback(() => {
+    if (groupCreateTooltipTimerRef.current) {
+      window.clearTimeout(groupCreateTooltipTimerRef.current)
+      groupCreateTooltipTimerRef.current = null
+    }
+    groupCreateTooltipTimerRef.current = window.setTimeout(() => {
+      setShowGroupCreateTooltip(true)
+      groupCreateTooltipTimerRef.current = null
+    }, 500)
+  }, [])
+
+  const handleGroupCreateButtonMouseLeave = useCallback(() => {
+    if (groupCreateTooltipTimerRef.current) {
+      window.clearTimeout(groupCreateTooltipTimerRef.current)
+      groupCreateTooltipTimerRef.current = null
+    }
+    setShowGroupCreateTooltip(false)
+  }, [])
 
   const stopTypingSignal = useCallback(
     (roomId?: number | null) => {
@@ -708,8 +1371,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
 
   const handleSendMessage = useCallback(async () => {
     if (!selectedRoomId) return
+    if (isMessageComposing) return
     const body = messageBody.trim()
-    if (!body || sending) return
+    if (!body || sendInFlightRef.current) return
+    sendInFlightRef.current = true
     try {
       setSending(true)
       const sentByWs = sendWsEvent('chat.send', {
@@ -730,9 +1395,162 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      sendInFlightRef.current = false
       setSending(false)
     }
-  }, [api, getErrorMessage, loadMessages, loadRooms, messageBody, selectedRoomId, sendWsEvent, sending, stopTypingSignal])
+  }, [api, getErrorMessage, isMessageComposing, loadMessages, loadRooms, messageBody, selectedRoomId, sendWsEvent, stopTypingSignal])
+
+  const uploadAttachmentFile = useCallback(
+    async (file: File) => {
+      if (!selectedRoomId || !file) return
+      try {
+        setUploadingAttachment(true)
+        const uploadedMessage = await api.uploadAttachment(selectedRoomId, file)
+        if (!wsConnectedRef.current) {
+          setMessages((prev) => {
+            const map = new Map<number, WorkChatMessage>()
+            prev.forEach((row) => map.set(row.id, row))
+            map.set(uploadedMessage.id, uploadedMessage)
+            return Array.from(map.values()).sort((a, b) => a.id - b.id)
+          })
+          void loadRooms({ silent: true })
+        }
+        requestAnimationFrame(() => {
+          if (messageScrollRef.current) {
+            messageScrollRef.current.scrollTop = messageScrollRef.current.scrollHeight
+          }
+        })
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      } finally {
+        setUploadingAttachment(false)
+      }
+    },
+    [api, getErrorMessage, loadRooms, selectedRoomId]
+  )
+
+  const handleSelectAttachmentClick = useCallback(() => {
+    if (!selectedRoomId || uploadingAttachment) return
+    composeFileInputRef.current?.click()
+  }, [selectedRoomId, uploadingAttachment])
+
+  const ensureInlineAttachmentPreviewUrl = useCallback(
+    async (attachmentId: number, force = false): Promise<string | null> => {
+      if (!force) {
+        const cachedUrl = getCachedInlineAttachmentUrl(attachmentId)
+        if (cachedUrl) return cachedUrl
+      }
+      if (inlineAttachmentLoadingRef.current.has(attachmentId)) {
+        return getCachedInlineAttachmentUrl(attachmentId)
+      }
+      inlineAttachmentLoadingRef.current.add(attachmentId)
+      setInlineAttachmentLoadingIds((prev) => ({ ...prev, [attachmentId]: true }))
+      try {
+        const data = await api.getAttachmentPreviewUrl(attachmentId)
+        if (!data?.url) return null
+        const expiresInSec = Number(data.expires_in ?? 300)
+        inlineAttachmentUrlRef.current[attachmentId] = {
+          url: data.url,
+          expiresAt: Date.now() + Math.max(30, expiresInSec - 10) * 1000,
+        }
+        return data.url
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 410 && selectedRoomId) {
+          toast.error('만료된 파일입니다.')
+          void loadMessages(selectedRoomId)
+          return null
+        }
+        toast.error(getErrorMessage(error))
+        return null
+      } finally {
+        inlineAttachmentLoadingRef.current.delete(attachmentId)
+        setInlineAttachmentLoadingIds((prev) => {
+          if (!prev[attachmentId]) return prev
+          const next = { ...prev }
+          delete next[attachmentId]
+          return next
+        })
+      }
+    },
+    [api, getCachedInlineAttachmentUrl, getErrorMessage, loadMessages, selectedRoomId]
+  )
+
+  const handlePreviewAttachment = useCallback(
+    async (attachmentId: number) => {
+      try {
+        const url = await ensureInlineAttachmentPreviewUrl(attachmentId, true)
+        if (!url) return
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 410 && selectedRoomId) {
+          toast.error('만료된 파일입니다.')
+          void loadMessages(selectedRoomId)
+          return
+        }
+        toast.error(getErrorMessage(error))
+      }
+    },
+    [ensureInlineAttachmentPreviewUrl, getErrorMessage, loadMessages, selectedRoomId]
+  )
+
+  const handleOpenImageViewer = useCallback(
+    async (attachmentId: number, fileName: string) => {
+      const url = await ensureInlineAttachmentPreviewUrl(attachmentId)
+      if (!url) return
+      setImageViewer({ url, fileName })
+      setImageViewerMode('fit')
+      setImageViewerExpanded(true)
+    },
+    [ensureInlineAttachmentPreviewUrl]
+  )
+
+  const handleDownloadAttachment = useCallback(
+    async (attachmentId: number) => {
+      try {
+        const data = await api.getAttachmentDownloadUrl(attachmentId)
+        if (!data?.url) return
+        window.location.href = data.url
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 410 && selectedRoomId) {
+          toast.error('만료된 파일입니다.')
+          void loadMessages(selectedRoomId)
+          return
+        }
+        toast.error(getErrorMessage(error))
+      }
+    },
+    [api, getErrorMessage, loadMessages, selectedRoomId]
+  )
+
+  const handleOpenSaveCompanyPanel = useCallback(
+    (attachmentId: number, fileName: string) => {
+      if (!canSaveToCompany) return
+      setSaveTargetAttachment({ attachmentId, fileName })
+      setSelectedCompanyId(null)
+      setSaveDocumentTitle(fileName)
+      setCompanySearchKeyword('')
+      setShowSaveCompanyPanel(true)
+    },
+    [canSaveToCompany]
+  )
+
+  const handleSaveAttachmentToCompany = useCallback(async () => {
+    if (!saveTargetAttachment || !selectedCompanyId) return
+    try {
+      setSavingAttachmentId(saveTargetAttachment.attachmentId)
+      const res = await api.saveAttachmentToCompany(saveTargetAttachment.attachmentId, {
+        company_id: selectedCompanyId,
+        title: saveDocumentTitle.trim() || undefined,
+      })
+      toast.success(res.message || '고객사 기타문서로 저장했습니다.')
+      setShowSaveCompanyPanel(false)
+      setSaveTargetAttachment(null)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setSavingAttachmentId(null)
+    }
+  }, [api, getErrorMessage, saveDocumentTitle, saveTargetAttachment, selectedCompanyId])
 
   const handleDeleteMessage = useCallback(
     async (messageId: number) => {
@@ -850,6 +1668,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
 
   useEffect(() => {
     openedRef.current = open
+    if (open) {
+      wsAuthBlockedRef.current = false
+      wsAuthToastShownRef.current = null
+    }
   }, [open])
 
   useEffect(() => {
@@ -971,11 +1793,13 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       if (!latestToken) {
         setWsConnected(false)
         setWsConnecting(false)
+        setWsCloseInfo({ code: 4401, reason: 'token_missing' })
         return
       }
       const wsUrl = buildWsUrl(portalType, latestToken)
       if (!wsUrl) return
 
+      setWsCloseInfo(null)
       setWsConnecting(true)
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -1006,6 +1830,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         if (eventName === 'chat.ws.ready') {
           setWsConnected(true)
           setWsConnecting(false)
+          setWsCloseInfo(null)
+          wsAuthBlockedRef.current = false
+          wsAuthToastShownRef.current = null
           void loadRooms({ silent: true })
           return
         }
@@ -1087,6 +1914,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           if (roomId <= 0) return
           const memberType = extractWsMemberType(data)
           const memberId = extractWsMemberId(data)
+          const lastReadMessageId = toNumber(
+            data?.last_read_message_id ?? data?.lastReadMessageId,
+            0
+          )
+          if (memberType && memberId > 0) {
+            mergeRoomReadCursor(roomId, {
+              member_type: memberType,
+              member_id: memberId,
+              last_read_message_id: lastReadMessageId || null,
+            })
+          }
           const isMe = memberType === actor.type && memberId === actor.id
           setRooms((prev) =>
             prev.map((room) => {
@@ -1108,6 +1946,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         if (eventName === 'chat.room.new') {
           const patch = normalizeWsRoomPatch(data)
           if (patch) {
+            if (!includeHiddenRooms && patch.is_hidden) {
+              return
+            }
             setRooms((prev) => {
               if (prev.some((room) => room.id === patch.id)) {
                 return prev
@@ -1119,6 +1960,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   room_type: patch.room_type || 'direct',
                   name: patch.name || null,
                   display_name: patch.display_name || patch.name || null,
+                  is_hidden: Boolean(patch.is_hidden),
+                  is_muted: Boolean(patch.is_muted),
+                  muted_until: patch.muted_until || null,
                   unread_count: unreadCount,
                   unread_count_display: patch.unread_count_display || toUnreadCountDisplay(unreadCount),
                   last_message_preview: patch.last_message_preview || null,
@@ -1129,6 +1973,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               ]
               return sortRoomsByRecentMessage(next)
             })
+            return
           }
           void loadRooms({ silent: true })
           return
@@ -1139,7 +1984,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             void loadRooms({ silent: true })
             return
           }
-          const shouldSyncByApi = patch.unread_count == null
+          if (!includeHiddenRooms && patch.is_hidden) {
+            setRooms((prev) => prev.filter((room) => room.id !== patch.id))
+            return
+          }
           setRooms((prev) => {
             const next = [...prev]
             const idx = next.findIndex((room) => room.id === patch.id)
@@ -1149,7 +1997,15 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 patch.unread_count == null ? base.unread_count : Math.max(0, patch.unread_count)
               next[idx] = {
                 ...base,
-                ...patch,
+                ...(patch.room_type !== undefined ? { room_type: patch.room_type } : {}),
+                ...(patch.name !== undefined ? { name: patch.name } : {}),
+                ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
+                ...(patch.is_hidden !== undefined ? { is_hidden: patch.is_hidden } : {}),
+                ...(patch.is_muted !== undefined ? { is_muted: patch.is_muted } : {}),
+                ...(patch.muted_until !== undefined ? { muted_until: patch.muted_until } : {}),
+                ...(patch.last_message_preview !== undefined ? { last_message_preview: patch.last_message_preview } : {}),
+                ...(patch.last_message_id !== undefined ? { last_message_id: patch.last_message_id } : {}),
+                ...(patch.last_message_at !== undefined ? { last_message_at: patch.last_message_at } : {}),
                 unread_count: unreadCount,
                 unread_count_display:
                   patch.unread_count_display || toUnreadCountDisplay(unreadCount),
@@ -1161,6 +2017,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 room_type: patch.room_type || 'direct',
                 name: patch.name || null,
                 display_name: patch.display_name || patch.name || null,
+                is_hidden: Boolean(patch.is_hidden),
+                is_muted: Boolean(patch.is_muted),
+                muted_until: patch.muted_until || null,
                 unread_count: unreadCount,
                 unread_count_display: patch.unread_count_display || toUnreadCountDisplay(unreadCount),
                 last_message_preview: patch.last_message_preview || null,
@@ -1170,9 +2029,6 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             }
             return sortRoomsByRecentMessage(next)
           })
-          if (shouldSyncByApi) {
-            void loadRooms({ silent: true })
-          }
           return
         }
         if (eventName === 'chat.message') {
@@ -1222,6 +2078,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 room_type: 'direct',
                 name: null,
                 display_name: null,
+                is_hidden: false,
+                is_muted: false,
+                muted_until: null,
                 unread_count: unreadCount,
                 unread_count_display: toUnreadCountDisplay(unreadCount),
                 last_message_preview: message.is_deleted ? '삭제된 메시지입니다.' : message.body,
@@ -1249,17 +2108,46 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         }
       }
 
-      ws.onerror = () => {
+      ws.onerror = (errorEvent) => {
         if (disposed) return
+        console.warn('[work-chat] websocket error', {
+          portalType,
+          readyState: ws.readyState,
+          event: errorEvent?.type || 'error',
+        })
       }
 
-      ws.onclose = () => {
+      ws.onclose = (closeEvent) => {
         if (disposed) return
+        const code = Number(closeEvent.code || 0)
+        const reason = String(closeEvent.reason || '').trim()
+        setWsCloseInfo({ code, reason })
+        console.warn('[work-chat] websocket closed', { portalType, code, reason })
+
         setWsConnected(false)
-        setWsConnecting(true)
         clearPingTimer()
         subscribedRoomIdsRef.current = new Set()
         enteredRoomIdRef.current = null
+
+        if (code === 4401 || code === 4403) {
+          wsAuthBlockedRef.current = true
+          setWsConnecting(false)
+          if (wsAuthToastShownRef.current !== code) {
+            toast.error(
+              code === 4401
+                ? '채팅 인증이 만료되었습니다. 다시 로그인해 주세요.'
+                : '채팅 접근 권한이 없습니다.'
+            )
+            wsAuthToastShownRef.current = code
+          }
+          return
+        }
+
+        if (wsAuthBlockedRef.current) {
+          setWsConnecting(false)
+          return
+        }
+        setWsConnecting(true)
         scheduleReconnect()
       }
     }
@@ -1272,11 +2160,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       clearPingTimer()
       setWsConnected(false)
       setWsConnecting(false)
+      setWsCloseInfo(null)
+      wsAuthBlockedRef.current = false
+      wsAuthToastShownRef.current = null
       subscribedRoomIdsRef.current = new Set()
       enteredRoomIdRef.current = null
       clearSocket()
     }
-  }, [actor.id, actor.type, loadRooms, markRoomRead, open, portalType, sendWsEvent])
+  }, [actor.id, actor.type, includeHiddenRooms, loadRooms, markRoomRead, mergeRoomReadCursor, open, portalType, sendWsEvent])
 
   useEffect(() => {
     if (!open || !wsConnected || rooms.length === 0) return
@@ -1315,9 +2206,70 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   }, [open, selectedRoomId, stopTypingSignal])
 
   useEffect(() => {
+    if (!chatWindowOpen || messages.length === 0) return
+    const targets = messages
+      .filter((message) => {
+        if (!message.attachment || message.is_deleted) return false
+        if (message.attachment.is_expired || message.body === '만료된 파일입니다.') return false
+        const kind = message.attachment.kind ?? (message.message_type === 'image' ? 'image' : 'file')
+        return kind === 'image'
+      })
+      .map((message) => message.attachment!.id)
+    if (targets.length === 0) return
+    targets.forEach((attachmentId) => {
+      const cached = inlineAttachmentUrlRef.current[attachmentId]
+      if (cached && cached.expiresAt > Date.now() + 15_000) return
+      void ensureInlineAttachmentPreviewUrl(attachmentId)
+    })
+  }, [chatWindowOpen, ensureInlineAttachmentPreviewUrl, messages])
+
+  useEffect(() => {
+    if (!showSaveCompanyPanel) return
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      try {
+        setCompanyOptionsLoading(true)
+        const keyword = companySearchKeyword.trim() || undefined
+        const response =
+          portalType === 'admin'
+            ? await fetchCompanyTaxList({ page: 1, limit: 100, keyword })
+            : await fetchClientCompanyTaxList({ page: 1, limit: 100, keyword })
+        if (!cancelled) {
+          setCompanyOptions(response.items || [])
+        }
+      } catch {
+        if (!cancelled) setCompanyOptions([])
+      } finally {
+        if (!cancelled) setCompanyOptionsLoading(false)
+      }
+    }, 220)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [companySearchKeyword, portalType, showSaveCompanyPanel])
+
+  useEffect(() => {
     setRoomActionMenuOpen(false)
     setShowRoomMembersPanel(false)
+    setShowRoomSearchPanel(false)
+    setRoomSearchKeyword('')
+    setRoomSearchResults([])
+    setRoomSearchTotal(0)
+    setActiveSearchResultIndex(-1)
+    setActiveSearchMessageId(null)
+    setJumpHighlightMessageId(null)
+    setIsMessageComposing(false)
   }, [selectedRoomId])
+
+  useEffect(() => {
+    if (!open || !selectedRoomId) return
+    void loadReadCursors(selectedRoomId)
+  }, [loadReadCursors, open, selectedRoomId])
+
+  useEffect(() => {
+    nextBeforeMessageIdRef.current = nextBeforeMessageId
+  }, [nextBeforeMessageId])
 
   useEffect(() => {
     if (!roomActionMenuOpen) return
@@ -1331,14 +2283,49 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   }, [roomActionMenuOpen])
 
   useEffect(() => {
+    return () => {
+      if (groupCreateTooltipTimerRef.current) {
+        window.clearTimeout(groupCreateTooltipTimerRef.current)
+        groupCreateTooltipTimerRef.current = null
+      }
+      if (jumpHighlightTimerRef.current) {
+        window.clearTimeout(jumpHighlightTimerRef.current)
+        jumpHighlightTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showGroupCreateModal) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      handleCloseGroupCreateModal()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleCloseGroupCreateModal, showGroupCreateModal])
+
+  useEffect(() => {
     if (!chatWindowOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (imageViewer) {
+        setImageViewer(null)
+        return
+      }
+      if (showSaveCompanyPanel) {
+        setShowSaveCompanyPanel(false)
+        return
+      }
+      if (showRoomSearchPanel) {
+        setShowRoomSearchPanel(false)
+        return
+      }
       closeChatWindow()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [chatWindowOpen, closeChatWindow])
+  }, [chatWindowOpen, closeChatWindow, imageViewer, showRoomSearchPanel, showSaveCompanyPanel])
 
   const handleDragMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
@@ -1363,7 +2350,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   }
 
   const getChatWindowResizeBounds = useCallback(() => {
-    const maxWidth = Math.min(CHAT_WINDOW_MAX_WIDTH, Math.max(CHAT_WINDOW_MIN_WIDTH, window.innerWidth - 24))
+    const maxWidthByViewport = Math.floor(window.innerWidth * (2 / 3))
+    const maxWidth = Math.min(
+      Math.max(CHAT_WINDOW_MIN_WIDTH, maxWidthByViewport),
+      Math.max(CHAT_WINDOW_MIN_WIDTH, window.innerWidth - 24)
+    )
     const maxHeight = Math.min(CHAT_WINDOW_MAX_HEIGHT, Math.max(CHAT_WINDOW_MIN_HEIGHT, window.innerHeight - 24))
     const minWidth = Math.min(CHAT_WINDOW_MIN_WIDTH, maxWidth)
     const minHeight = Math.min(CHAT_WINDOW_MIN_HEIGHT, maxHeight)
@@ -1538,6 +2529,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                       ? 'bg-amber-100 text-amber-700'
                       : 'bg-zinc-200 text-zinc-600'
                 }`}
+                title={
+                  !wsConnected && wsCloseInfo
+                    ? `연결 종료(code=${wsCloseInfo.code}${wsCloseInfo.reason ? `, reason=${wsCloseInfo.reason}` : ''})`
+                    : undefined
+                }
               >
                 {wsConnected ? '실시간 연결' : wsConnecting ? '연결 중' : '오프라인'}
               </span>
@@ -1545,10 +2541,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100"
-              aria-label="채팅 닫기"
+              className="inline-flex h-7 items-center justify-center rounded-md border border-zinc-300 bg-white px-2.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              aria-label="채팅 최소화"
             >
-              <X className="h-4 w-4" />
+              최소화
             </button>
           </div>
 
@@ -1583,14 +2579,52 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
 
             <section className="flex min-w-0 flex-1 flex-col">
               <div className="border-b border-zinc-200 px-3 py-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2 top-2.5 h-3.5 w-3.5 text-zinc-400" />
-                  <input
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                    placeholder="이름/방 검색"
-                    className="h-8 w-full rounded border border-zinc-300 pl-7 pr-2 text-xs outline-none focus:border-zinc-500"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-2 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+                    <input
+                      value={searchKeyword}
+                      onChange={(e) => setSearchKeyword(e.target.value)}
+                      placeholder="이름/방 검색"
+                      className="h-8 w-full rounded border border-zinc-300 pl-7 pr-2 text-xs outline-none focus:border-zinc-500"
+                    />
+                  </div>
+                  {activeTab === 'rooms' ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIncludeHiddenRooms((prev) => !prev)}
+                        className={`rounded border px-2 py-1 text-[11px] font-medium ${
+                          includeHiddenRooms
+                            ? 'border-sky-500 bg-sky-50 text-sky-700'
+                            : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
+                        }`}
+                        aria-label="숨김방 포함 토글"
+                      >
+                        숨김 포함
+                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenGroupCreateModal()}
+                          onMouseEnter={handleGroupCreateButtonMouseEnter}
+                          onMouseLeave={handleGroupCreateButtonMouseLeave}
+                          onFocus={() => setShowGroupCreateTooltip(true)}
+                          onBlur={handleGroupCreateButtonMouseLeave}
+                          className="relative inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                          aria-label="그룹채팅 만들기"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          <Plus className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded-full border border-white bg-white p-[1px] text-sky-600" />
+                        </button>
+                        {showGroupCreateTooltip ? (
+                          <div className="pointer-events-none absolute right-0 top-9 z-20 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white shadow">
+                            그룹채팅 만들기
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1607,7 +2641,6 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                         const key = `${row.member_type}:${row.member_id}`
                         const busy = startingTargetKey === key
                         const presence = presenceMap[key]
-                        const isEmployeeTab = activeTab === 'employees'
                         return (
                           <div
                             key={key}
@@ -1622,24 +2655,18 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                     presence?.online ? 'bg-emerald-500' : 'bg-zinc-300'
                                   }`}
                                 />
-                                {isEmployeeTab ? (
-                                  <>
-                                    {row.avatar_url ? (
-                                      <img
-                                        src={row.avatar_url}
-                                        alt={row.name}
-                                        className="h-6 w-6 rounded-full border border-zinc-200 object-cover"
-                                      />
-                                    ) : (
-                                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[10px] font-semibold text-zinc-700">
-                                        {getParticipantInitial(row.name)}
-                                      </span>
-                                    )}
-                                    <p className="truncate text-xs font-medium text-zinc-800">{row.name}</p>
-                                  </>
+                                {row.avatar_url ? (
+                                  <img
+                                    src={row.avatar_url}
+                                    alt={row.name}
+                                    className="h-6 w-6 rounded-full border border-zinc-200 object-cover"
+                                  />
                                 ) : (
-                                  <p className="truncate text-xs font-medium text-zinc-800">{row.name}</p>
+                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[10px] font-semibold text-zinc-700">
+                                    {getParticipantInitial(row.name)}
+                                  </span>
                                 )}
+                                <p className="truncate text-xs font-medium text-zinc-800">{row.name}</p>
                               </div>
                               <UiButton
                                 onClick={() => void handleStartChat(row)}
@@ -1651,7 +2678,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                 {busy ? '입장중...' : '대화 시작'}
                               </UiButton>
                             </div>
-                            {!isEmployeeTab && row.subtitle && row.subtitle.trim() && row.subtitle.trim() !== row.name.trim() ? (
+                            {row.subtitle && row.subtitle.trim() && row.subtitle.trim() !== row.name.trim() ? (
                               <p className="truncate text-[11px] text-zinc-500">{row.subtitle}</p>
                             ) : null}
                           </div>
@@ -1681,9 +2708,21 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-xs font-medium text-zinc-800">
-                                {getRoomDisplayName(room)}
-                              </p>
+                              <div className="min-w-0 flex flex-1 items-center gap-1.5">
+                                <p className="truncate text-xs font-medium text-zinc-800">
+                                  {getRoomDisplayName(room)}
+                                </p>
+                                {room.is_hidden ? (
+                                  <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
+                                    숨김
+                                  </span>
+                                ) : null}
+                                {room.is_muted ? (
+                                  <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                    알림끔
+                                  </span>
+                                ) : null}
+                              </div>
                               {room.unread_count > 0 ? (
                                 <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                                   {room.unread_count_display}
@@ -1741,6 +2780,16 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   {typingNamesInSelectedRoom.join(', ')} 입력 중...
                 </p>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setShowRoomSearchPanel((prev) => !prev)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md border bg-white text-zinc-700 hover:bg-zinc-100 ${
+                  showRoomSearchPanel ? 'border-sky-500 text-sky-700' : 'border-zinc-300'
+                }`}
+                aria-label="채팅 검색"
+              >
+                <Search className="h-4 w-4" />
+              </button>
               <div className="relative" ref={roomActionMenuRef}>
                 <button
                   type="button"
@@ -1751,7 +2800,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   <MoreHorizontal className="h-4 w-4" />
                 </button>
                 {roomActionMenuOpen ? (
-                  <div className="absolute right-0 top-8 z-20 w-36 rounded-md border border-zinc-200 bg-white p-1 shadow-lg">
+                  <div className="absolute right-0 top-8 z-20 w-44 rounded-md border border-zinc-200 bg-white p-1 shadow-lg">
                     <button
                       type="button"
                       onClick={() => void handleViewRoomMembers()}
@@ -1762,12 +2811,38 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleLeaveRoom()}
-                      className="w-full rounded px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-zinc-400"
-                      disabled={leavingRoom}
+                      onClick={() => void handleHideCurrentRoom()}
+                      className="w-full rounded px-2 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                      disabled={updatingRoomPreference}
                     >
-                      {leavingRoom ? '나가는 중...' : '대화방 나가기'}
+                      {updatingRoomPreference
+                        ? '처리 중...'
+                        : selectedRoom?.is_hidden
+                          ? '숨김 해제'
+                          : '목록에서 숨기기'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleMuteCurrentRoom()}
+                      className="w-full rounded px-2 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                      disabled={updatingRoomPreference}
+                    >
+                      {updatingRoomPreference
+                        ? '처리 중...'
+                        : selectedRoom?.is_muted
+                          ? '알림 켜기'
+                          : '알림 끄기'}
+                    </button>
+                    {selectedRoom?.room_type !== 'company_bridge' ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleLeaveRoom()}
+                        className="w-full rounded px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-zinc-400"
+                        disabled={leavingRoom}
+                      >
+                        {leavingRoom ? '처리 중...' : '대화방 나가기'}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1781,6 +2856,78 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               </button>
             </div>
           </div>
+
+          {showRoomSearchPanel ? (
+            <div className="border-b border-zinc-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2">
+                <input
+                  value={roomSearchKeyword}
+                  onChange={(event) => setRoomSearchKeyword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void executeRoomSearch()
+                    }
+                  }}
+                  placeholder="대화 내용 검색 (2자 이상)"
+                  className="h-8 min-w-0 flex-1 rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+                />
+                <UiButton
+                  onClick={() => void executeRoomSearch()}
+                  size="xs"
+                  variant="secondary"
+                  disabled={roomSearchLoading}
+                >
+                  {roomSearchLoading ? '검색중...' : '검색'}
+                </UiButton>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-600">
+                <div className="truncate">
+                  총 {roomSearchTotal}건
+                  {roomSearchResults.length > 0 && activeSearchResultIndex >= 0
+                    ? ` · ${activeSearchResultIndex + 1}/${roomSearchResults.length}`
+                    : ''}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveSearchResult(-1)}
+                    disabled={roomSearchResults.length === 0}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="이전 검색 결과"
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSearchResult(1)}
+                    disabled={roomSearchResults.length === 0}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="다음 검색 결과"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              {activeSearchResult ? (
+                <button
+                  type="button"
+                  onClick={() => void jumpToMessageInSelectedRoom(activeSearchResult.message_id)}
+                  className="mt-2 block w-full rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-left text-[11px] text-zinc-700 hover:bg-amber-100"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">
+                      {activeSearchResult.sender_name || '알 수 없음'}
+                    </span>
+                    <span className="shrink-0 text-zinc-500">
+                      {formatKoreanDateTime(activeSearchResult.created_at)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-zinc-600">{activeSearchResult.snippet}</p>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           <div ref={messageScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 p-3">
             {loadingHistory ? (
@@ -1810,33 +2957,208 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   const mine =
                     message.sender_type === actor.type &&
                     Number(message.sender_id || 0) === actor.id
+                  const senderLabel =
+                    message.sender_name?.trim() ||
+                    (message.sender_type === 'system' ? '시스템' : '사용자')
+                  const showSenderLabel = !mine && message.message_type !== 'system'
                   const currentKey = dateKey(message.created_at)
                   const prevKey = dateKey(messages[index - 1]?.created_at)
                   const showDateDivider = index === 0 || currentKey !== prevKey
+                  const attachment = message.attachment || null
+                  const attachmentKind =
+                    attachment?.kind ?? (message.message_type === 'image' ? 'image' : 'file')
+                  const isAttachmentMessage =
+                    !message.is_deleted &&
+                    Boolean(
+                      attachment &&
+                        (message.message_type === 'file' ||
+                          message.message_type === 'image' ||
+                          attachmentKind === 'file' ||
+                          attachmentKind === 'image')
+                    )
+                  const isExpiredAttachment =
+                    Boolean(attachment?.is_expired) || message.body === '만료된 파일입니다.'
+                  const isImageKind = attachmentKind === 'image'
+                  const inlinePreviewUrl = attachment ? getCachedInlineAttachmentUrl(attachment.id) : null
+                  const isInlineAttachmentLoading = attachment ? Boolean(inlineAttachmentLoadingIds[attachment.id]) : false
+                  const isSearchHit = roomSearchMessageIdSet.has(message.id)
+                  const isActiveSearchHit = activeSearchMessageId === message.id
+                  const isJumpHighlight = jumpHighlightMessageId === message.id
+                  const showReadStatus =
+                    mine &&
+                    !message.is_deleted &&
+                    message.message_type !== 'system' &&
+                    selectedRoomCounterpartKeys.length > 0
+                  const allCounterpartsRead = showReadStatus
+                    ? selectedRoomCounterpartKeys.every(
+                        (actorKey) => (selectedRoomReadCursorState[actorKey] || 0) >= message.id
+                      )
+                    : false
+                  const readStatusLabel = allCounterpartsRead ? '읽음' : '안읽음'
                   return (
-                    <div key={message.id}>
+                    <div key={message.id} id={`chat-msg-${message.id}`}>
                       {showDateDivider ? (
                         <div className="mb-2 text-center text-[11px] text-zinc-500">
                           {formatKoreanDayLabel(message.created_at)}
                         </div>
                       ) : null}
                       <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                        <div className="flex items-end gap-1.5">
+                        <div className={`flex w-full flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                          {showSenderLabel ? (
+                            <p className="mb-0.5 px-1 text-[11px] font-medium text-zinc-500">
+                              {senderLabel}
+                            </p>
+                          ) : null}
+                          <div className={`flex w-full items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
                           {mine ? (
                             <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                              <span className={`${allCounterpartsRead ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                {showReadStatus ? readStatusLabel : ''}
+                              </span>
+                              {showReadStatus ? ' · ' : ''}
                               {formatTimeOnly(message.created_at)}
                             </span>
                           ) : null}
                           <div
-                            className={`max-w-[78%] rounded-lg border px-3 py-2 ${
+                            className={`w-[66.6667%] rounded-lg border px-3 py-2 transition ${
                               mine
                                 ? 'border-sky-600 bg-sky-600 text-white'
                                 : 'border-zinc-200 bg-white text-zinc-800'
+                            } ${
+                              isJumpHighlight
+                                ? mine
+                                  ? 'ring-2 ring-amber-300'
+                                  : 'ring-2 ring-amber-400'
+                                : ''
+                            } ${
+                              isSearchHit && !isJumpHighlight
+                                ? mine
+                                  ? 'ring-1 ring-amber-200/90'
+                                  : 'ring-1 ring-amber-300'
+                                : ''
+                            } ${
+                              isActiveSearchHit && !isJumpHighlight
+                                ? mine
+                                  ? 'ring-2 ring-amber-200'
+                                  : 'ring-2 ring-amber-400'
+                                : ''
                             }`}
                           >
-                            <p className="whitespace-pre-wrap text-sm">
-                              {message.is_deleted ? '삭제된 메시지입니다.' : message.body || ''}
-                            </p>
+                            {isAttachmentMessage && attachment ? (
+                              <div className="space-y-2">
+                                <div className="flex items-start gap-2">
+                                  <File className={`mt-0.5 h-4 w-4 shrink-0 ${mine ? 'text-sky-100' : 'text-zinc-500'}`} />
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">
+                                      {attachment.file_name}
+                                    </p>
+                                    <p className={`text-[11px] ${mine ? 'text-sky-100/90' : 'text-zinc-500'}`}>
+                                      {formatFileSize(attachment.file_size)}
+                                      {attachment.expires_at
+                                        ? ` · 만료 ${formatKoreanDateTime(attachment.expires_at)}`
+                                        : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                                {isImageKind && !isExpiredAttachment ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleOpenImageViewer(attachment.id, attachment.file_name)}
+                                    className={`block w-full overflow-hidden rounded border ${
+                                      mine
+                                        ? 'border-sky-200/50 bg-sky-500/20'
+                                        : 'border-zinc-200 bg-zinc-100'
+                                    }`}
+                                  >
+                                    {inlinePreviewUrl ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={inlinePreviewUrl}
+                                        alt={attachment.file_name}
+                                        className="max-h-56 w-full object-contain"
+                                      />
+                                    ) : (
+                                      <div className={`flex h-32 items-center justify-center text-xs ${mine ? 'text-sky-100' : 'text-zinc-500'}`}>
+                                        {isInlineAttachmentLoading ? '이미지 불러오는 중...' : '이미지 준비 중...'}
+                                      </div>
+                                    )}
+                                  </button>
+                                ) : null}
+                                {isExpiredAttachment ? (
+                                  <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-600">
+                                    만료된 파일입니다.
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDownloadAttachment(attachment.id)}
+                                    disabled={isExpiredAttachment}
+                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      mine
+                                        ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                        : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                    }`}
+                                  >
+                                    <Download className="h-3 w-3" />
+                                    다운로드
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      isImageKind
+                                        ? void handleOpenImageViewer(attachment.id, attachment.file_name)
+                                        : void handlePreviewAttachment(attachment.id)
+                                    }
+                                    disabled={
+                                      isExpiredAttachment ||
+                                      (!isImageKind &&
+                                        !canPreviewAttachment(attachment.content_type, attachment.file_name))
+                                    }
+                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      mine
+                                        ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                        : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                    }`}
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    {isImageKind ? '확대' : '미리보기'}
+                                  </button>
+                                  {canSaveToCompany ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleOpenSaveCompanyPanel(
+                                          attachment.id,
+                                          attachment.file_name
+                                        )
+                                      }
+                                      disabled={isExpiredAttachment}
+                                      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                        mine
+                                          ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                          : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                      }`}
+                                    >
+                                      <Save className="h-3 w-3" />
+                                      고객사 저장
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap text-sm">
+                                {message.is_deleted
+                                  ? '삭제된 메시지입니다.'
+                                  : renderHighlightedText(
+                                      message.body || '',
+                                      roomSearchKeyword,
+                                      mine
+                                        ? 'rounded bg-amber-200/85 px-0.5 text-sky-900'
+                                        : 'rounded bg-amber-200 px-0.5 text-zinc-900'
+                                    )}
+                              </p>
+                            )}
                             {mine && !message.is_deleted ? (
                               <div className="mt-1 flex items-center justify-end">
                                 <button
@@ -1854,6 +3176,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                               {formatTimeOnly(message.created_at)}
                             </span>
                           ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1863,31 +3186,152 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             ) : null}
           </div>
 
-          <div className="border-t border-zinc-200 px-3 py-3.5">
-            <div className="flex items-end gap-2">
+          <div
+            className={`border-t border-zinc-200 px-3 py-3.5 transition ${
+              dragOverComposer ? 'bg-sky-50' : ''
+            }`}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (!selectedRoomId) return
+              setDragOverComposer(true)
+            }}
+            onDragLeave={() => setDragOverComposer(false)}
+            onDrop={(event) => {
+              event.preventDefault()
+              setDragOverComposer(false)
+              if (!selectedRoomId) return
+              const file = event.dataTransfer.files?.[0]
+              if (!file) return
+              void uploadAttachmentFile(file)
+            }}
+          >
+            <input
+              ref={composeFileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void uploadAttachmentFile(file)
+                event.currentTarget.value = ''
+              }}
+            />
+            <div className="flex flex-col gap-2">
               <textarea
                 value={messageBody}
                 onChange={(e) => handleMessageBodyChange(e.target.value)}
+                onCompositionStart={() => setIsMessageComposing(true)}
+                onCompositionEnd={() => setIsMessageComposing(false)}
+                onBlur={() => setIsMessageComposing(false)}
                 placeholder="메시지를 입력하세요"
                 rows={3}
                 className="min-h-[58px] flex-1 resize-none rounded-2xl border border-zinc-300 bg-transparent px-3 py-2.5 text-sm leading-5 outline-none focus:border-zinc-500"
                 onKeyDown={(event) => {
+                  const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean; keyCode?: number }
+                  if (isMessageComposing || nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+                    return
+                  }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault()
                     void handleSendMessage()
                   }
                 }}
               />
-              <UiButton
-                onClick={() => void handleSendMessage()}
-                variant="primary"
-                size="sm"
-                disabled={sending || !messageBody.trim()}
-              >
-                전송
-              </UiButton>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={handleSelectAttachmentClick}
+                    disabled={!selectedRoomId || uploadingAttachment}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={uploadingAttachment ? '파일 업로드 중' : '파일 첨부'}
+                    title={uploadingAttachment ? '파일 업로드 중' : '파일 첨부'}
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <UiButton
+                  onClick={() => void handleSendMessage()}
+                  variant="primary"
+                  size="sm"
+                  disabled={sending || isMessageComposing || !messageBody.trim()}
+                >
+                  전송
+                </UiButton>
+              </div>
             </div>
           </div>
+
+          {showSaveCompanyPanel ? (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 p-3">
+              <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-3 shadow-xl">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-zinc-900">고객사 기타문서 저장</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveCompanyPanel(false)}
+                    className="rounded border border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-700 hover:bg-zinc-50"
+                  >
+                    닫기
+                  </button>
+                </div>
+                <p className="mb-2 truncate text-[11px] text-zinc-500">
+                  파일: {saveTargetAttachment?.fileName || '-'}
+                </p>
+                <input
+                  value={companySearchKeyword}
+                  onChange={(e) => setCompanySearchKeyword(e.target.value)}
+                  placeholder="고객사 검색"
+                  className="h-8 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+                />
+                <div className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded border border-zinc-200 p-1">
+                  {companyOptionsLoading ? (
+                    <p className="px-2 py-2 text-[11px] text-zinc-500">고객사 불러오는 중...</p>
+                  ) : companyOptions.length === 0 ? (
+                    <p className="px-2 py-2 text-[11px] text-zinc-500">검색 결과가 없습니다.</p>
+                  ) : (
+                    companyOptions.map((company) => (
+                      <button
+                        key={company.id}
+                        type="button"
+                        onClick={() => setSelectedCompanyId(company.id)}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs transition ${
+                          selectedCompanyId === company.id
+                            ? 'bg-sky-50 text-sky-700'
+                            : 'text-zinc-700 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <span className="truncate">{company.company_name}</span>
+                        {selectedCompanyId === company.id ? <span>선택됨</span> : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <input
+                  value={saveDocumentTitle}
+                  onChange={(e) => setSaveDocumentTitle(e.target.value)}
+                  placeholder="문서 제목(선택)"
+                  className="mt-2 h-8 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+                />
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveCompanyPanel(false)}
+                    className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveAttachmentToCompany()}
+                    disabled={!selectedCompanyId || Boolean(savingAttachmentId)}
+                    className="rounded border border-sky-600 bg-sky-600 px-2.5 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingAttachmentId ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div
             className={`absolute bottom-0 right-0 top-11 z-10 w-56 border-l border-zinc-200 bg-white shadow-xl transition-transform duration-200 ${
@@ -1947,6 +3391,173 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             className="absolute bottom-0 right-0 z-40 h-3.5 w-3.5 cursor-nwse-resize"
             onMouseDown={(event) => handleChatWindowResizeMouseDown('corner', event)}
           />
+        </div>
+      ) : null}
+
+      {imageViewer ? (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setImageViewer(null)}
+        >
+          <div
+            className="flex flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl"
+            style={{
+              width: imageViewerExpanded ? '92vw' : '66vw',
+              height: imageViewerExpanded ? '92vh' : '66vh',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex h-11 items-center justify-between border-b border-zinc-700 px-3">
+              <p className="truncate text-xs font-medium text-zinc-200">{imageViewer.fileName}</p>
+              <div className="ml-3 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setImageViewerExpanded((prev) => !prev)}
+                  className="rounded border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 hover:bg-zinc-700"
+                >
+                  {imageViewerExpanded ? '창 줄이기' : '창 키우기'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageViewerMode('fit')}
+                  className={`rounded border px-2 py-1 text-[11px] ${
+                    imageViewerMode === 'fit'
+                      ? 'border-sky-500 bg-sky-600 text-white'
+                      : 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                  }`}
+                >
+                  창 맞춤
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageViewerMode('original')}
+                  className={`rounded border px-2 py-1 text-[11px] ${
+                    imageViewerMode === 'original'
+                      ? 'border-sky-500 bg-sky-600 text-white'
+                      : 'border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                  }`}
+                >
+                  원본 크기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageViewer(null)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                  aria-label="이미지 뷰어 닫기"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div
+              className={`min-h-0 flex-1 bg-zinc-900 ${
+                imageViewerMode === 'original'
+                  ? 'overflow-auto'
+                  : 'overflow-hidden'
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageViewer.url}
+                alt={imageViewer.fileName}
+                className={
+                  imageViewerMode === 'original'
+                    ? 'mx-auto my-0 max-w-none object-none'
+                    : 'h-full w-full object-contain'
+                }
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showGroupCreateModal ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4"
+          onClick={handleCloseGroupCreateModal}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-zinc-900">그룹채팅 만들기</p>
+              <button
+                type="button"
+                onClick={handleCloseGroupCreateModal}
+                className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                aria-label="그룹채팅 생성 닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <input
+              value={groupRoomName}
+              onChange={(event) => setGroupRoomName(event.target.value)}
+              placeholder="그룹 이름 (선택)"
+              className="mb-2 h-9 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+            />
+            <input
+              value={groupMemberSearchKeyword}
+              onChange={(event) => setGroupMemberSearchKeyword(event.target.value)}
+              placeholder="직원 검색"
+              className="mb-2 h-9 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
+            />
+
+            <div className="h-64 overflow-y-auto rounded border border-zinc-200 p-1.5">
+              {filteredGroupCandidates.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-zinc-500">선택 가능한 직원이 없습니다.</p>
+              ) : (
+                <div className="space-y-1">
+                  {filteredGroupCandidates.map((row) => {
+                    const key = `${row.member_type}:${row.member_id}`
+                    const checked = Boolean(groupSelectedKeys[key])
+                    return (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-xs hover:bg-zinc-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-zinc-800">{row.name}</p>
+                          {row.subtitle ? (
+                            <p className="truncate text-[11px] text-zinc-500">{row.subtitle}</p>
+                          ) : null}
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleGroupCandidate(row)}
+                          className="h-4 w-4 accent-sky-600"
+                        />
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-[11px] text-zinc-500">선택 인원 {selectedGroupMembers.length}명</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseGroupCreateModal}
+                  className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateGroupRoom()}
+                  disabled={creatingGroupRoom || selectedGroupMembers.length < 2}
+                  className="rounded border border-sky-600 bg-sky-600 px-2.5 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {creatingGroupRoom ? '생성 중...' : '생성'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
     </>

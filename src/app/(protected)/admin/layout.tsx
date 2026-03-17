@@ -10,7 +10,7 @@ import { AdminSessionProvider, useAdminSessionContext } from '@/contexts/AdminSe
 function ProtectedShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { loading, session } = useAdminSessionContext()
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   useEffect(() => {
     const saved = window.localStorage.getItem('admin_sidebar_collapsed')

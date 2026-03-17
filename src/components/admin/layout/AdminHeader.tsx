@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import UiButton from '@/components/common/UiButton'
+import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import { listMailAccounts } from '@/services/admin/mailService'
 import { logoutAdmin } from '@/services/admin/adminService'
 import {
@@ -27,9 +28,25 @@ const Header = () => {
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string }>>([])
   const [headerMailAccountId, setHeaderMailAccountId] = useState('')
   const [headerKeyword, setHeaderKeyword] = useState('')
+  const [checkInTime, setCheckInTime] = useState<string | null>(null)
+  const [checkOutTime, setCheckOutTime] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState<string>(() =>
+    new Date().toLocaleTimeString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  )
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
   const isAdminMailInbox = pathname.startsWith('/admin/mail/inbox')
+  const roleName = (session as any)?.role_name ?? (session as any)?.role?.name ?? ''
+  const profileImageUrl =
+    (session as any)?.profile_image_url ??
+    (session as any)?.profileImageUrl ??
+    null
+  const profileInitial = (session?.name || '?').trim().charAt(0) || '?'
 
   const currentLabel = useMemo(() => {
     if (pathname.startsWith('/admin/companies')) return '외부업무 > 기본관리'
@@ -83,6 +100,56 @@ const Header = () => {
     setHeaderMailAccountId(searchParams.get('account_id') || '')
     setHeaderKeyword(searchParams.get('q') || '')
   }, [isAdminMailInbox, searchParams])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCurrentTime(
+        new Date().toLocaleTimeString('ko-KR', {
+          timeZone: 'Asia/Seoul',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      )
+    }, 1000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const accountId = Number((session as any)?.account_id ?? (session as any)?.id ?? 0)
+    if (!accountId) {
+      setCheckInTime(null)
+      setCheckOutTime(null)
+      return
+    }
+    const todayKst = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+
+    void getAttendanceLogs({ date_to: todayKst, limit: 1, offset: 0 })
+      .then((res) => {
+        const row = res.items?.[0]
+        const toHm = (value?: string | null) => {
+          if (!value) return null
+          const date = new Date(value)
+          if (Number.isNaN(date.getTime())) return null
+          return date.toLocaleTimeString('ko-KR', {
+            timeZone: 'Asia/Seoul',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        }
+        setCheckInTime(toHm(row?.check_in))
+        setCheckOutTime(toHm(row?.check_out))
+      })
+      .catch(() => {
+        setCheckInTime(null)
+        setCheckOutTime(null)
+      })
+  }, [session])
 
   const replaceHeaderSearch = (next: { accountId?: string; keyword?: string }) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -177,6 +244,28 @@ const Header = () => {
                 />
               </>
             ) : null}
+            <div className="hidden items-center gap-2.5 text-xs lg:flex">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 text-[11px] font-semibold text-neutral-600">
+                {profileImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profileImageUrl}
+                    alt="프로필 이미지"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span>{profileInitial}</span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-neutral-900">
+                  {session?.name || '-'} {roleName}
+                </p>
+                <p className="truncate text-neutral-500">
+                  출근 {checkInTime ?? '-'} · 퇴근 {checkOutTime ?? '-'} · 현재 {currentTime}
+                </p>
+              </div>
+            </div>
             <PortalNotificationBell
               listNotifications={listAdminNotifications}
               fetchUnreadCount={fetchAdminNotificationUnreadCount}

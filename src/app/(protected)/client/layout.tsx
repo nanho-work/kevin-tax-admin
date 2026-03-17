@@ -14,7 +14,7 @@ function ProtectedClientShell({
 }) {
   const router = useRouter()
   const { loading, session } = useClientSessionContext()
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   useEffect(() => {
     const saved = window.localStorage.getItem('client_sidebar_collapsed')
