@@ -1330,6 +1330,16 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     return () => window.removeEventListener('mousedown', onPointerDown)
   }, [roomActionMenuOpen])
 
+  useEffect(() => {
+    if (!chatWindowOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      closeChatWindow()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [chatWindowOpen, closeChatWindow])
+
   const handleDragMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     dragStateRef.current = {
