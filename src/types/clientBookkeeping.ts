@@ -117,6 +117,19 @@ export interface ClientBookkeepingBillingStatusPatchRequest {
   memo?: string | null
 }
 
+export interface ClientBookkeepingBillingInvoiceIssuedAtBulkRequest {
+  billing_ids: number[]
+  invoice_issued_at: string
+}
+
+export interface ClientBookkeepingBillingInvoiceIssuedAtBulkResponse {
+  requested_count: number
+  updated_count: number
+  unchanged_count: number
+  not_found_ids: number[]
+  invoice_issued_at: string
+}
+
 export interface ClientBookkeepingBillingOut {
   id: number
   client_id: number
@@ -151,6 +164,64 @@ export interface ClientBookkeepingBillingListFilters {
 
 export interface ClientBookkeepingBillingListResponse {
   total: number
+  page: number
+  size: number
+  items: ClientBookkeepingBillingOut[]
+}
+
+export type ClientBookkeepingUnpaidGroupSort =
+  | 'receivable_desc'
+  | 'receivable_asc'
+  | 'latest_month_desc'
+  | 'latest_month_asc'
+  | 'company_name_asc'
+  | 'company_name_desc'
+  | 'billing_count_desc'
+  | 'billing_count_asc'
+
+export type ClientBookkeepingMonthSort = 'asc' | 'desc'
+
+export interface ClientBookkeepingUnpaidGroupsFilters {
+  page?: number
+  size?: number
+  status?: ClientBookkeepingBillingStatus
+  keyword?: string
+  company_id?: number
+  sort?: ClientBookkeepingUnpaidGroupSort
+  month_sort?: ClientBookkeepingMonthSort
+  include_items?: boolean
+  item_page?: number
+  item_size?: number
+}
+
+export interface ClientBookkeepingUnpaidGroupOut {
+  company_id: number
+  company_name: string
+  billing_count: number
+  total_receivable_amount: number
+  latest_target_month?: string | null
+  oldest_target_month?: string | null
+}
+
+export interface ClientBookkeepingUnpaidGroupsResponse {
+  total_groups: number
+  total_receivable_amount_sum: number
+  page: number
+  size: number
+  items: ClientBookkeepingUnpaidGroupOut[]
+}
+
+export interface ClientBookkeepingUnpaidGroupItemsFilters {
+  page?: number
+  size?: number
+  month_sort?: ClientBookkeepingMonthSort
+}
+
+export interface ClientBookkeepingUnpaidGroupItemsResponse {
+  company_id: number
+  company_name: string
+  total: number
+  total_receivable_amount: number
   page: number
   size: number
   items: ClientBookkeepingBillingOut[]

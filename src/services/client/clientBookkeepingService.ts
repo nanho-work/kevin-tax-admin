@@ -5,6 +5,12 @@ import type {
   ClientBookkeepingBillingListFilters,
   ClientBookkeepingBillingListResponse,
   ClientBookkeepingBillingOut,
+  ClientBookkeepingBillingInvoiceIssuedAtBulkRequest,
+  ClientBookkeepingBillingInvoiceIssuedAtBulkResponse,
+  ClientBookkeepingUnpaidGroupItemsFilters,
+  ClientBookkeepingUnpaidGroupItemsResponse,
+  ClientBookkeepingUnpaidGroupsFilters,
+  ClientBookkeepingUnpaidGroupsResponse,
   ClientBookkeepingBillingStatusPatchRequest,
   ClientBookkeepingBillingUpdateRequest,
   ClientBookkeepingContractCreateRequest,
@@ -141,6 +147,26 @@ export async function listBookkeepingBillings(
   return res.data
 }
 
+export async function listBookkeepingUnpaidGroups(
+  filters: ClientBookkeepingUnpaidGroupsFilters = {}
+): Promise<ClientBookkeepingUnpaidGroupsResponse> {
+  const res = await clientHttp.get<ClientBookkeepingUnpaidGroupsResponse>(`${BASE}/billings/unpaid-groups`, {
+    params: filters,
+  })
+  return res.data
+}
+
+export async function listBookkeepingUnpaidGroupItems(
+  companyId: number,
+  filters: ClientBookkeepingUnpaidGroupItemsFilters = {}
+): Promise<ClientBookkeepingUnpaidGroupItemsResponse> {
+  const res = await clientHttp.get<ClientBookkeepingUnpaidGroupItemsResponse>(
+    `${BASE}/billings/unpaid-groups/${companyId}/items`,
+    { params: filters }
+  )
+  return res.data
+}
+
 export async function updateBookkeepingBilling(
   billingId: number,
   payload: ClientBookkeepingBillingUpdateRequest
@@ -154,6 +180,16 @@ export async function patchBookkeepingBillingStatus(
   payload: ClientBookkeepingBillingStatusPatchRequest
 ): Promise<ClientBookkeepingBillingOut> {
   const res = await clientHttp.patch<ClientBookkeepingBillingOut>(`${BASE}/billings/${billingId}/status`, payload)
+  return res.data
+}
+
+export async function bulkUpdateBookkeepingBillingInvoiceIssuedAt(
+  payload: ClientBookkeepingBillingInvoiceIssuedAtBulkRequest
+): Promise<ClientBookkeepingBillingInvoiceIssuedAtBulkResponse> {
+  const res = await clientHttp.patch<ClientBookkeepingBillingInvoiceIssuedAtBulkResponse>(
+    `${BASE}/billings/invoice-issued-at/bulk`,
+    payload
+  )
   return res.data
 }
 
@@ -261,8 +297,11 @@ export const generateContractBillings = generateBookkeepingContractBillings
 export const previewContractBulkUpload = previewBookkeepingContractBulkUpload
 export const applyContractBulkUpload = applyBookkeepingContractBulkUpload
 export const listBillings = listBookkeepingBillings
+export const listUnpaidGroups = listBookkeepingUnpaidGroups
+export const listUnpaidGroupItems = listBookkeepingUnpaidGroupItems
 export const createBilling = createBookkeepingBilling
 export const updateBilling = updateBookkeepingBilling
+export const bulkUpdateBillingInvoiceIssuedAt = bulkUpdateBookkeepingBillingInvoiceIssuedAt
 export const deleteBilling = deleteBookkeepingBilling
 export const syncBillingReceipts = syncBookkeepingBillingReceipts
 export const patchBillingStatus = patchBookkeepingBillingStatus

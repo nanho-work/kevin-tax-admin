@@ -4,21 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { clientLogin } from '@/services/client/clientAuthService'
 import type { ClientLoginRequest } from '@/types/clientAuth'
-
-function toErrorMessage(detail: unknown): string {
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    const messages = detail
-      .map((item) => {
-        if (typeof item === 'string') return item
-        if (item && typeof item === 'object' && 'msg' in item) return String((item as any).msg)
-        return ''
-      })
-      .filter(Boolean)
-    if (messages.length > 0) return messages.join(', ')
-  }
-  return '로그인에 실패했습니다.'
-}
+import { toLoginErrorMessage } from '@/utils/loginError'
 
 export default function ClientLoginForm() {
   const router = useRouter()
@@ -42,7 +28,7 @@ export default function ClientLoginForm() {
       await clientLogin(form)
       router.replace('/client/dashboard')
     } catch (err: any) {
-      const message = toErrorMessage(err?.response?.data?.detail) || err?.message || '로그인에 실패했습니다.'
+      const message = toLoginErrorMessage(err?.response?.data?.detail) || err?.message || '로그인에 실패했습니다.'
       setErrorMessage(message)
     } finally {
       setLoading(false)

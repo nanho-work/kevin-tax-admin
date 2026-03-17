@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ClientHeader from '@/components/client/layout/ClientHeader'
 import ClientSidebar from '@/components/client/layout/ClientSidebar'
+import WorkChatLauncher from '@/components/common/work-chat/WorkChatLauncher'
 import { ClientSessionProvider, useClientSessionContext } from '@/contexts/ClientSessionContext'
 
 function ProtectedClientShell({
@@ -46,6 +47,13 @@ function ProtectedClientShell({
         <ClientHeader />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <WorkChatLauncher
+        portalType="client"
+        actor={{
+          type: 'client_account',
+          id: Number((session as any)?.id ?? (session as any)?.account_id ?? 0),
+        }}
+      />
     </div>
   )
 }

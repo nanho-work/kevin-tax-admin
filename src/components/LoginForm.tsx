@@ -23,27 +23,21 @@ export default function LoginForm() {
   // ✅ 로그인 요청 핸들러: 로그인 시도 및 리디렉션 처리
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('📤 로그인 폼 데이터:', form)
     setLoading(true)
     setErrorMessage(null)
 
     try {
-      console.log('📤 로그인 요청 시작:', form);
       const loginResponse = await adminLogin(form)
-      console.log('🔐 서버 응답 데이터:', loginResponse)
-      console.log('✅ 로그인 성공')
       localStorage.setItem("admin_access_token", loginResponse.access_token)
 
       try {
         await checkInAdmin()
       } catch (checkInError: any) {
-        console.warn("⚠️ 출근 실패:", checkInError?.response?.data?.detail || checkInError.message)
+        // 출근 실패는 로그인 자체를 막지 않으므로 조용히 처리
       }
 
       router.push('/dashboard')
     } catch (err: any) {
-      console.error('❌ 로그인 실패:', err?.response?.data?.detail || err.message)
-      console.log('❌ 로그인 실패 응답 전체:', err?.response);
       setErrorMessage(err?.response?.data?.detail || '로그인에 실패했습니다.')
     } finally {
       setLoading(false)

@@ -9,6 +9,7 @@ import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
 import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
 import { resolveMailSnippet } from '@/utils/mailSnippet'
+import { uiInputClass } from '@/styles/uiClasses'
 import {
   bulkMoveMailMessagesToFolder,
   createMailFolder,
@@ -41,8 +42,6 @@ import type {
   MailReplyDraftResponse,
 } from '@/types/adminMail'
 
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 const BULK_READ_FETCH_SIZE = 100
 const BULK_UPDATE_CHUNK_SIZE = 30
 const PAGE_GROUP_SIZE = 5
@@ -1339,31 +1338,31 @@ export default function ClientMailInboxPage() {
                     <p className="text-xs text-zinc-600">기본 받는사람: {replyDraft.to_emails.join(', ') || '-'}</p>
                     <p className="text-xs text-zinc-600">기본 참조: {replyDraft.cc_emails.join(', ') || '-'}</p>
                     <input
-                      className={inputClass}
+                      className={uiInputClass}
                       value={replyToRaw}
                       onChange={(e) => setReplyToRaw(e.target.value)}
                       placeholder="추가 받는사람 (콤마 구분)"
                     />
                     <input
-                      className={inputClass}
+                      className={uiInputClass}
                       value={replyCcRaw}
                       onChange={(e) => setReplyCcRaw(e.target.value)}
                       placeholder="추가 참조 (콤마 구분)"
                     />
                     <input
-                      className={inputClass}
+                      className={uiInputClass}
                       value={replyBccRaw}
                       onChange={(e) => setReplyBccRaw(e.target.value)}
                       placeholder="추가 숨은참조 (콤마 구분)"
                     />
                     <input
-                      className={inputClass}
+                      className={uiInputClass}
                       value={replyCompanyId}
                       onChange={(e) => setReplyCompanyId(e.target.value)}
                       placeholder="고객사 ID (선택)"
                     />
                     <input
-                      className={inputClass}
+                      className={uiInputClass}
                       value={replySubject}
                       onChange={(e) => setReplySubject(e.target.value)}
                       placeholder="제목"
@@ -1408,7 +1407,7 @@ export default function ClientMailInboxPage() {
                 <label className="mb-1 block text-xs text-zinc-500">고객사 ID 연결</label>
                 <div className="flex items-center gap-2">
                   <input
-                    className={inputClass}
+                    className={uiInputClass}
                     value={linkCompanyId}
                     onChange={(e) => setLinkCompanyId(e.target.value)}
                     placeholder="예: 168"

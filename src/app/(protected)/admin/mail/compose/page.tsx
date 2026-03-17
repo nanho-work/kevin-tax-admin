@@ -9,7 +9,9 @@ import { fetchCompanyTaxList } from '@/services/admin/company'
 import { formatKSTDateTime } from '@/utils/dateTime'
 import { htmlToPlainText } from '@/utils/htmlPlainText'
 import { validateUploadFile } from '@/utils/fileUploadPolicy'
+import { MAIL_EMAIL_REGEX, formatFileSize, mergeUniqueEmails, splitEmailTokens } from '@/utils/mailCompose'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
+import { uiInputClass } from '@/styles/uiClasses'
 import {
   deleteMailDraft,
   getAdminMailErrorMessage,
@@ -21,41 +23,6 @@ import {
   uploadMailComposeAttachment,
 } from '@/services/admin/mailService'
 import type { MailAccount, MailDraft } from '@/types/adminMail'
-
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-function splitEmailTokens(raw: string): string[] {
-  return raw
-    .split(/[,\n;\s]+/)
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-}
-
-function mergeUniqueEmails(current: string[], incoming: string[]): string[] {
-  const existing = new Set(current.map((email) => email.toLowerCase()))
-  const next = [...current]
-  for (const email of incoming) {
-    const key = email.toLowerCase()
-    if (existing.has(key)) continue
-    existing.add(key)
-    next.push(email)
-  }
-  return next
-}
-
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  const kb = bytes / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(1)} MB`
-  const gb = mb / 1024
-  return `${gb.toFixed(1)} GB`
-}
 
 export default function AdminMailComposePage() {
   const { session } = useAdminSessionContext()
@@ -109,7 +76,7 @@ export default function AdminMailComposePage() {
     try {
       const res = await fetchCompanyTaxList({
         page: 1,
-        limit: 200,
+        limit: 100,
       })
       const normalized = (res.items || []).map((item: any) => ({
         id: Number(item.id),
@@ -206,7 +173,7 @@ export default function AdminMailComposePage() {
   ): string[] | null => {
     const tokens = splitEmailTokens(inputValue)
     if (tokens.length === 0) return chips
-    const invalid = tokens.find((email) => !EMAIL_REGEX.test(email))
+    const invalid = tokens.find((email) => !MAIL_EMAIL_REGEX.test(email))
     if (invalid) {
       toast.error(`${fieldLabel} 이메일 형식이 올바르지 않습니다: ${invalid}`)
       return null
@@ -529,7 +496,7 @@ export default function AdminMailComposePage() {
           <div className="grid grid-cols-1 items-center gap-2 px-4 py-2.5 md:grid-cols-[88px_minmax(0,1fr)] md:gap-3">
             <p className="text-xs font-medium text-zinc-600">제목</p>
             <input
-              className={inputClass}
+              className={uiInputClass}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="메일 제목"
@@ -676,7 +643,7 @@ export default function AdminMailComposePage() {
               </button>
             </div>
             <input
-              className={inputClass}
+              className={uiInputClass}
               value={addressBookKeyword}
               onChange={(e) => setAddressBookKeyword(e.target.value)}
               placeholder="회사명/이메일 검색"

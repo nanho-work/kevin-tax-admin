@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AdminSidebar from '@/components/admin/layout/AdminSidebar'
 import AdminHeader from '@/components/admin/layout/AdminHeader'
+import WorkChatLauncher from '@/components/common/work-chat/WorkChatLauncher'
 import { AdminSessionProvider, useAdminSessionContext } from '@/contexts/AdminSessionContext'
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
@@ -47,6 +48,13 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <WorkChatLauncher
+        portalType="admin"
+        actor={{
+          type: 'admin',
+          id: Number((session as any)?.account_id ?? (session as any)?.id ?? 0),
+        }}
+      />
     </div>
   )
 }

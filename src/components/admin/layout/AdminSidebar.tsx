@@ -3,7 +3,19 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Mail, Mails, SendHorizontal, SquarePen, Settings, Trash2 } from 'lucide-react'
+import {
+  Briefcase,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  LayoutDashboard,
+  Mail,
+  Mails,
+  SendHorizontal,
+  Settings,
+  SquarePen,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { checkOutAdmin, getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import {
@@ -108,6 +120,14 @@ function MailActionMenuLabel({ href, label }: { href: string; label: string }) {
       <span>{label}</span>
     </span>
   )
+}
+
+function getSectionIcon(key: string) {
+  if (key === 'dashboard') return LayoutDashboard
+  if (key === 'leave') return Briefcase
+  if (key === 'mail') return Mail
+  if (key === 'companies') return Building2
+  return Briefcase
 }
 
 export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSidebarProps) {
@@ -377,6 +397,36 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
 
   const activeSection = getActiveSection(pathname)
   const sidebarTitle = user?.companyName ? `${user.companyName} 관리자` : '관리자'
+  const collapsedQuickMenus = [
+    {
+      key: 'dashboard',
+      label: '대시',
+      href: '/admin/dashboard',
+      icon: LayoutDashboard,
+      active: activeSection === 'dashboard',
+    },
+    {
+      key: 'leave',
+      label: '내부',
+      href: '/admin/staff/attendance',
+      icon: Briefcase,
+      active: activeSection === 'leave',
+    },
+    {
+      key: 'mail',
+      label: '메일',
+      href: '/admin/mail/inbox',
+      icon: Mail,
+      active: activeSection === 'mail',
+    },
+    {
+      key: 'companies',
+      label: '외부',
+      href: '/admin/companies',
+      icon: Building2,
+      active: activeSection === 'companies',
+    },
+  ] as const
 
   const handleOpenFolderCreate = (accountId: number) => {
     if (folderCreateTargetAccountId === accountId) {
@@ -622,7 +672,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
 
   if (collapsed) {
     return (
-      <aside className="h-full w-full border-r border-neutral-200 bg-white">
+      <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
         <div className="flex items-center justify-center border-b border-neutral-200 px-2 py-4">
           <button
             type="button"
@@ -633,6 +683,27 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
+        <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
+          <div className="space-y-1">
+            {collapsedQuickMenus.map((item) => {
+              const Icon = item.icon
+              return (
+                <Link key={item.key} href={item.href} title={item.label}>
+                  <div
+                    className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
+                      item.active
+                        ? 'bg-sky-600 text-white'
+                        : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="mt-1 text-[9px] leading-3">{item.label}</span>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
       </aside>
     )
   }
@@ -695,6 +766,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
           {menuSections.map((section) => {
             const isActiveSection = activeSection === section.key
             const hasChildren = Boolean(section.children?.length)
+            const SectionIcon = getSectionIcon(section.key)
 
             if (!hasChildren && section.href) {
               return (
@@ -704,7 +776,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                       isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                     }`}
                   >
-                    {section.label}
+                    <span className="inline-flex items-center gap-2">
+                      <SectionIcon className="h-4 w-4" />
+                      <span>{section.label}</span>
+                    </span>
                   </div>
                 </Link>
               )
@@ -740,7 +815,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                     isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                   }`}
                 >
-                  <span>{section.label}</span>
+                  <span className="inline-flex items-center gap-2">
+                    <SectionIcon className="h-4 w-4" />
+                    <span>{section.label}</span>
+                  </span>
                   <span className="text-xs">{isOpen ? '▾' : '▸'}</span>
                 </button>
                 {isOpen ? (

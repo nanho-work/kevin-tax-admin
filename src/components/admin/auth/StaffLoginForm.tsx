@@ -6,26 +6,7 @@ import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
 import type { LoginRequest } from '@/types/admin'
 import { setAdminAccessToken } from '@/services/http'
-
-function toErrorMessage(detail: unknown): string {
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    const messages = detail
-      .map((item) => {
-        if (typeof item === 'string') return item
-        if (item && typeof item === 'object' && 'msg' in item) return String((item as any).msg)
-        return ''
-      })
-      .filter(Boolean)
-    if (messages.length > 0) return messages.join(', ')
-    return '로그인에 실패했습니다.'
-  }
-  if (detail && typeof detail === 'object') {
-    if ('msg' in detail) return String((detail as any).msg)
-    return '로그인에 실패했습니다.'
-  }
-  return '로그인에 실패했습니다.'
-}
+import { toLoginErrorMessage } from '@/utils/loginError'
 
 export default function LoginForm() {
   const router = useRouter()
@@ -44,22 +25,16 @@ export default function LoginForm() {
   // ✅ 로그인 요청 핸들러: 로그인 시도 및 리디렉션 처리
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('📤 로그인 폼 데이터:', form)
     setLoading(true)
     setErrorMessage(null)
 
     try {
-      console.log('📤 로그인 요청 시작:', form);
       const loginResponse = await adminLogin(form)
-      console.log('🔐 서버 응답 데이터:', loginResponse)
-      console.log('✅ 로그인 성공')
       setAdminAccessToken(loginResponse.access_token)
 
       router.replace('/admin/dashboard')
     } catch (err: any) {
-      const message = toErrorMessage(err?.response?.data?.detail) || err?.message || '로그인에 실패했습니다.'
-      console.error('❌ 로그인 실패:', message)
-      console.log('❌ 로그인 실패 응답 전체:', err?.response);
+      const message = toLoginErrorMessage(err?.response?.data?.detail) || err?.message || '로그인에 실패했습니다.'
       setErrorMessage(message)
     } finally {
       setLoading(false)

@@ -3,7 +3,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Mail, Mails, SendHorizontal, SquarePen, Settings, Trash2 } from 'lucide-react'
+import {
+  Briefcase,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  LayoutDashboard,
+  Mail,
+  Mails,
+  SendHorizontal,
+  Settings,
+  ShieldUser,
+  SquarePen,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { logoutClient } from '@/services/client/clientAuthService'
 import {
@@ -150,6 +164,61 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     }),
     [session]
   )
+  const collapsedQuickMenus = [
+    {
+      key: 'dashboard',
+      label: '대시',
+      href: '/client/dashboard',
+      icon: LayoutDashboard,
+      active: pathname.startsWith('/client/dashboard'),
+    },
+    {
+      key: 'mail',
+      label: '메일',
+      href: '/client/mail/inbox',
+      icon: Mail,
+      active: hasMailPath,
+    },
+    {
+      key: 'company',
+      label: '고객',
+      href: '/client/companies',
+      icon: Building2,
+      active: hasCompanyManagementPath,
+    },
+    {
+      key: 'staff',
+      label: '직원',
+      href: '/client/staff',
+      icon: Briefcase,
+      active: hasStaffManagementPath,
+    },
+    {
+      key: 'bookkeeping',
+      label: '기장',
+      href: '/client/bookkeeping/contracts',
+      icon: Briefcase,
+      active: hasBookkeepingPath,
+    },
+    ...(canManageClients
+      ? [
+          {
+            key: 'client-management',
+            label: '클관',
+            href: '/client/client-management/company-list',
+            icon: ShieldUser,
+            active: hasClientManagementPath,
+          },
+        ]
+      : []),
+    {
+      key: 'setting',
+      label: '설정',
+      href: '/client/setting/account',
+      icon: Settings,
+      active: hasSettingPath,
+    },
+  ] as const
 
   const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     `/client/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
@@ -576,7 +645,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
   if (collapsed) {
     return (
-      <aside className="h-full w-full border-r border-neutral-200 bg-white">
+      <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
         <div className="flex items-center justify-center border-b border-neutral-200 px-2 py-4">
           <button
             type="button"
@@ -587,6 +656,27 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
+        <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
+          <div className="space-y-1">
+            {collapsedQuickMenus.map((item) => {
+              const Icon = item.icon
+              return (
+                <Link key={item.key} href={item.href} title={item.label}>
+                  <div
+                    className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
+                      item.active
+                        ? 'bg-sky-600 text-white'
+                        : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="mt-1 text-[9px] leading-3">{item.label}</span>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
       </aside>
     )
   }
@@ -635,7 +725,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   active ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
                 }`}
               >
-                {menu.label}
+                <span className="inline-flex items-center gap-2">
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>{menu.label}</span>
+                </span>
               </div>
             </Link>
           )
@@ -649,7 +742,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasMailPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>메일</span>
+            <span className="inline-flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              <span>메일</span>
+            </span>
             <span aria-hidden>{isMailOpen ? '▾' : '▸'}</span>
           </button>
           {isMailOpen && (
@@ -889,7 +985,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasCompanyManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>외부업무(고객사)</span>
+            <span className="inline-flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              <span>외부업무(고객사)</span>
+            </span>
             <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isCompanyManagementOpen && (
@@ -924,7 +1023,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasStaffManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>내부업무</span>
+            <span className="inline-flex items-center gap-2">
+              <Briefcase className="h-4 w-4" />
+              <span>내부업무</span>
+            </span>
             <span aria-hidden>{isStaffManagementOpen ? '▾' : '▸'}</span>
           </button>
           {isStaffManagementOpen && (
@@ -963,7 +1065,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasBookkeepingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>외부업무(기장)</span>
+            <span className="inline-flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <span>외부업무(기장)</span>
+            </span>
             <span aria-hidden>{isBookkeepingOpen ? '▾' : '▸'}</span>
           </button>
           {isBookkeepingOpen && (
@@ -996,7 +1101,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               hasSettingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
             }`}
           >
-            <span>내 정보</span>
+            <span className="inline-flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              <span>내 정보</span>
+            </span>
             <span aria-hidden>{isSettingOpen ? '▾' : '▸'}</span>
           </button>
           {isSettingOpen && (
@@ -1028,7 +1136,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 hasClientManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
               }`}
             >
-              <span>클라이언트 관리</span>
+              <span className="inline-flex items-center gap-2">
+                <ShieldUser className="h-4 w-4" />
+                <span>클라이언트 관리</span>
+              </span>
               <span aria-hidden>{isClientManagementOpen ? '▾' : '▸'}</span>
             </button>
             {isClientManagementOpen && (

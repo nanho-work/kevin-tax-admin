@@ -40,7 +40,6 @@
   ],
   "exclude": [
     "node_modules",
-    "src/components/Company/**/*",
-    "src/services/company.ts"
+    "src/components/Company/**/*"
   ]
 }
