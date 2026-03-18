@@ -6,6 +6,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { blogService } from '@/services/blogService';
 import type { BlogPostResponse } from '@/types/blog';
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 export default function BlogList() {
   const pathname = usePathname();
@@ -94,14 +97,15 @@ export default function BlogList() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <input
+            <UiSearchInput
               value={q}
-              onChange={(e) => {
+              onChange={(value) => {
                 setPage(1);
-                setQ(e.target.value);
+                setQ(value);
               }}
               placeholder="제목/요약 검색"
-              className="h-9 w-64 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+              wrapperClassName="h-9 w-64"
+              inputClassName="text-sm"
             />
             <select
               value={pageSize}
@@ -130,13 +134,13 @@ export default function BlogList() {
                 키워드 필터 #{keywordId}
               </span>
             ) : null}
-            <button
-              type="button"
+            <UiButton
               onClick={() => router.replace(pathname)}
-              className="rounded-md border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+              size="xs"
+              variant="secondary"
             >
               필터 해제
-            </button>
+            </UiButton>
           </div>
         ) : null}
       </div>
@@ -197,14 +201,15 @@ export default function BlogList() {
                   </td>
                   <td className="px-4 py-3 text-zinc-600">{r.author_name || '-'}</td>
                   <td className="px-4 py-3">
-                    <button
-                      className="rounded border border-rose-300 px-2.5 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    <UiButton
                       onClick={() => handleDelete(r.id, r.title)}
                       disabled={deletingId === r.id || loading}
                       title="삭제"
+                      size="xs"
+                      variant="danger"
                     >
                       {deletingId === r.id ? '삭제중…' : '삭제'}
-                    </button>
+                    </UiButton>
                   </td>
                 </tr>
               ))
@@ -218,22 +223,7 @@ export default function BlogList() {
           총 {total.toLocaleString()}건 / 페이지 {page} / {totalPages}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            className="rounded border border-zinc-300 px-3 py-1.5 transition hover:bg-zinc-50 disabled:opacity-50"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1 || loading}
-          >
-            이전
-          </button>
-          <button
-            className="rounded border border-zinc-300 px-3 py-1.5 transition hover:bg-zinc-50 disabled:opacity-50"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || loading}
-          >
-            다음
-          </button>
-        </div>
+        <Pagination page={page} total={total} limit={pageSize} onPageChange={setPage} />
       </div>
     </section>
   );

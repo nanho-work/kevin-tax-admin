@@ -22,6 +22,7 @@ export type WorkChatParticipantsResponse = {
 export type WorkChatRoom = {
   id: number
   room_type: WorkChatRoomType
+  is_active?: boolean
   company_id?: number | null
   name: string | null
   display_name?: string | null

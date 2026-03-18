@@ -10,6 +10,9 @@ import {
 } from '@/services/client/clientStaffService'
 import StaffDetailModal from './StaffDetailModal'
 import ClientAclMatrixPage from '../ClientAclMatrixPage'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 export default function StaffTable({
     canManage = false,
@@ -19,7 +22,7 @@ export default function StaffTable({
     initialPanel?: 'org' | null
 }) {
     const inputClass =
-        'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+        'text-sm text-zinc-900'
 
     const [staffs, setStaffs] = useState<AdminOut[]>([])
     const [keyword, setKeyword] = useState('')
@@ -55,8 +58,6 @@ export default function StaffTable({
         setShowOrgAclPanel(initialPanel === 'org')
     }, [canManage, initialPanel])
 
-    const totalPages = Math.ceil(total / limit)
-
     const handleToggleStatus = async (id: number, is_active: boolean) => {
         try {
             if (is_active) {
@@ -78,58 +79,46 @@ export default function StaffTable({
         <section className="space-y-4">
             <div className="mb-4 rounded-lg border border-zinc-200 bg-white p-4">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_minmax(0,1fr)_auto]">
-                    <input
-                        type="text"
-                        placeholder="로그인아이디 / 이름 / 이메일 / 전화 검색"
+                    <UiSearchInput
                         value={keyword}
-                        onChange={(e) => {
-                            setKeyword(e.target.value)
+                        onChange={(value) => {
+                            setKeyword(value)
                             setPage(1)
                         }}
-                        className={inputClass}
+                        placeholder="로그인아이디 / 이름 / 이메일 / 전화 검색"
+                        wrapperClassName="w-full md:w-[320px]"
+                        inputClassName={inputClass}
                     />
                     <div aria-hidden="true" />
                     <div className="flex items-center justify-end gap-2">
                         {canManage ? (
                           <div className="inline-flex rounded-md border border-zinc-300 bg-zinc-50 p-0.5">
-                              <button
-                                  type="button"
+                              <UiButton
                                   onClick={() => setShowOrgAclPanel(false)}
-                                  className={`rounded px-3 py-1.5 text-sm transition ${
-                                      !showOrgAclPanel
-                                          ? 'bg-white text-zinc-900 shadow-sm'
-                                          : 'text-zinc-600 hover:text-zinc-900'
-                                  }`}
+                                  variant={!showOrgAclPanel ? 'tabActive' : 'tabInactive'}
+                                  size="sm"
                               >
                                   직원목록
-                              </button>
-                              <button
-                                  type="button"
+                              </UiButton>
+                              <UiButton
                                   onClick={() => setShowOrgAclPanel(true)}
-                                  className={`rounded px-3 py-1.5 text-sm transition ${
-                                      showOrgAclPanel
-                                          ? 'bg-white text-zinc-900 shadow-sm'
-                                          : 'text-zinc-600 hover:text-zinc-900'
-                                  }`}
+                                  variant={showOrgAclPanel ? 'tabActive' : 'tabInactive'}
+                                  size="sm"
                               >
                                   권한/조직배치
-                              </button>
+                              </UiButton>
                           </div>
                         ) : null}
-                        <button
-                            type="button"
+                        <UiButton
                             onClick={() => {
                                 setShowInactive((prev) => !prev)
                                 setPage(1)
                             }}
-                            className={`rounded-md border px-4 py-2 text-sm transition ${
-                                showInactive
-                                    ? 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                    : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-                            }`}
+                            variant={showInactive ? 'danger' : 'secondary'}
+                            size="md"
                         >
                             {showInactive ? '재직자 보기' : '퇴사자 보기'}
-                        </button>
+                        </UiButton>
                     </div>
                 </div>
             </div>
@@ -184,14 +173,17 @@ export default function StaffTable({
                                             </td>
                                             <td className="px-3 py-3 text-center">
                                                 {canManage ? (
-                                                    <button
+                                                    <UiButton
+                                                        type="button"
                                                         onClick={() => {
                                                             setSelectedStaff(staff)
                                                         }}
-                                                        className="text-blue-700 hover:underline"
+                                                        size="xs"
+                                                        variant="secondary"
+                                                        className="h-auto border-0 bg-transparent px-0 py-0 text-blue-700 hover:bg-transparent hover:underline"
                                                     >
                                                         {staff.name}
-                                                    </button>
+                                                    </UiButton>
                                                 ) : (
                                                     <span>{staff.name}</span>
                                                 )}
@@ -205,16 +197,15 @@ export default function StaffTable({
                                             <td className="px-3 py-3 text-center">{staff.hired_at || '-'}</td>
                                             <td className="px-3 py-3 text-center">
                                                 {canManage ? (
-                                                    <button
+                                                    <UiButton
+                                                        type="button"
                                                         onClick={() => handleToggleStatus(staff.id, staff.is_active)}
-                                                        className={`rounded px-2 py-1 text-xs font-medium ${
-                                                            staff.is_active
-                                                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                                                : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                                        }`}
+                                                        size="xs"
+                                                        variant={staff.is_active ? 'soft' : 'danger'}
+                                                        className={staff.is_active ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : ''}
                                                     >
                                                         {staff.is_active ? '재직중' : '퇴사'}
-                                                    </button>
+                                                    </UiButton>
                                                 ) : (
                                                     <span
                                                         className={`rounded px-2 py-1 text-xs font-medium ${
@@ -233,44 +224,7 @@ export default function StaffTable({
                     </table>
                 </div>
 
-                <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-                    <button
-                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                        disabled={page === 1}
-                        className="rounded border border-zinc-300 bg-white px-3 py-1 text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                    >
-                        ◀
-                    </button>
-
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                        .filter((p) => Math.abs(p - page) <= 2 || p === 1 || p === totalPages)
-                        .map((p, idx, arr) => {
-                            const isEllipsis = idx > 0 && p - arr[idx - 1] > 1
-                            return isEllipsis ? (
-                                <span key={`ellipsis-${p}`} className="px-1">...</span>
-                            ) : (
-                                <button
-                                    key={p}
-                                    onClick={() => setPage(p)}
-                                    className={`rounded border px-3 py-1 ${
-                                        p === page
-                                            ? 'border-zinc-800 bg-zinc-900 font-semibold text-white'
-                                            : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-                                    }`}
-                                >
-                                    {p}
-                                </button>
-                            )
-                        })}
-
-                    <button
-                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                        disabled={page === totalPages}
-                        className="rounded border border-zinc-300 bg-white px-3 py-1 text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                    >
-                        ▶
-                    </button>
-                </div>
+                <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
               </>
             )}
 

@@ -6,8 +6,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Briefcase,
   Building2,
-  ChevronLeft,
-  ChevronRight,
   FileText,
   LayoutDashboard,
   Mail,
@@ -19,7 +17,6 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { logoutClient } from '@/services/client/clientAuthService'
 import {
   createMailFolder,
   deleteMailFolder,
@@ -29,7 +26,6 @@ import {
   updateMailFolder,
 } from '@/services/client/clientMailService'
 import { fetchClientStaffSignupRequests } from '@/services/client/clientStaffSignupRequestService'
-import { clearClientAccessToken } from '@/services/http'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
@@ -130,12 +126,6 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
   const hasSettingPath = pathname.startsWith('/client/setting')
-  const [isCompanyManagementOpen, setIsCompanyManagementOpen] = useState(hasCompanyManagementPath)
-  const [isMailOpen, setIsMailOpen] = useState(hasMailPath)
-  const [isStaffManagementOpen, setIsStaffManagementOpen] = useState(hasStaffManagementPath)
-  const [isClientManagementOpen, setIsClientManagementOpen] = useState(hasClientManagementPath)
-  const [isBookkeepingOpen, setIsBookkeepingOpen] = useState(hasBookkeepingPath)
-  const [isSettingOpen, setIsSettingOpen] = useState(hasSettingPath)
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -151,6 +141,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
   const [pendingSignupCount, setPendingSignupCount] = useState(0)
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'mail' | 'company' | 'staff' | 'bookkeeping' | 'setting' | 'client-management'>('dashboard')
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -213,20 +204,34 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     },
   ] as const
 
-  const handleOpenSectionFromRail = (sectionKey: string) => {
-    if (sectionKey === 'mail') setIsMailOpen(true)
-    if (sectionKey === 'company') setIsCompanyManagementOpen(true)
-    if (sectionKey === 'staff') setIsStaffManagementOpen(true)
-    if (sectionKey === 'bookkeeping') setIsBookkeepingOpen(true)
-    if (sectionKey === 'setting') setIsSettingOpen(true)
-    if (sectionKey === 'client-management') setIsClientManagementOpen(true)
-    onToggleCollapse?.()
+  const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
+    const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'bookkeeping' | 'setting' | 'client-management'
+
+    // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
+    if (!collapsed && key === activeRailSection) {
+      onToggleCollapse?.()
+      return
+    }
+
+    setActiveRailSection(key)
+    if (key === 'mail') {
+      router.push(buildDefaultMailLandingHref())
+    } else {
+      router.push(href)
+    }
+    if (collapsed) onToggleCollapse?.()
   }
 
   const buildMailAccountHref = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     `/client/mail/inbox?mailbox=${mailbox}&account_id=${accountId}`
   const buildMailFolderHref = (accountId: number, folderName: string) =>
     `/client/mail/inbox?mailbox=custom&account_id=${accountId}&folder=${encodeURIComponent(folderName)}`
+  function buildDefaultMailLandingHref() {
+    const companyAccount = mailAccounts.find((account) => account.account_scope === 'company')
+    if (companyAccount) return buildMailAccountHref(companyAccount.id, 'all')
+    if (mailAccounts.length > 0) return buildMailAccountHref(mailAccounts[0].id, 'all')
+    return '/client/mail/inbox'
+  }
 
   const isMailAccountMenuActive = (accountId: number, mailbox: 'all' | 'inbox' | 'sent' | 'trash') =>
     pathname === '/client/mail/inbox' &&
@@ -240,28 +245,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     searchParams.get('folder') === folderName
 
   useEffect(() => {
-    if (hasMailPath) setIsMailOpen(true)
-  }, [hasMailPath])
-
-  useEffect(() => {
-    if (hasCompanyManagementPath) setIsCompanyManagementOpen(true)
-  }, [hasCompanyManagementPath])
-
-  useEffect(() => {
-    if (hasStaffManagementPath) setIsStaffManagementOpen(true)
-  }, [hasStaffManagementPath])
-
-  useEffect(() => {
-    if (hasClientManagementPath) setIsClientManagementOpen(true)
-  }, [hasClientManagementPath])
-
-  useEffect(() => {
-    if (hasBookkeepingPath) setIsBookkeepingOpen(true)
-  }, [hasBookkeepingPath])
-
-  useEffect(() => {
-    if (hasSettingPath) setIsSettingOpen(true)
-  }, [hasSettingPath])
+    if (hasMailPath) setActiveRailSection('mail')
+    else if (hasStaffManagementPath) setActiveRailSection('staff')
+    else if (hasCompanyManagementPath) setActiveRailSection('company')
+    else if (hasBookkeepingPath) setActiveRailSection('bookkeeping')
+    else if (hasSettingPath) setActiveRailSection('setting')
+    else if (hasClientManagementPath && canManageClients) setActiveRailSection('client-management')
+    else setActiveRailSection('dashboard')
+  }, [canManageClients, hasBookkeepingPath, hasClientManagementPath, hasCompanyManagementPath, hasMailPath, hasSettingPath, hasStaffManagementPath])
 
   useEffect(() => {
     if (!selectedMailAccountId) return
@@ -328,7 +319,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
         )
 
         const detailedTargetIds = accounts
-          .filter((account) => Boolean(expandedMailAccounts[account.id]) || account.id === selectedMailAccountId)
+          .filter((account) => (expandedMailAccounts[account.id] ?? true) || account.id === selectedMailAccountId)
           .map((account) => account.id)
 
         const detailedResults = await Promise.all(
@@ -637,28 +628,9 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       )
     })
 
-  const handleLogout = async () => {
-    try {
-      await logoutClient()
-    } finally {
-      clearClientAccessToken()
-      router.replace('/login/client')
-    }
-  }
-
-  if (collapsed) {
-    return (
-      <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
-        <div className="flex items-center justify-center border-b border-neutral-200 px-2 py-4">
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
-            aria-label="사이드바 열기"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+  return (
+    <aside className="flex h-full w-full border-r border-neutral-200 bg-white">
+      <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
             {collapsedQuickMenus.map((item) => {
@@ -668,9 +640,9 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   key={item.key}
                   type="button"
                   title={item.label}
-                  onClick={() => handleOpenSectionFromRail(item.key)}
+                  onClick={() => handleOpenSectionFromRail(item.key, item.href)}
                   className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
-                    item.active
+                    activeRailSection === item.key
                       ? 'bg-sky-600 text-white'
                       : 'text-neutral-700 hover:bg-neutral-100'
                   }`}
@@ -682,76 +654,50 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
             })}
           </div>
         </nav>
-      </aside>
-    )
-  }
-
-  return (
-    <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
+      </div>
+      {!collapsed ? (
       <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="h-7 rounded-md bg-sky-600 px-2 text-[11px] font-medium text-white hover:bg-sky-700"
-            >
-              로그아웃
-            </button>
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
-              aria-label="사이드바 접기"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          </div>
         </div>
         <div className="flex flex-col gap-1">
-        {menus.map((menu) => {
-          const active = pathname === menu.href
-          return (
-            <Link key={menu.href} href={menu.href}>
-              <div
-                className={`rounded-lg px-3 py-2 text-sm transition ${
-                  active ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-                }`}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span>{menu.label}</span>
-                </span>
-              </div>
-            </Link>
-          )
-        })}
+        {activeRailSection === 'dashboard'
+          ? menus.map((menu) => {
+              const active = pathname === menu.href
+              return (
+                <Link key={menu.href} href={menu.href}>
+                  <div
+                    className={`rounded-lg px-3 py-2 text-sm transition ${
+                      active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <LayoutDashboard className="h-4 w-4" />
+                      <span>{menu.label}</span>
+                    </span>
+                  </div>
+                </Link>
+              )
+            })
+          : null}
 
-        <div className="order-2 pt-2 rounded-lg border border-neutral-200 bg-white">
-          <button
-            type="button"
-            onClick={() => setIsMailOpen((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasMailPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-          >
+        {activeRailSection === 'mail' ? (
+        <div className="rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Mail className="h-4 w-4" />
               <span>메일</span>
             </span>
-            <span aria-hidden>{isMailOpen ? '▾' : '▸'}</span>
-          </button>
-          {isMailOpen && (
-            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+          </div>
+          <div className="space-y-1 px-2 py-2">
               <div className="grid grid-cols-1 gap-2">
                 {mailTopMenus.map((menu) => (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                      className={`rounded-md px-3 py-2 text-center text-xs transition ${
                         isMenuActive(pathname, searchParams, menu.href)
-                          ? 'border-sky-600 bg-sky-600 font-medium text-white'
-                          : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                          ? 'bg-sky-600 font-medium text-white'
+                          : 'bg-neutral-50/70 text-neutral-700 hover:bg-neutral-100'
                       }`}
                     >
                       <MailActionMenuLabel href={menu.href} label={menu.label} />
@@ -759,14 +705,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   </Link>
                 ))}
               </div>
-              <div className="my-2 border-t border-neutral-200" />
+              <div className="my-1 h-1" />
               <p className="px-2 text-[10px] font-semibold text-neutral-500">법인계정</p>
               {mailAccounts.filter((account) => account.account_scope === 'company').map((account) => {
                 const active = pathname === '/client/mail/inbox' && searchParams.get('account_id') === String(account.id)
-                const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                const isOpen = (expandedMailAccounts[account.id] ?? true) || active
                 const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
                 return (
-                  <div key={`company-${account.id}`} className="rounded-md border border-neutral-200">
+                  <div key={`company-${account.id}`} className="rounded-md bg-neutral-50/40">
                     <button
                       type="button"
                       onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
@@ -789,7 +735,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                       </div>
                     </button>
                     {isOpen ? (
-                      <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                      <div className="space-y-0.5 bg-white/80 px-2 py-1.5">
                         <Link href={buildMailAccountHref(account.id, 'all')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                             <MailboxMenuLabel type="all" label="전체메일" />
@@ -830,10 +776,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               <p className="mt-2 px-2 text-[10px] font-semibold text-neutral-500">개인계정</p>
               {mailAccounts.filter((account) => account.account_scope === 'personal').map((account) => {
                 const active = pathname === '/client/mail/inbox' && searchParams.get('account_id') === String(account.id)
-                const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                const isOpen = (expandedMailAccounts[account.id] ?? true) || active
                 const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
                 return (
-                  <div key={`personal-${account.id}`} className="rounded-md border border-neutral-200">
+                  <div key={`personal-${account.id}`} className="rounded-md bg-neutral-50/40">
                     <button
                       type="button"
                       onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
@@ -856,7 +802,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                       </div>
                     </button>
                     {isOpen ? (
-                      <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                      <div className="space-y-0.5 bg-white/80 px-2 py-1.5">
                         <Link href={buildMailAccountHref(account.id, 'all')}>
                           <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                             <MailboxMenuLabel type="all" label="전체메일" />
@@ -881,7 +827,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           <button
                             type="button"
                             onClick={() => handleOpenFolderCreate(account.id)}
-                            className="inline-flex h-4 w-4 items-center justify-center rounded border border-neutral-300 text-[10px] text-neutral-600 hover:bg-neutral-50"
+                            className="inline-flex h-4 w-4 items-center justify-center rounded text-[10px] text-neutral-600 hover:bg-neutral-100"
                             aria-label="폴더 만들기"
                           >
                             +
@@ -953,13 +899,13 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
               })}
               {mailSettingMenu ? (
                 <>
-                  <div className="my-2 border-t border-neutral-200" />
+                  <div className="my-1 h-1" />
                   <Link href={mailSettingMenu.href}>
                     <div
-                      className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                      className={`rounded-md px-3 py-2 text-center text-xs transition ${
                         isMenuActive(pathname, searchParams, mailSettingMenu.href)
-                          ? 'border-sky-600 bg-sky-600 font-medium text-white'
-                          : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                          ? 'bg-sky-600 font-medium text-white'
+                          : 'bg-neutral-50/70 text-neutral-700 hover:bg-neutral-100'
                       }`}
                     >
                       <MailActionMenuLabel href={mailSettingMenu.href} label={mailSettingMenu.label} />
@@ -968,25 +914,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 </>
               ) : null}
             </div>
-          )}
         </div>
+        ) : null}
 
-        <div className="order-3 pt-2 rounded-lg border border-neutral-200 bg-white">
-          <button
-            type="button"
-            onClick={() => setIsCompanyManagementOpen((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasCompanyManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-          >
+        {activeRailSection === 'company' ? (
+        <div className="order-3 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               <span>외부업무(고객사)</span>
             </span>
-            <span aria-hidden>{isCompanyManagementOpen ? '▾' : '▸'}</span>
-          </button>
-          {isCompanyManagementOpen && (
-            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+          </div>
+          <div className="space-y-1 px-2 py-2">
               {companyManagementMenus.map((menu) => {
                 const active =
                   menu.href === '/client/companies/new'
@@ -1006,25 +945,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 )
               })}
             </div>
-          )}
         </div>
+        ) : null}
 
-        <div className="order-1 pt-2 rounded-lg border border-neutral-200 bg-white">
-          <button
-            type="button"
-            onClick={() => setIsStaffManagementOpen((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasStaffManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-          >
+        {activeRailSection === 'staff' ? (
+        <div className="order-1 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Briefcase className="h-4 w-4" />
               <span>내부업무</span>
             </span>
-            <span aria-hidden>{isStaffManagementOpen ? '▾' : '▸'}</span>
-          </button>
-          {isStaffManagementOpen && (
-            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+          </div>
+          <div className="space-y-1 px-2 py-2">
               {staffManagementMenus.map((menu) => {
                 const active = pathname === menu.href
                 const showSignupBadge = menu.href === '/client/staff/signup-requests' && pendingSignupCount > 0
@@ -1048,25 +980,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 )
               })}
             </div>
-          )}
         </div>
+        ) : null}
 
-        <div className="order-4 pt-2 rounded-lg border border-neutral-200 bg-white">
-          <button
-            type="button"
-            onClick={() => setIsBookkeepingOpen((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasBookkeepingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-          >
+        {activeRailSection === 'bookkeeping' ? (
+        <div className="order-4 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <FileText className="h-4 w-4" />
               <span>외부업무(기장)</span>
             </span>
-            <span aria-hidden>{isBookkeepingOpen ? '▾' : '▸'}</span>
-          </button>
-          {isBookkeepingOpen && (
-            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+          </div>
+          <div className="space-y-1 px-2 py-2">
               {bookkeepingMenus.map((menu) => {
                 const active =
                   pathname === menu.href ||
@@ -1084,25 +1009,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 )
               })}
             </div>
-          )}
         </div>
+        ) : null}
 
-        <div className="order-5 pt-2 rounded-lg border border-neutral-200 bg-white">
-          <button
-            type="button"
-            onClick={() => setIsSettingOpen((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-              hasSettingPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-          >
+        {activeRailSection === 'setting' ? (
+        <div className="order-5 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Settings className="h-4 w-4" />
               <span>내 정보</span>
             </span>
-            <span aria-hidden>{isSettingOpen ? '▾' : '▸'}</span>
-          </button>
-          {isSettingOpen && (
-            <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+          </div>
+          <div className="space-y-1 px-2 py-2">
               {settingMenus.map((menu) => {
                 const active = pathname === menu.href
                 return (
@@ -1118,26 +1036,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 )
               })}
             </div>
-          )}
         </div>
+        ) : null}
 
-        {!loading && canManageClients ? (
-          <div className="order-6 pt-2 rounded-lg border border-neutral-200 bg-white">
-            <button
-              type="button"
-              onClick={() => setIsClientManagementOpen((prev) => !prev)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                hasClientManagementPath ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-              }`}
-            >
+        {activeRailSection === 'client-management' && !loading && canManageClients ? (
+          <div className="order-6 pt-2 rounded-lg bg-white">
+            <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
               <span className="inline-flex items-center gap-2">
                 <ShieldUser className="h-4 w-4" />
                 <span>클라이언트 관리</span>
               </span>
-              <span aria-hidden>{isClientManagementOpen ? '▾' : '▸'}</span>
-            </button>
-            {isClientManagementOpen && (
-              <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+            </div>
+            <div className="space-y-1 px-2 py-2">
                 {clientManagementMenus.map((menu) => {
                   const active =
                     pathname === menu.href ||
@@ -1157,11 +1067,11 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   )
                 })}
               </div>
-            )}
           </div>
         ) : null}
         </div>
       </nav>
+      ) : null}
     </aside>
   )
 }

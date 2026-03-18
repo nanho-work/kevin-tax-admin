@@ -1,50 +1,101 @@
 // components/common/Pagination.tsx
 'use client'
 
+import UiButton from '@/components/common/UiButton'
+import { cn } from '@/lib/cn'
+import { normalizePage, normalizePageSize } from '@/lib/pagination'
+
 interface PaginationProps {
   page: number
   total: number
   limit: number
   onPageChange: (newPage: number) => void
+  className?: string
+  windowSize?: number
+  showFirstLast?: boolean
 }
 
-export default function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
-  const totalPages = Math.ceil(total / limit)
+function buildPageNumbers(page: number, totalPages: number, windowSize: number): number[] {
+  const safeWindow = Math.max(1, windowSize)
+  const start = Math.floor((page - 1) / safeWindow) * safeWindow + 1
+  const end = Math.min(totalPages, start + safeWindow - 1)
+  return Array.from({ length: end - start + 1 }, (_, idx) => start + idx)
+}
+
+export default function Pagination({
+  page,
+  total,
+  limit,
+  onPageChange,
+  className,
+  windowSize = 5,
+  showFirstLast = true,
+}: PaginationProps) {
+  const safeLimit = normalizePageSize(limit, 20, Number.MAX_SAFE_INTEGER)
+  const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / safeLimit))
+  const currentPage = Math.min(totalPages, normalizePage(page))
+  const numbers = buildPageNumbers(currentPage, totalPages, windowSize)
+
+  const move = (target: number) => {
+    const next = Math.min(totalPages, Math.max(1, target))
+    if (next !== currentPage) onPageChange(next)
+  }
 
   return (
-    <div className="mt-4 flex justify-center items-center gap-2 text-sm">
-      <button
-        onClick={() => onPageChange(Math.max(1, page - 1))}
-        disabled={page === 1}
-        className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
+    <div className={cn('mt-4 flex items-center justify-center gap-1.5 text-sm', className)}>
+      {showFirstLast ? (
+        <UiButton
+          size="sm"
+          variant="secondary"
+          onClick={() => move(1)}
+          disabled={currentPage <= 1}
+          aria-label="첫 페이지"
+        >
+          {'<<'}
+        </UiButton>
+      ) : null}
+      <UiButton
+        size="sm"
+        variant="secondary"
+        onClick={() => move(currentPage - 1)}
+        disabled={currentPage <= 1}
+        aria-label="이전 페이지"
       >
-        ◀
-      </button>
+        {'<'}
+      </UiButton>
 
-      {Array.from({ length: totalPages }, (_, i) => i + 1)
-        .filter((p) => Math.abs(p - page) <= 2 || p === 1 || p === totalPages)
-        .map((p, idx, arr) => {
-          const isEllipsis = idx > 0 && p - arr[idx - 1] > 1
-          return isEllipsis ? (
-            <span key={`ellipsis-${p}`} className="px-1">...</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onPageChange(p)}
-              className={`px-3 py-1 rounded border ${p === page ? 'bg-blue-600 text-white font-semibold' : 'bg-white hover:bg-gray-100'}`}
-            >
-              {p}
-            </button>
-          )
-        })}
+      {numbers.map((num) => (
+        <UiButton
+          key={num}
+          size="sm"
+          variant={num === currentPage ? 'primary' : 'secondary'}
+          onClick={() => move(num)}
+          aria-current={num === currentPage ? 'page' : undefined}
+        >
+          {num}
+        </UiButton>
+      ))}
 
-      <button
-        onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-        disabled={page === totalPages}
-        className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
+      <UiButton
+        size="sm"
+        variant="secondary"
+        onClick={() => move(currentPage + 1)}
+        disabled={currentPage >= totalPages}
+        aria-label="다음 페이지"
       >
-        ▶
-      </button>
+        {'>'}
+      </UiButton>
+      {showFirstLast ? (
+        <UiButton
+          size="sm"
+          variant="secondary"
+          onClick={() => move(totalPages)}
+          disabled={currentPage >= totalPages}
+          aria-label="마지막 페이지"
+        >
+          {'>>'}
+        </UiButton>
+      ) : null}
     </div>
   )
 }

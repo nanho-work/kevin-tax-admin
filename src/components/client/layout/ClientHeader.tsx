@@ -4,7 +4,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
+import UiButton from '@/components/common/UiButton'
 import { uiHeaderInputClass } from '@/styles/uiClasses'
+import { logoutClient } from '@/services/client/clientAuthService'
 import { listMailAccounts } from '@/services/client/clientMailService'
 import {
   fetchClientNotificationUnreadCount,
@@ -13,6 +15,7 @@ import {
   markAllClientNotificationsRead,
   markClientNotificationRead,
 } from '@/services/client/clientNotificationService'
+import { clearClientAccessToken } from '@/services/http'
 
 type HeaderInfo = {
   parent: string
@@ -75,6 +78,7 @@ export default function ClientHeader() {
   const [headerMailAccountId, setHeaderMailAccountId] = useState('')
   const [headerKeyword, setHeaderKeyword] = useState('')
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const [loggingOut, setLoggingOut] = useState(false)
   const isClientMailInbox = pathname.startsWith('/client/mail/inbox')
   const backPath = (() => {
     if (pathname.startsWith('/client/companies/')) return '/client/companies'
@@ -115,6 +119,18 @@ export default function ClientHeader() {
 
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname)
+  }
+
+  const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    try {
+      await logoutClient()
+    } finally {
+      clearClientAccessToken()
+      router.replace('/login/client')
+      setLoggingOut(false)
+    }
   }
 
   return (
@@ -188,6 +204,14 @@ export default function ClientHeader() {
               getErrorMessage={getClientNotificationErrorMessage}
               onUnreadCountChange={setUnreadNotificationCount}
             />
+            <UiButton
+              onClick={() => void handleLogout()}
+              disabled={loggingOut}
+              variant="secondary"
+              size="md"
+            >
+              {loggingOut ? '로그아웃 중...' : '로그아웃'}
+            </UiButton>
           </div>
         </div>
       </div>

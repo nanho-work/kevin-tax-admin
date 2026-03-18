@@ -14,6 +14,7 @@ import type {
   WithholdingReviewTargetStatus,
 } from '@/types/admin_withholding33'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 function toMonthInput(value: string) {
   if (!value) return ''
@@ -292,11 +293,10 @@ export default function Withholding33BusinessSection() {
         <div className="rounded-lg border border-zinc-200 bg-white p-4 xl:col-span-1">
           <h2 className="text-sm font-semibold text-zinc-900">회사 목록</h2>
           <div className="mt-3 space-y-2">
-            <input
-              className="h-10 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+            <UiSearchInput
               placeholder="회사명 검색"
               value={companyKeyword}
-              onChange={(e) => setCompanyKeyword(e.target.value)}
+              onChange={setCompanyKeyword}
             />
             <div className="max-h-[620px] overflow-y-auto rounded-md border border-zinc-200">
               {companyLoading ? (

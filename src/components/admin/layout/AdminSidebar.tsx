@@ -6,8 +6,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Briefcase,
   Building2,
-  ChevronLeft,
-  ChevronRight,
   LayoutDashboard,
   Mail,
   Mails,
@@ -134,7 +132,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const router = useRouter()
   const { session, loading: sessionLoading } = useAdminSessionContext()
 
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'mail' | 'companies'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -173,7 +171,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname)
     if (!activeKey) return
-    setExpanded((prev) => ({ ...prev, [activeKey]: true }))
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'mail' | 'companies')
   }, [pathname])
 
   useEffect(() => {
@@ -242,7 +240,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
         )
 
         const detailedTargetIds = accounts
-          .filter((account) => Boolean(expandedMailAccounts[account.id]) || account.id === selectedMailAccountId)
+          .filter((account) => (expandedMailAccounts[account.id] ?? true) || account.id === selectedMailAccountId)
           .map((account) => account.id)
 
         const detailedResults = await Promise.all(
@@ -333,9 +331,22 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     },
   ] as const
 
-  const handleOpenSectionFromRail = (sectionKey: string) => {
-    setExpanded((prev) => ({ ...prev, [sectionKey]: true }))
-    onToggleCollapse?.()
+  const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
+    const key = sectionKey as 'dashboard' | 'leave' | 'mail' | 'companies'
+
+    // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
+    if (!collapsed && key === activeRailSection) {
+      onToggleCollapse?.()
+      return
+    }
+
+    setActiveRailSection(key)
+    if (key === 'mail') {
+      router.push(buildDefaultMailLandingHref())
+    } else {
+      router.push(href)
+    }
+    if (collapsed) onToggleCollapse?.()
   }
 
   const handleOpenFolderCreate = (accountId: number) => {
@@ -348,6 +359,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     setFolderCreateTargetAccountId(accountId)
     setFolderCreateName('')
     setFolderCreateError(null)
+  }
+
+  function buildDefaultMailLandingHref() {
+    const companyAccount = mailAccounts.find((account) => account.account_scope === 'company')
+    if (companyAccount) return buildMailAccountHref(companyAccount.id, 'all')
+    if (mailAccounts.length > 0) return buildMailAccountHref(mailAccounts[0].id, 'all')
+    return '/admin/mail/inbox'
   }
 
   const handleCancelFolderCreate = () => {
@@ -561,19 +579,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  if (collapsed) {
-    return (
-      <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
-        <div className="flex items-center justify-center border-b border-neutral-200 px-2 py-4">
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
-            aria-label="사이드바 열기"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection)
+
+  return (
+    <aside className="flex h-full w-full border-r border-neutral-200 bg-white">
+      <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
             {collapsedQuickMenus.map((item) => {
@@ -583,9 +593,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                   key={item.key}
                   type="button"
                   title={item.label}
-                  onClick={() => handleOpenSectionFromRail(item.key)}
+                  onClick={() => handleOpenSectionFromRail(item.key, item.href)}
                   className={`mx-auto flex w-12 flex-col items-center justify-center rounded-md px-1 py-2 text-center transition ${
-                    item.active
+                    activeRailSection === item.key
                       ? 'bg-sky-600 text-white'
                       : 'text-neutral-700 hover:bg-neutral-100'
                   }`}
@@ -597,26 +607,14 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
             })}
           </div>
         </nav>
-      </aside>
-    )
-  }
-
-  return (
-    <aside className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
+      </div>
+      {!collapsed ? (
       <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 transition hover:bg-neutral-50"
-            aria-label="사이드바 접기"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
         </div>
         <div className="space-y-1">
-          {menuSections.map((section) => {
+          {sectionsToRender.map((section) => {
             const isActiveSection = activeSection === section.key
             const hasChildren = Boolean(section.children?.length)
             const SectionIcon = getSectionIcon(section.key)
@@ -626,7 +624,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                 <Link key={section.key} href={section.href}>
                   <div
                     className={`rounded-lg px-3 py-2 text-sm transition ${
-                      isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
+                      isActiveSection ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
                     }`}
                   >
                     <span className="inline-flex items-center gap-2">
@@ -638,7 +636,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
               )
             }
 
-            const isOpen = Boolean(expanded[section.key])
             const visibleChildren = section.children?.filter((child) => {
               if (child.href === '/admin/setting/role' && userRoleLevel >= 2) return false
               if (child.href === '/admin/companies/account' && !hasUserSession) {
@@ -660,31 +657,26 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
             }
 
             return (
-              <div key={section.key} className="rounded-lg border border-neutral-200 bg-white">
-                <button
-                  type="button"
-                  onClick={() => setExpanded((prev) => ({ ...prev, [section.key]: !isOpen }))}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
-                    isActiveSection ? 'bg-sky-600 text-white' : 'text-neutral-700 hover:bg-neutral-100'
-                  }`}
-                >
+              <div
+                key={section.key}
+                className="rounded-lg bg-white"
+              >
+                <div className="flex w-full items-center rounded-lg px-3 py-2 text-sm text-neutral-700">
                   <span className="inline-flex items-center gap-2">
                     <SectionIcon className="h-4 w-4" />
                     <span>{section.label}</span>
                   </span>
-                  <span className="text-xs">{isOpen ? '▾' : '▸'}</span>
-                </button>
-                {isOpen ? (
-                  <div className="space-y-1 border-t border-neutral-200 px-2 py-2">
+                </div>
+                <div className="space-y-1 px-2 py-2">
                     {section.key === 'mail' ? (
                       <div className="grid grid-cols-1 gap-2">
                         {mailTopChildren.map((child) => (
                           <Link key={child.href} href={child.href}>
                             <div
-                              className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                              className={`rounded-md px-3 py-2 text-center text-xs transition ${
                                 isChildActive(pathname, searchParams, child.href)
-                                  ? 'border-sky-600 bg-sky-600 font-medium text-white'
-                                  : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                                  ? 'bg-sky-600 font-medium text-white'
+                                  : 'bg-neutral-50/70 text-neutral-700 hover:bg-neutral-100'
                               }`}
                             >
                               <MailActionMenuLabel href={child.href} label={child.label} />
@@ -709,14 +701,14 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                     )}
                     {section.key === 'mail' ? (
                       <>
-                        <div className="my-2 border-t border-neutral-200" />
+                        <div className="my-1 h-1" />
                         <p className="px-2 text-[10px] font-semibold text-neutral-500">법인계정</p>
                         {mailAccounts.filter((account) => account.account_scope === 'company').map((account) => {
                           const active = pathname === '/admin/mail/inbox' && searchParams.get('account_id') === String(account.id)
-                          const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                          const isOpen = (expandedMailAccounts[account.id] ?? true) || active
                           const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
                           return (
-                            <div key={`company-${account.id}`} className="rounded-md border border-neutral-200">
+                            <div key={`company-${account.id}`} className="rounded-md bg-neutral-50/40">
                               <button
                                 type="button"
                                 onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
@@ -739,7 +731,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                 </div>
                               </button>
                               {isOpen ? (
-                                <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                                <div className="space-y-0.5 bg-white/80 px-2 py-1.5">
                                   <Link href={buildMailAccountHref(account.id, 'all')}>
                                     <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                                       <MailboxMenuLabel type="all" label="전체메일" />
@@ -780,10 +772,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                         <p className="mt-2 px-2 text-[10px] font-semibold text-neutral-500">개인계정</p>
                         {mailAccounts.filter((account) => account.account_scope === 'personal').map((account) => {
                           const active = pathname === '/admin/mail/inbox' && searchParams.get('account_id') === String(account.id)
-                          const isOpen = Boolean(expandedMailAccounts[account.id]) || active
+                          const isOpen = (expandedMailAccounts[account.id] ?? true) || active
                           const counts = mailAccountCounts[account.id] || { all: 0, inboxUnread: 0, sent: 0, trash: 0 }
                           return (
-                            <div key={`personal-${account.id}`} className="rounded-md border border-neutral-200">
+                            <div key={`personal-${account.id}`} className="rounded-md bg-neutral-50/40">
                               <button
                                 type="button"
                                 onClick={() => setExpandedMailAccounts((prev) => ({ ...prev, [account.id]: !isOpen }))}
@@ -806,7 +798,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                 </div>
                               </button>
                               {isOpen ? (
-                                <div className="space-y-0.5 border-t border-neutral-200 bg-white px-2 py-1.5">
+                                <div className="space-y-0.5 bg-white/80 px-2 py-1.5">
                                   <Link href={buildMailAccountHref(account.id, 'all')}>
                                     <div className={`flex items-center justify-between rounded px-2 py-1 text-[11px] transition ${isMailAccountMenuActive(account.id, 'all') ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'}`}>
                                       <MailboxMenuLabel type="all" label="전체메일" />
@@ -831,7 +823,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                                       <button
                                         type="button"
                                         onClick={() => handleOpenFolderCreate(account.id)}
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded border border-neutral-300 text-[10px] text-neutral-600 hover:bg-neutral-50"
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded text-[10px] text-neutral-600 hover:bg-neutral-100"
                                         aria-label="폴더 만들기"
                                       >
                                         +
@@ -903,13 +895,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                         })}
                         {mailSettingChild ? (
                           <>
-                            <div className="my-2 border-t border-neutral-200" />
+                            <div className="my-1 h-1" />
                             <Link href={mailSettingChild.href}>
                               <div
-                                className={`rounded-md border px-3 py-2 text-center text-xs transition ${
+                                className={`rounded-md px-3 py-2 text-center text-xs transition ${
                                   isChildActive(pathname, searchParams, mailSettingChild.href)
-                                    ? 'border-sky-600 bg-sky-600 font-medium text-white'
-                                    : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
+                                    ? 'bg-sky-600 font-medium text-white'
+                                    : 'bg-neutral-50/70 text-neutral-700 hover:bg-neutral-100'
                                 }`}
                               >
                                 <MailActionMenuLabel href={mailSettingChild.href} label={mailSettingChild.label} />
@@ -920,12 +912,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                       </>
                     ) : null}
                   </div>
-                ) : null}
               </div>
             )
           })}
         </div>
       </nav>
+      ) : null}
     </aside>
   )
 }

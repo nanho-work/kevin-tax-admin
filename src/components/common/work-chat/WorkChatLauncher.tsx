@@ -229,6 +229,14 @@ function toActorKey(memberType: string, memberId: number) {
   return `${memberType}:${memberId}`
 }
 
+function buildActorKeySet(members: Array<{ member_type: string; member_id: number }>) {
+  return new Set(
+    members
+      .map((member) => toActorKey(member.member_type, Number(member.member_id || 0)))
+      .filter((key) => !key.endsWith(':0'))
+  )
+}
+
 function buildWsUrl(portalType: PortalType, token: string) {
   const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim()
   if (!apiBase || !token) return ''
@@ -299,6 +307,10 @@ function wait(ms: number): Promise<void> {
   })
 }
 
+function isRoomAccessError(error: unknown): boolean {
+  return axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 404)
+}
+
 function sortRoomsByRecentMessage(rows: WorkChatRoom[]): WorkChatRoom[] {
   return [...rows].sort((a, b) => {
     const aTs = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
@@ -317,6 +329,7 @@ function normalizeWsRoomPatch(raw: any): (Partial<WorkChatRoom> & { id: number }
   return {
     id,
     room_type: hasOwn('room_type') ? target.room_type : hasOwn('roomType') ? target.roomType : undefined,
+    is_active: hasOwn('is_active') ? Boolean(target.is_active) : undefined,
     name: hasOwn('name') ? (target.name == null ? null : String(target.name)) : undefined,
     display_name: hasOwn('display_name') ? (target.display_name == null ? null : String(target.display_name)) : undefined,
     is_hidden: hasOwn('is_hidden') ? Boolean(target.is_hidden) : undefined,
@@ -410,6 +423,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const [roomActionMenuOpen, setRoomActionMenuOpen] = useState(false)
   const [showRoomMembersPanel, setShowRoomMembersPanel] = useState(false)
   const [leavingRoom, setLeavingRoom] = useState(false)
+  const [leavingRoomId, setLeavingRoomId] = useState<number | null>(null)
   const [updatingRoomPreference, setUpdatingRoomPreference] = useState(false)
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [dragOverComposer, setDragOverComposer] = useState(false)
@@ -553,9 +567,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     [companyRows, searchKeyword]
   )
   const filteredRooms = useMemo(() => {
+    const activeRooms = rooms.filter((room) => room.is_active !== false)
     const normalized = searchKeyword.trim().toLowerCase()
-    if (!normalized) return rooms
-    return rooms.filter((room) => {
+    if (!normalized) return activeRooms
+    return activeRooms.filter((room) => {
       const title = (getRoomDisplayName(room) || '').toLowerCase()
       const preview = (room.last_message_preview || '').toLowerCase()
       return title.includes(normalized) || preview.includes(normalized)
@@ -643,7 +658,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     try {
       if (!options?.silent) setRoomsLoading(true)
       const res = await api.listRooms({ page: 1, size: 50, include_hidden: includeHiddenRooms })
-      const next = sortRoomsByRecentMessage(res.items || [])
+      const next = sortRoomsByRecentMessage((res.items || []).filter((room) => room.is_active !== false))
       setRooms(next)
       return next
     } catch (error) {
@@ -653,6 +668,37 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       if (!options?.silent) setRoomsLoading(false)
     }
   }, [api, getErrorMessage, includeHiddenRooms])
+
+  const handleInaccessibleRoom = useCallback(
+    (roomId: number, options?: { silent?: boolean }) => {
+      setRooms((prev) => prev.filter((room) => room.id !== roomId))
+      if (selectedRoomIdRef.current === roomId) {
+        setChatWindowOpen(false)
+        setSelectedRoomId(null)
+        setMessages([])
+        setRoomMembers([])
+        setRoomActionMenuOpen(false)
+        setShowRoomMembersPanel(false)
+        setShowSaveCompanyPanel(false)
+        setSaveTargetAttachment(null)
+        setImageViewer(null)
+        setMessageBody('')
+        setShowRoomSearchPanel(false)
+        setRoomSearchKeyword('')
+        setRoomSearchResults([])
+        setRoomSearchTotal(0)
+        setActiveSearchResultIndex(-1)
+        setActiveSearchMessageId(null)
+        setJumpHighlightMessageId(null)
+        setActiveTab('rooms')
+      }
+      if (!options?.silent) {
+        toast.error('접근할 수 없는 대화방입니다. 목록을 갱신합니다.')
+      }
+      void loadRooms({ silent: true })
+    },
+    [loadRooms]
+  )
 
   const loadParticipants = useCallback(async (options?: { silent?: boolean }) => {
     try {
@@ -710,15 +756,25 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   )
 
   const loadRoomMembers = useCallback(
-    async (roomId: number) => {
+    async (roomId: number, options?: { failOnAccess?: boolean; silent?: boolean }) => {
       try {
         const rows = await api.listRoomMembers(roomId)
         setRoomMembers(rows)
-      } catch {
+        return rows
+      } catch (error) {
         setRoomMembers([])
+        if (isRoomAccessError(error)) {
+          handleInaccessibleRoom(roomId, { silent: options?.silent })
+          if (options?.failOnAccess) throw error
+          return []
+        }
+        if (options?.failOnAccess) {
+          throw new Error('ROOM_MEMBERS_LOAD_FAILED')
+        }
+        return []
       }
     },
-    [api]
+    [api, handleInaccessibleRoom]
   )
 
   const mergeRoomReadCursor = useCallback(
@@ -751,7 +807,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   )
 
   const loadReadCursors = useCallback(
-    async (roomId: number) => {
+    async (roomId: number, options?: { failOnAccess?: boolean; silent?: boolean }) => {
       try {
         const rows = await api.listReadCursors(roomId)
         const nextRoomState: RoomReadCursorState = {}
@@ -763,17 +819,25 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           ...prev,
           [roomId]: nextRoomState,
         }))
-      } catch {
+        return rows
+      } catch (error) {
+        if (isRoomAccessError(error)) {
+          handleInaccessibleRoom(roomId, { silent: options?.silent })
+          if (options?.failOnAccess) throw error
+          return []
+        }
+        if (options?.failOnAccess) throw error
         // read-cursors endpoint may be unavailable on older backend builds.
+        return []
       }
     },
-    [api]
+    [api, handleInaccessibleRoom]
   )
 
   const loadMessages = useCallback(
     async (
       roomId: number,
-      options?: { beforeMessageId?: number | null; prepend?: boolean; silent?: boolean }
+      options?: { beforeMessageId?: number | null; prepend?: boolean; silent?: boolean; failOnAccess?: boolean }
     ) => {
       try {
         if (options?.prepend) setLoadingHistory(true)
@@ -796,28 +860,53 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           await markSelectedRoomRead(roomId, (res.items || []).sort((a, b) => a.id - b.id))
         }
       } catch (error) {
-        if (!options?.silent) toast.error(getErrorMessage(error))
+        if (isRoomAccessError(error)) {
+          handleInaccessibleRoom(roomId, { silent: options?.silent })
+          if (options?.failOnAccess) throw error
+        } else {
+          if (!options?.silent) toast.error(getErrorMessage(error))
+          if (options?.failOnAccess) throw error
+        }
       } finally {
         if (options?.prepend) setLoadingHistory(false)
         else if (!options?.silent) setMessagesLoading(false)
       }
     },
-    [api, getErrorMessage, markSelectedRoomRead]
+    [api, getErrorMessage, handleInaccessibleRoom, markSelectedRoomRead]
   )
 
   const openRoom = useCallback(
     async (roomId: number) => {
-      setSelectedRoomId(roomId)
-      setChatWindowOpen(true)
-      setActiveTab('rooms')
-      await Promise.all([loadMessages(roomId), loadRoomMembers(roomId), loadReadCursors(roomId)])
-      requestAnimationFrame(() => {
-        if (messageScrollRef.current) {
-          messageScrollRef.current.scrollTop = messageScrollRef.current.scrollHeight
+      const room = rooms.find((row) => row.id === roomId)
+      if (room && room.is_active === false) {
+        handleInaccessibleRoom(roomId)
+        return false
+      }
+      try {
+        await loadRoomMembers(roomId, { failOnAccess: true })
+        setSelectedRoomId(roomId)
+        setChatWindowOpen(true)
+        setActiveTab('rooms')
+        await Promise.all([
+          loadMessages(roomId, { failOnAccess: true }),
+          loadReadCursors(roomId, { failOnAccess: true }),
+        ])
+        requestAnimationFrame(() => {
+          if (messageScrollRef.current) {
+            messageScrollRef.current.scrollTop = messageScrollRef.current.scrollHeight
+          }
+        })
+        return true
+      } catch (error) {
+        if (isRoomAccessError(error)) {
+          handleInaccessibleRoom(roomId)
+          return false
         }
-      })
+        toast.error(getErrorMessage(error))
+        return false
+      }
     },
-    [loadMessages, loadReadCursors, loadRoomMembers]
+    [getErrorMessage, handleInaccessibleRoom, loadMessages, loadReadCursors, loadRoomMembers, rooms]
   )
 
   const closeChatWindow = useCallback(() => {
@@ -849,40 +938,54 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     }
   }, [loadRoomMembers, selectedRoom, selectedRoomMembersForPanel.length])
 
+  const handleLeaveRoomByRoom = useCallback(
+    async (room: WorkChatRoom, options?: { closeActionMenu?: boolean }) => {
+      if (leavingRoomId === room.id) return
+      const confirmed = window.confirm(
+        room.room_type === 'company_bridge'
+          ? '회사 채팅방은 퇴장 대신 목록 숨김 처리됩니다. 진행하시겠습니까?'
+          : '대화방에서 나가시겠습니까?'
+      )
+      if (!confirmed) return
+
+      try {
+        setLeavingRoom(true)
+        setLeavingRoomId(room.id)
+        const res = await api.leaveRoom(room.id)
+        if (room.room_type === 'company_bridge' && includeHiddenRooms) {
+          setRooms((prev) =>
+            prev.map((row) =>
+              row.id === room.id
+                ? { ...row, is_hidden: true }
+                : row
+            )
+          )
+        } else {
+          setRooms((prev) => prev.filter((row) => row.id !== room.id))
+        }
+        if (selectedRoomId === room.id) {
+          closeChatWindow()
+          setActiveTab('rooms')
+        }
+        toast.success(res?.message || '처리되었습니다.')
+        void loadRooms({ silent: true })
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      } finally {
+        setLeavingRoom(false)
+        setLeavingRoomId((prev) => (prev === room.id ? null : prev))
+        if (options?.closeActionMenu) {
+          setRoomActionMenuOpen(false)
+        }
+      }
+    },
+    [api, closeChatWindow, getErrorMessage, includeHiddenRooms, leavingRoomId, loadRooms, selectedRoomId]
+  )
+
   const handleLeaveRoom = useCallback(async () => {
     if (!selectedRoom || leavingRoom) return
-    const confirmed = window.confirm(
-      selectedRoom.room_type === 'company_bridge'
-        ? '회사 채팅방은 퇴장 대신 목록 숨김 처리됩니다. 진행하시겠습니까?'
-        : '대화방에서 나가시겠습니까?'
-    )
-    if (!confirmed) return
-
-    try {
-      setLeavingRoom(true)
-      const res = await api.leaveRoom(selectedRoom.id)
-      if (selectedRoom.room_type === 'company_bridge' && includeHiddenRooms) {
-        setRooms((prev) =>
-          prev.map((room) =>
-            room.id === selectedRoom.id
-              ? { ...room, is_hidden: true }
-              : room
-          )
-        )
-      } else {
-        setRooms((prev) => prev.filter((room) => room.id !== selectedRoom.id))
-      }
-      closeChatWindow()
-      setActiveTab('rooms')
-      toast.success(res?.message || '처리되었습니다.')
-      void loadRooms({ silent: true })
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    } finally {
-      setLeavingRoom(false)
-      setRoomActionMenuOpen(false)
-    }
-  }, [api, closeChatWindow, getErrorMessage, includeHiddenRooms, leavingRoom, loadRooms, selectedRoom])
+    await handleLeaveRoomByRoom(selectedRoom, { closeActionMenu: true })
+  }, [handleLeaveRoomByRoom, leavingRoom, selectedRoom])
 
   const handleHideCurrentRoom = useCallback(async () => {
     if (!selectedRoom || updatingRoomPreference) return
@@ -994,8 +1097,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           const base = (res.room || {}) as WorkChatRoom
           if (!base.id) return prev
           const unreadCount = Math.max(0, Number(base.unread_count || 0))
+          if (base.is_active === false) return prev
           const nextRoom: WorkChatRoom = {
             ...base,
+            is_active: base.is_active ?? true,
             unread_count: unreadCount,
             unread_count_display: base.unread_count_display || toUnreadCountDisplay(unreadCount),
           }
@@ -1004,7 +1109,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         })
         const createdRoomId = Number((res?.room as any)?.id || 0)
         await validateRoomForTarget(createdRoomId)
-        await openRoom(createdRoomId)
+        const opened = await openRoom(createdRoomId)
+        if (!opened) {
+          throw new Error('ROOM_ACCESS_MISMATCH')
+        }
         void loadRooms({ silent: true })
       } catch (error) {
         const isConflict = axios.isAxiosError(error) && error.response?.status === 409
@@ -1023,9 +1131,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     await validateRoomForTarget(retriedRoomId)
                     setRooms((prev) => {
                       const base = (retried.room || {}) as WorkChatRoom
+                      if (base.is_active === false) return prev
                       const unreadCount = Math.max(0, Number(base.unread_count || 0))
                       const nextRoom: WorkChatRoom = {
                         ...base,
+                        is_active: base.is_active ?? true,
                         unread_count: unreadCount,
                         unread_count_display:
                           base.unread_count_display || toUnreadCountDisplay(unreadCount),
@@ -1035,7 +1145,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                         ...prev.filter((room) => room.id !== nextRoom.id),
                       ])
                     })
-                    await openRoom(retriedRoomId)
+                    const opened = await openRoom(retriedRoomId)
+                    if (!opened) {
+                      throw new Error('ROOM_ACCESS_MISMATCH')
+                    }
                     void loadRooms({ silent: true })
                     return
                   }
@@ -1053,6 +1166,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             const fallbackRoomType = roomType
             const findExistingRoom = (rows: WorkChatRoom[]) =>
               rows.find((room) => {
+                if (room.is_active === false) return false
                 if (target.member_type === 'company_account') {
                   const memberMatched = Array.isArray(room.members)
                     ? room.members.some(
@@ -1097,7 +1211,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 room_type: fallbackRoomType,
                 include_hidden: true,
               })
-              const refreshedRooms = sortRoomsByRecentMessage(refreshed.items || [])
+              const refreshedRooms = sortRoomsByRecentMessage(
+                (refreshed.items || []).filter((room) => room.is_active !== false)
+              )
               setRooms((prev) => {
                 const others = prev.filter((room) => room.room_type !== fallbackRoomType)
                 return sortRoomsByRecentMessage([...others, ...refreshedRooms])
@@ -1105,7 +1221,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               const existing = findExistingRoom(refreshedRooms)
               if (existing?.id) {
                 await validateRoomForTarget(existing.id)
-                await openRoom(existing.id)
+                const opened = await openRoom(existing.id)
+                if (!opened) {
+                  throw new Error('ROOM_ACCESS_MISMATCH')
+                }
                 void loadRooms({ silent: true })
                 return
               }
@@ -1118,7 +1237,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               room_type: fallbackRoomType,
               include_hidden: true,
             })
-            const candidates = sortRoomsByRecentMessage(memberFallback.items || []).slice(0, 30)
+            const candidates = sortRoomsByRecentMessage(
+              (memberFallback.items || []).filter((room) => room.is_active !== false)
+            ).slice(0, 30)
             for (const candidate of candidates) {
               try {
                 const members = await api.listRoomMembers(candidate.id)
@@ -1133,7 +1254,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   member.member_id === actor.id
                 )
                 if (hasTarget && hasMe) {
-                  await openRoom(candidate.id)
+                  const opened = await openRoom(candidate.id)
+                  if (!opened) {
+                    throw new Error('ROOM_ACCESS_MISMATCH')
+                  }
                   void loadRooms({ silent: true })
                   return
                 }
@@ -1202,9 +1326,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       setRooms((prev) => {
         const base = (res.room || {}) as WorkChatRoom
         if (!base.id) return prev
+        if (base.is_active === false) return prev
         const unreadCount = Math.max(0, Number(base.unread_count || 0))
         const nextRoom: WorkChatRoom = {
           ...base,
+          is_active: base.is_active ?? true,
           unread_count: unreadCount,
           unread_count_display: base.unread_count_display || toUnreadCountDisplay(unreadCount),
         }
@@ -1212,17 +1338,72 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       })
       handleCloseGroupCreateModal()
       setActiveTab('rooms')
-      await openRoom(res.room.id)
+      const opened = await openRoom(res.room.id)
+      if (!opened) {
+        throw new Error('ROOM_ACCESS_MISMATCH')
+      }
       void loadRooms({ silent: true })
     } catch (error) {
-      toast.error(getErrorMessage(error))
       if (axios.isAxiosError(error) && error.response?.status === 409) {
-        void loadRooms({ silent: true })
+        try {
+          const refreshed = await api.listRooms({
+            page: 1,
+            size: 100,
+            room_type: 'group',
+            include_hidden: true,
+          })
+          const activeGroups = sortRoomsByRecentMessage(
+            (refreshed.items || []).filter((room) => room.is_active !== false)
+          )
+          setRooms((prev) => {
+            const others = prev.filter((room) => room.room_type !== 'group')
+            return sortRoomsByRecentMessage([...others, ...activeGroups])
+          })
+
+          const requiredKeySet = buildActorKeySet([
+            ...selectedGroupMembers.map((member) => ({
+              member_type: member.member_type,
+              member_id: member.member_id,
+            })),
+            {
+              member_type: actor.type,
+              member_id: actor.id,
+            },
+          ])
+          const candidates = activeGroups.slice(0, 30)
+
+          for (const candidate of candidates) {
+            try {
+              const members = await api.listRoomMembers(candidate.id)
+              const candidateKeySet = buildActorKeySet(members)
+              if (candidateKeySet.size !== requiredKeySet.size) continue
+              const isExactMatch = Array.from(requiredKeySet).every((key) => candidateKeySet.has(key))
+              if (!isExactMatch) continue
+
+              handleCloseGroupCreateModal()
+              setActiveTab('rooms')
+              const opened = await openRoom(candidate.id)
+              if (!opened) continue
+              void loadRooms({ silent: true })
+              return
+            } catch {
+              // skip inaccessible room
+            }
+          }
+
+          toast.error('기존 그룹 대화방을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        } catch {
+          toast.error(getErrorMessage(error))
+        }
+        return
       }
+      toast.error(getErrorMessage(error))
     } finally {
       setCreatingGroupRoom(false)
     }
   }, [
+    actor.id,
+    actor.type,
     api,
     creatingGroupRoom,
     getErrorMessage,
@@ -1946,6 +2127,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         if (eventName === 'chat.room.new') {
           const patch = normalizeWsRoomPatch(data)
           if (patch) {
+            if (patch.is_active === false) {
+              return
+            }
             if (!includeHiddenRooms && patch.is_hidden) {
               return
             }
@@ -1958,6 +2142,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 {
                   id: patch.id,
                   room_type: patch.room_type || 'direct',
+                  is_active: patch.is_active ?? true,
                   name: patch.name || null,
                   display_name: patch.display_name || patch.name || null,
                   is_hidden: Boolean(patch.is_hidden),
@@ -1984,6 +2169,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             void loadRooms({ silent: true })
             return
           }
+          if (patch.is_active === false) {
+            setRooms((prev) => prev.filter((room) => room.id !== patch.id))
+            if (selectedRoomIdRef.current === patch.id) {
+              closeChatWindow()
+              setActiveTab('rooms')
+            }
+            return
+          }
           if (!includeHiddenRooms && patch.is_hidden) {
             setRooms((prev) => prev.filter((room) => room.id !== patch.id))
             return
@@ -1998,6 +2191,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               next[idx] = {
                 ...base,
                 ...(patch.room_type !== undefined ? { room_type: patch.room_type } : {}),
+                ...(patch.is_active !== undefined ? { is_active: patch.is_active } : {}),
                 ...(patch.name !== undefined ? { name: patch.name } : {}),
                 ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
                 ...(patch.is_hidden !== undefined ? { is_hidden: patch.is_hidden } : {}),
@@ -2015,6 +2209,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               next.push({
                 id: patch.id,
                 room_type: patch.room_type || 'direct',
+                is_active: patch.is_active ?? true,
                 name: patch.name || null,
                 display_name: patch.display_name || patch.name || null,
                 is_hidden: Boolean(patch.is_hidden),
@@ -2167,7 +2362,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       enteredRoomIdRef.current = null
       clearSocket()
     }
-  }, [actor.id, actor.type, includeHiddenRooms, loadRooms, markRoomRead, mergeRoomReadCursor, open, portalType, sendWsEvent])
+  }, [actor.id, actor.type, closeChatWindow, includeHiddenRooms, loadRooms, markRoomRead, mergeRoomReadCursor, open, portalType, sendWsEvent])
 
   useEffect(() => {
     if (!open || !wsConnected || rooms.length === 0) return
@@ -2698,46 +2893,61 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     <div className="divide-y divide-zinc-100">
                       {filteredRooms.map((room) => {
                         const active = selectedRoomId === room.id
+                        const leavingCurrentRow = leavingRoomId === room.id
                         return (
-                          <button
+                          <div
                             key={room.id}
-                            type="button"
-                            onClick={() => void openRoom(room.id)}
-                            className={`w-full px-2 py-2 text-left transition ${
+                            className={`group flex items-center gap-1 px-2 py-2 transition ${
                               active ? 'bg-sky-50' : 'hover:bg-zinc-50'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex flex-1 items-center gap-1.5">
-                                <p className="truncate text-xs font-medium text-zinc-800">
-                                  {getRoomDisplayName(room)}
-                                </p>
-                                {room.is_hidden ? (
-                                  <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
-                                    숨김
-                                  </span>
-                                ) : null}
-                                {room.is_muted ? (
-                                  <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                                    알림끔
+                            <button
+                              type="button"
+                              onClick={() => void openRoom(room.id)}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex flex-1 items-center gap-1.5">
+                                  <p className="truncate text-xs font-medium text-zinc-800">
+                                    {getRoomDisplayName(room)}
+                                  </p>
+                                  {room.is_hidden ? (
+                                    <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
+                                      숨김
+                                    </span>
+                                  ) : null}
+                                  {room.is_muted ? (
+                                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                      알림끔
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {room.unread_count > 0 ? (
+                                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                    {room.unread_count_display}
                                   </span>
                                 ) : null}
                               </div>
-                              {room.unread_count > 0 ? (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                                  {room.unread_count_display}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="mt-0.5 flex items-center justify-between gap-2">
-                              <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
-                                {room.last_message_preview || '메시지 없음'}
-                              </p>
-                              <p className="shrink-0 text-right text-[10px] text-zinc-400">
-                                {formatRoomListDateTime(room.last_message_at)}
-                              </p>
-                            </div>
-                          </button>
+                              <div className="mt-0.5 flex items-center justify-between gap-2">
+                                <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
+                                  {room.last_message_preview || '메시지 없음'}
+                                </p>
+                                <p className="shrink-0 text-right text-[10px] text-zinc-400">
+                                  {formatRoomListDateTime(room.last_message_at)}
+                                </p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleLeaveRoomByRoom(room)}
+                              disabled={leavingCurrentRow}
+                              className="shrink-0 rounded border border-zinc-300 bg-white px-1.5 py-1 text-[10px] text-zinc-600 opacity-0 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="대화방 나가기"
+                              title={room.room_type === 'company_bridge' ? '대화방 나가기(목록 숨김)' : '대화방 나가기'}
+                            >
+                              {leavingCurrentRow ? '...' : '나가기'}
+                            </button>
+                          </div>
                         )
                       })}
                     </div>
@@ -2981,6 +3191,13 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   const isImageKind = attachmentKind === 'image'
                   const inlinePreviewUrl = attachment ? getCachedInlineAttachmentUrl(attachment.id) : null
                   const isInlineAttachmentLoading = attachment ? Boolean(inlineAttachmentLoadingIds[attachment.id]) : false
+                  const inlinePreviewCache = attachment ? inlineAttachmentUrlRef.current[attachment.id] : null
+                  const isInlinePreviewExpired =
+                    Boolean(
+                      attachment &&
+                        inlinePreviewCache &&
+                        inlinePreviewCache.expiresAt <= Date.now() + 15_000
+                    ) && !isExpiredAttachment
                   const isSearchHit = roomSearchMessageIdSet.has(message.id)
                   const isActiveSearchHit = activeSearchMessageId === message.id
                   const isJumpHighlight = jumpHighlightMessageId === message.id
@@ -2989,6 +3206,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     !message.is_deleted &&
                     message.message_type !== 'system' &&
                     selectedRoomCounterpartKeys.length > 0
+                  const isSystemMessage = message.message_type === 'system'
                   const allCounterpartsRead = showReadStatus
                     ? selectedRoomCounterpartKeys.every(
                         (actorKey) => (selectedRoomReadCursorState[actorKey] || 0) >= message.id
@@ -3002,183 +3220,216 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                           {formatKoreanDayLabel(message.created_at)}
                         </div>
                       ) : null}
-                      <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`flex w-full flex-col ${mine ? 'items-end' : 'items-start'}`}>
-                          {showSenderLabel ? (
-                            <p className="mb-0.5 px-1 text-[11px] font-medium text-zinc-500">
-                              {senderLabel}
-                            </p>
-                          ) : null}
-                          <div className={`flex w-full items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
-                          {mine ? (
-                            <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
-                              <span className={`${allCounterpartsRead ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                                {showReadStatus ? readStatusLabel : ''}
-                              </span>
-                              {showReadStatus ? ' · ' : ''}
-                              {formatTimeOnly(message.created_at)}
-                            </span>
-                          ) : null}
-                          <div
-                            className={`w-[66.6667%] rounded-lg border px-3 py-2 transition ${
-                              mine
-                                ? 'border-sky-600 bg-sky-600 text-white'
-                                : 'border-zinc-200 bg-white text-zinc-800'
-                            } ${
-                              isJumpHighlight
-                                ? mine
-                                  ? 'ring-2 ring-amber-300'
-                                  : 'ring-2 ring-amber-400'
-                                : ''
-                            } ${
-                              isSearchHit && !isJumpHighlight
-                                ? mine
-                                  ? 'ring-1 ring-amber-200/90'
-                                  : 'ring-1 ring-amber-300'
-                                : ''
-                            } ${
-                              isActiveSearchHit && !isJumpHighlight
-                                ? mine
-                                  ? 'ring-2 ring-amber-200'
-                                  : 'ring-2 ring-amber-400'
-                                : ''
-                            }`}
-                          >
-                            {isAttachmentMessage && attachment ? (
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <File className={`mt-0.5 h-4 w-4 shrink-0 ${mine ? 'text-sky-100' : 'text-zinc-500'}`} />
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium">
-                                      {attachment.file_name}
-                                    </p>
-                                    <p className={`text-[11px] ${mine ? 'text-sky-100/90' : 'text-zinc-500'}`}>
-                                      {formatFileSize(attachment.file_size)}
-                                      {attachment.expires_at
-                                        ? ` · 만료 ${formatKoreanDateTime(attachment.expires_at)}`
-                                        : ''}
-                                    </p>
-                                  </div>
-                                </div>
-                                {isImageKind && !isExpiredAttachment ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleOpenImageViewer(attachment.id, attachment.file_name)}
-                                    className={`block w-full overflow-hidden rounded border ${
-                                      mine
-                                        ? 'border-sky-200/50 bg-sky-500/20'
-                                        : 'border-zinc-200 bg-zinc-100'
-                                    }`}
-                                  >
-                                    {inlinePreviewUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={inlinePreviewUrl}
-                                        alt={attachment.file_name}
-                                        className="max-h-56 w-full object-contain"
-                                      />
-                                    ) : (
-                                      <div className={`flex h-32 items-center justify-center text-xs ${mine ? 'text-sky-100' : 'text-zinc-500'}`}>
-                                        {isInlineAttachmentLoading ? '이미지 불러오는 중...' : '이미지 준비 중...'}
+                      {isSystemMessage ? (
+                        <div className="mb-1 text-center text-[11px] text-zinc-500">
+                          {renderHighlightedText(
+                            message.body || '시스템 메시지',
+                            roomSearchKeyword,
+                            'rounded bg-amber-200 px-0.5 text-zinc-700'
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`flex w-full flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                            {showSenderLabel ? (
+                              <p className="mb-0.5 px-1 text-[11px] font-medium text-zinc-500">
+                                {senderLabel}
+                              </p>
+                            ) : null}
+                            <div className={`flex w-full items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                              {mine ? (
+                                <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                                  <span className={`${allCounterpartsRead ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                    {showReadStatus ? readStatusLabel : ''}
+                                  </span>
+                                  {showReadStatus ? ' · ' : ''}
+                                  {formatTimeOnly(message.created_at)}
+                                </span>
+                              ) : null}
+                              {message.is_deleted ? (
+                                <p className="max-w-[66.6667%] px-1 py-0.5 text-[11px] text-zinc-500">
+                                  삭제된 메시지입니다.
+                                </p>
+                              ) : (
+                                <div
+                                  className={`w-[66.6667%] rounded-lg border px-3 py-2 transition ${
+                                    mine
+                                      ? 'border-sky-600 bg-sky-600 text-white'
+                                      : 'border-zinc-200 bg-white text-zinc-800'
+                                  } ${
+                                    isJumpHighlight
+                                      ? mine
+                                        ? 'ring-2 ring-amber-300'
+                                        : 'ring-2 ring-amber-400'
+                                      : ''
+                                  } ${
+                                    isSearchHit && !isJumpHighlight
+                                      ? mine
+                                        ? 'ring-1 ring-amber-200/90'
+                                        : 'ring-1 ring-amber-300'
+                                      : ''
+                                  } ${
+                                    isActiveSearchHit && !isJumpHighlight
+                                      ? mine
+                                        ? 'ring-2 ring-amber-200'
+                                        : 'ring-2 ring-amber-400'
+                                      : ''
+                                  }`}
+                                >
+                                  {isAttachmentMessage && attachment ? (
+                                    <div className="space-y-2">
+                                      <div className="flex items-start gap-2">
+                                        <File className={`mt-0.5 h-4 w-4 shrink-0 ${mine ? 'text-sky-100' : 'text-zinc-500'}`} />
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-medium">
+                                            {attachment.file_name}
+                                          </p>
+                                          <p className={`text-[11px] ${mine ? 'text-sky-100/90' : 'text-zinc-500'}`}>
+                                            {formatFileSize(attachment.file_size)}
+                                            {attachment.expires_at
+                                              ? ` · 만료 ${formatKoreanDateTime(attachment.expires_at)}`
+                                              : ''}
+                                          </p>
+                                        </div>
                                       </div>
-                                    )}
-                                  </button>
-                                ) : null}
-                                {isExpiredAttachment ? (
-                                  <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-600">
-                                    만료된 파일입니다.
-                                  </div>
-                                ) : null}
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleDownloadAttachment(attachment.id)}
-                                    disabled={isExpiredAttachment}
-                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
-                                      mine
-                                        ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
-                                        : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-                                    }`}
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    다운로드
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      isImageKind
-                                        ? void handleOpenImageViewer(attachment.id, attachment.file_name)
-                                        : void handlePreviewAttachment(attachment.id)
-                                    }
-                                    disabled={
-                                      isExpiredAttachment ||
-                                      (!isImageKind &&
-                                        !canPreviewAttachment(attachment.content_type, attachment.file_name))
-                                    }
-                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
-                                      mine
-                                        ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
-                                        : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-                                    }`}
-                                  >
-                                    <Eye className="h-3 w-3" />
-                                    {isImageKind ? '확대' : '미리보기'}
-                                  </button>
-                                  {canSaveToCompany ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleOpenSaveCompanyPanel(
-                                          attachment.id,
-                                          attachment.file_name
-                                        )
-                                      }
-                                      disabled={isExpiredAttachment}
-                                      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      {isImageKind && !isExpiredAttachment ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleOpenImageViewer(attachment.id, attachment.file_name)}
+                                          className={`block w-full overflow-hidden rounded border ${
+                                            mine
+                                              ? 'border-sky-200/50 bg-sky-500/20'
+                                              : 'border-zinc-200 bg-zinc-100'
+                                          }`}
+                                        >
+                                          {inlinePreviewUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={inlinePreviewUrl}
+                                              alt={attachment.file_name}
+                                              className="max-h-56 w-full object-contain"
+                                            />
+                                          ) : (
+                                            <div className={`flex h-32 items-center justify-center text-xs ${mine ? 'text-sky-100' : 'text-zinc-500'}`}>
+                                              {isInlineAttachmentLoading
+                                                ? '이미지 불러오는 중...'
+                                                : isInlinePreviewExpired
+                                                  ? '미리보기 만료됨 · 클릭하여 다시보기'
+                                                  : '이미지 준비 중...'}
+                                            </div>
+                                          )}
+                                        </button>
+                                      ) : null}
+                                      {isExpiredAttachment ? (
+                                        <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-600">
+                                          만료된 파일입니다.
+                                        </div>
+                                      ) : null}
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <div className="group relative">
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleDownloadAttachment(attachment.id)}
+                                            disabled={isExpiredAttachment}
+                                            aria-label="다운로드"
+                                            className={`inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                              mine
+                                                ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                                : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                            }`}
+                                          >
+                                            <Download className="h-3.5 w-3.5" />
+                                          </button>
+                                          <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                            다운로드
+                                          </div>
+                                        </div>
+                                        <div className="group relative">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              isImageKind
+                                                ? void handleOpenImageViewer(attachment.id, attachment.file_name)
+                                                : void handlePreviewAttachment(attachment.id)
+                                            }
+                                            disabled={
+                                              isExpiredAttachment ||
+                                              (!isImageKind &&
+                                                !canPreviewAttachment(attachment.content_type, attachment.file_name))
+                                            }
+                                            aria-label={isImageKind ? '확대' : '미리보기'}
+                                            className={`inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                              mine
+                                                ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                                : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                            }`}
+                                          >
+                                            <Eye className="h-3.5 w-3.5" />
+                                          </button>
+                                          <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                            {isImageKind ? '확대' : '미리보기'}
+                                          </div>
+                                        </div>
+                                        {canSaveToCompany ? (
+                                          <div className="group relative">
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleOpenSaveCompanyPanel(
+                                                  attachment.id,
+                                                  attachment.file_name
+                                                )
+                                              }
+                                              disabled={isExpiredAttachment}
+                                              aria-label="고객사 저장"
+                                              className={`inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                                mine
+                                                  ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
+                                                  : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                                              }`}
+                                            >
+                                              <Save className="h-3.5 w-3.5" />
+                                            </button>
+                                            <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                              고객사 저장
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="whitespace-pre-wrap text-sm">
+                                      {renderHighlightedText(
+                                        message.body || '',
+                                        roomSearchKeyword,
                                         mine
-                                          ? 'border-sky-200/50 bg-sky-500/30 text-white hover:bg-sky-500/40'
-                                          : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
-                                      }`}
-                                    >
-                                      <Save className="h-3 w-3" />
-                                      고객사 저장
-                                    </button>
+                                          ? 'rounded bg-amber-200/85 px-0.5 text-sky-900'
+                                          : 'rounded bg-amber-200 px-0.5 text-zinc-900'
+                                      )}
+                                    </p>
+                                  )}
+                                  {mine ? (
+                                    <div className="mt-1 flex items-center justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteMessage(message.id)}
+                                        className="text-[10px] text-sky-100 underline hover:text-white"
+                                      >
+                                        삭제
+                                      </button>
+                                    </div>
                                   ) : null}
                                 </div>
-                              </div>
-                            ) : (
-                              <p className="whitespace-pre-wrap text-sm">
-                                {message.is_deleted
-                                  ? '삭제된 메시지입니다.'
-                                  : renderHighlightedText(
-                                      message.body || '',
-                                      roomSearchKeyword,
-                                      mine
-                                        ? 'rounded bg-amber-200/85 px-0.5 text-sky-900'
-                                        : 'rounded bg-amber-200 px-0.5 text-zinc-900'
-                                    )}
-                              </p>
-                            )}
-                            {mine && !message.is_deleted ? (
-                              <div className="mt-1 flex items-center justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteMessage(message.id)}
-                                  className="text-[10px] text-sky-100 underline hover:text-white"
-                                >
-                                  삭제
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                          {!mine ? (
-                            <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
-                              {formatTimeOnly(message.created_at)}
-                            </span>
-                          ) : null}
+                              )}
+                              {!mine ? (
+                                <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                                  {formatTimeOnly(message.created_at)}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 })}
@@ -3187,7 +3438,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
           </div>
 
           <div
-            className={`border-t border-zinc-200 px-3 py-3.5 transition ${
+            className={`border-t border-zinc-100 bg-white px-3 py-3.5 transition ${
               dragOverComposer ? 'bg-sky-50' : ''
             }`}
             onDragOver={(event) => {
@@ -3224,7 +3475,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 onBlur={() => setIsMessageComposing(false)}
                 placeholder="메시지를 입력하세요"
                 rows={3}
-                className="min-h-[58px] flex-1 resize-none rounded-2xl border border-zinc-300 bg-transparent px-3 py-2.5 text-sm leading-5 outline-none focus:border-zinc-500"
+                className="min-h-[58px] flex-1 resize-none rounded-none border-0 bg-white px-3 py-2.5 text-sm leading-5 outline-none focus:ring-0"
                 onKeyDown={(event) => {
                   const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean; keyCode?: number }
                   if (isMessageComposing || nativeEvent.isComposing || nativeEvent.keyCode === 229) {
@@ -3242,7 +3493,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     type="button"
                     onClick={handleSelectAttachmentClick}
                     disabled={!selectedRoomId || uploadingAttachment}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded bg-transparent text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={uploadingAttachment ? '파일 업로드 중' : '파일 첨부'}
                     title={uploadingAttachment ? '파일 업로드 중' : '파일 첨부'}
                   >
@@ -3258,6 +3509,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   전송
                 </UiButton>
               </div>
+              <p className="px-1 text-[11px] text-zinc-500">
+                첨부파일은 자동 만료될 수 있습니다. 이미지 15일, 일반파일 30일 이후 미리보기/다운로드가 제한됩니다.
+              </p>
             </div>
           </div>
 

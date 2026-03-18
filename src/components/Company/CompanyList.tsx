@@ -6,6 +6,9 @@ import type { CompanyTaxDetail, CompanyUpdateRequest } from '@/types/admin_campa
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import MemoEditModal from '@/components/Company/MemoEditModal';
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 async function updateCompany(id: number, data: Partial<CompanyTaxDetail>) {
   try {
@@ -104,21 +107,17 @@ export default function CompanyList() {
           <div className="flex w-full justify-between items-center mb-4">
             {selectedIds.length > 0 && (
               <div className="flex gap-3">
-                <button
-                  className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
-                  onClick={handleDelete}
-                >
+                <UiButton variant="danger" size="sm" onClick={handleDelete}>
                   선택 삭제
-                </button>
+                </UiButton>
               </div>
             )}
             <div className="flex gap-2 ml-auto">
-              <input
-                type="text"
+              <UiSearchInput
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={setKeyword}
                 placeholder="회사명 또는 사업자번호"
-                className="border rounded px-2 py-1"
+                wrapperClassName="w-[260px]"
               />
             </div>
           </div>
@@ -280,40 +279,7 @@ export default function CompanyList() {
             </div>
           </div>
           {/* 페이지 네비게이션 */}
-          <div className="mt-4 flex justify-center items-center gap-2 text-sm">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page === 1}
-              className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              ◀
-            </button>
-
-            {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, i) => i + 1)
-              .filter((p) => Math.abs(p - page) <= 2 || p === 1 || p === Math.ceil(totalCount / pageSize))
-              .map((p, idx, arr) => {
-                const isEllipsis = idx > 0 && p - arr[idx - 1] > 1;
-                return isEllipsis ? (
-                  <span key={`ellipsis-${p}`} className="px-1">...</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`px-3 py-1 rounded border ${p === page ? 'bg-blue-600 text-white font-semibold' : 'bg-white hover:bg-gray-100'}`}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
-
-            <button
-              onClick={() => setPage((prev) => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
-              disabled={page === Math.ceil(totalCount / pageSize)}
-              className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              ▶
-            </button>
-          </div>
+          <Pagination page={page} total={totalCount} limit={pageSize} onPageChange={setPage} />
           {selectedMemo && (
             <MemoEditModal
               open={modalOpen}

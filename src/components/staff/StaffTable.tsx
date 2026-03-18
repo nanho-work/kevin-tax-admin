@@ -8,6 +8,9 @@ import {
     deactivateAdminStaff, updateAdminStaff,
 } from '@/services/adminService'
 import StaffDetailModal from './StaffDetailModal'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 export default function StaffTable() {
     const [staffs, setStaffs] = useState<AdminOut[]>([])
@@ -33,8 +36,6 @@ export default function StaffTable() {
         loadStaffs()
     }, [page, keyword])
 
-    const totalPages = Math.ceil(total / limit)
-
     const handleToggleStatus = async (id: number, is_active: boolean) => {
         try {
             if (is_active) {
@@ -59,15 +60,14 @@ export default function StaffTable() {
                 {/* 🔍 검색 라벨 + 입력창 */}
                 <div className="flex items-center gap-2">
                     <span className="text-base font-medium text-gray-700">직원 검색 : </span>
-                    <input
-                        type="text"
-                        placeholder="이름 / 이메일 / 전화 검색"
+                    <UiSearchInput
                         value={keyword}
-                        onChange={(e) => {
-                            setKeyword(e.target.value)
+                        onChange={(value) => {
+                            setKeyword(value)
                             setPage(1)
                         }}
-                        className="border px-2 py-1 rounded w-64"
+                        placeholder="이름 / 이메일 / 전화 검색"
+                        wrapperClassName="w-64"
                     />
                 </div>
             </div>
@@ -106,15 +106,18 @@ export default function StaffTable() {
                                     ) : '-'}
                                 </td>
                                 <td className="border p-2 text-center">
-                                  <button
+                                  <UiButton
+                                    type="button"
                                     onClick={() => {
                                       setSelectedStaff(staff)
                                       setShowDetail(true)
                                     }}
-                                    className="text-blue-700 hover:underline"
+                                    size="xs"
+                                    variant="secondary"
+                                    className="h-auto border-0 bg-transparent px-0 py-0 text-blue-700 hover:bg-transparent hover:underline"
                                   >
                                     {staff.name}
-                                  </button>
+                                  </UiButton>
                                 </td>
                                 <td className="border p-2 text-center">{staff.email}</td>
                                 <td className="border p-2 text-center">{staff.phone || '-'}</td>
@@ -124,12 +127,15 @@ export default function StaffTable() {
                                 <td className="border p-2 text-center">{staff.hired_at || '-'}</td>
                                 
                                 <td className="border p-2 text-center">
-                                    <button
+                                    <UiButton
+                                        type="button"
                                         onClick={() => handleToggleStatus(staff.id, staff.is_active)}
-                                        className={`text-sm font-medium ${staff.is_active ? 'text-green-600' : 'text-red-600'} hover:underline`}
+                                        size="xs"
+                                        variant={staff.is_active ? 'soft' : 'danger'}
+                                        className={staff.is_active ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : ''}
                                     >
                                         {staff.is_active ? '재직중' : '퇴사'}
-                                    </button>
+                                    </UiButton>
                                 </td>
                             </tr>
                             )
@@ -139,41 +145,7 @@ export default function StaffTable() {
             </table>
 
             {/* 페이지 네비게이션 */}
-            <div className="mt-4 flex justify-center items-center gap-2 text-sm">
-                <button
-                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                    disabled={page === 1}
-                    className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                    ◀
-                </button>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((p) => Math.abs(p - page) <= 2 || p === 1 || p === totalPages)
-                    .map((p, idx, arr) => {
-                        const isEllipsis = idx > 0 && p - arr[idx - 1] > 1
-                        return isEllipsis ? (
-                            <span key={`ellipsis-${p}`} className="px-1">...</span>
-                        ) : (
-                            <button
-                                key={p}
-                                onClick={() => setPage(p)}
-                                className={`px-3 py-1 rounded border ${p === page ? 'bg-blue-600 text-white font-semibold' : 'bg-white hover:bg-gray-100'
-                                    }`}
-                            >
-                                {p}
-                            </button>
-                        )
-                    })}
-
-                <button
-                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                    disabled={page === totalPages}
-                    className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                    ▶
-                </button>
-            </div>
+            <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 
             {selectedStaff && (
               <StaffDetailModal

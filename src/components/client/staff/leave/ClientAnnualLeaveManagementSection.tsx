@@ -13,6 +13,8 @@ import {
 import type { AdminOut } from '@/types/admin'
 import type { AnnualLeave } from '@/types/annualLeave'
 import { getClientRoleRank } from '@/utils/roleRank'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 type ActionMode = 'use' | 'adjust'
 
@@ -406,24 +408,25 @@ export default function ClientAnnualLeaveManagementSection() {
               </option>
             ))}
           </select>
-          <input
-            className={inputClass}
+          <UiSearchInput
             placeholder="직원명 검색"
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={setKeyword}
+            wrapperClassName="w-full md:w-[320px]"
+            inputClassName="text-sm text-zinc-900"
           />
           <div aria-hidden="true" />
         </div>
         <div className="mt-3 flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           <div className="flex items-center justify-between gap-3">
             <p>입사일 기준 자동 부여, 오래된 연차부터 먼저 차감됩니다.</p>
-            <button
-              type="button"
+            <UiButton
               onClick={() => setShowPolicy((prev) => !prev)}
-              className="shrink-0 text-sm font-medium text-zinc-700 underline underline-offset-4"
+              variant="secondary"
+              size="xs"
             >
               {showPolicy ? '정책 접기' : '정책 보기'}
-            </button>
+            </UiButton>
           </div>
           {showPolicy ? (
             <div className="grid gap-1 text-sm text-zinc-600">

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { MoreHorizontal } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import Pagination from '@/components/common/Pagination'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   bulkUpdateBillingInvoiceIssuedAt,
@@ -187,7 +188,6 @@ export default function ClientBookkeepingBillingsSection() {
   const [modal, setModal] = useState<BillingModalState>({ open: false, mode: 'create' })
   const [form, setForm] = useState<BillingFormState>(defaultFormState())
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size])
   const showTargetMonth = viewMode === 'unpaid_all'
   const showStatusColumns = viewMode === 'month'
   const showBulkSelectionColumn = viewMode === 'month'
@@ -1053,27 +1053,7 @@ export default function ClientBookkeepingBillingsSection() {
       </div>
 
       {viewMode === 'month' ? (
-        <div className="flex items-center justify-center gap-2">
-          <UiButton
-            disabled={page <= 1}
-            onClick={() => loadMonthBillings(page - 1)}
-            variant="secondary"
-            size="sm"
-          >
-            이전
-          </UiButton>
-          <span className="text-sm text-zinc-600">
-            {page} / {totalPages}
-          </span>
-          <UiButton
-            disabled={page >= totalPages}
-            onClick={() => loadMonthBillings(page + 1)}
-            variant="secondary"
-            size="sm"
-          >
-            다음
-          </UiButton>
-        </div>
+        <Pagination page={page} total={total} limit={size} onPageChange={loadMonthBillings} />
       ) : null}
 
       {modal.open ? (

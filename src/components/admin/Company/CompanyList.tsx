@@ -8,6 +8,9 @@ import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { PaginatedResponse } from '@/types/admin_campany';
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 interface Props {
   detailBasePath?: string;
@@ -247,41 +250,34 @@ export default function CompanyList({
               <div className="text-sm text-zinc-500">총 {totalCount}개</div>
             </div>
             <div className="ml-auto flex gap-2">
-              <input
-                type="text"
+              <UiSearchInput
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={setKeyword}
                 placeholder="회사명 또는 사업자번호"
-                className="h-10 rounded-md border border-zinc-200 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                wrapperClassName="w-[260px]"
               />
               <div className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white p-1">
-                <button
-                  type="button"
+                <UiButton
                   onClick={() => setCategoryFilter('')}
-                  className={`rounded px-3 py-1.5 text-sm transition ${
-                    categoryFilter === '' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
-                  }`}
+                  variant={categoryFilter === '' ? 'primary' : 'tabInactive'}
+                  size="sm"
                 >
                   전체
-                </button>
-                <button
-                  type="button"
+                </UiButton>
+                <UiButton
                   onClick={() => setCategoryFilter('법인')}
-                  className={`rounded px-3 py-1.5 text-sm transition ${
-                    categoryFilter === '법인' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
-                  }`}
+                  variant={categoryFilter === '법인' ? 'primary' : 'tabInactive'}
+                  size="sm"
                 >
                   법인
-                </button>
-                <button
-                  type="button"
+                </UiButton>
+                <UiButton
                   onClick={() => setCategoryFilter('개인')}
-                  className={`rounded px-3 py-1.5 text-sm transition ${
-                    categoryFilter === '개인' ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
-                  }`}
+                  variant={categoryFilter === '개인' ? 'primary' : 'tabInactive'}
+                  size="sm"
                 >
                   개인
-                </button>
+                </UiButton>
               </div>
             </div>
           </div>
@@ -359,44 +355,7 @@ export default function CompanyList({
             </table>
           </div>
 
-          <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page === 1}
-              className="rounded border border-zinc-200 bg-white px-3 py-1 hover:bg-zinc-50 disabled:opacity-50"
-            >
-              ◀
-            </button>
-
-            {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, i) => i + 1)
-              .filter((p) => Math.abs(p - page) <= 2 || p === 1 || p === Math.ceil(totalCount / pageSize))
-              .map((p, idx, arr) => {
-                const isEllipsis = idx > 0 && p - arr[idx - 1] > 1;
-                return isEllipsis ? (
-                  <span key={`ellipsis-${p}`} className="px-1">...</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`rounded border px-3 py-1 ${
-                      p === page
-                        ? 'border-zinc-900 bg-zinc-900 font-semibold text-white'
-                        : 'border-zinc-200 bg-white hover:bg-zinc-100'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
-
-            <button
-              onClick={() => setPage((prev) => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
-              disabled={page === Math.ceil(totalCount / pageSize)}
-              className="rounded border border-zinc-200 bg-white px-3 py-1 hover:bg-zinc-50 disabled:opacity-50"
-            >
-              ▶
-            </button>
-          </div>
+          <Pagination page={page} total={totalCount} limit={pageSize} onPageChange={setPage} />
 
         </div>
       </div>

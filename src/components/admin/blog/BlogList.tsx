@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { toast } from 'react-hot-toast';
 import { blogService } from '@/services/admin/blogService';
 import type { BlogPostResponse } from '@/types/blog';
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 
 export default function BlogList() {
   const [rows, setRows] = useState<BlogPostResponse[]>([]);
@@ -83,14 +86,14 @@ export default function BlogList() {
         <h1 className="text-2xl font-semibold">블로그 목록</h1>
 
         <div className="flex items-center gap-2">
-          <input
+          <UiSearchInput
             value={q}
-            onChange={(e) => {
+            onChange={(value) => {
               setPage(1);
-              setQ(e.target.value);
+              setQ(value);
             }}
             placeholder="제목/요약 검색…"
-            className="border rounded px-3 py-2 text-sm w-60"
+            wrapperClassName="w-60"
           />
           <select
             value={pageSize}
@@ -163,14 +166,15 @@ export default function BlogList() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{r.author_name || '-'}</td>
                   <td className="px-4 py-3">
-                    <button
-                      className="px-2.5 py-1 border rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    <UiButton
                       onClick={() => handleDelete(r.id, r.title)}
                       disabled={deletingId === r.id || loading}
                       title="삭제"
+                      size="xs"
+                      variant="danger"
                     >
                       {deletingId === r.id ? '삭제중…' : '삭제'}
-                    </button>
+                    </UiButton>
                   </td>
                 </tr>
               ))
@@ -184,22 +188,7 @@ export default function BlogList() {
           총 {total.toLocaleString()}건 / 페이지 {page} / {totalPages}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1 || loading}
-          >
-            이전
-          </button>
-          <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || loading}
-          >
-            다음
-          </button>
-        </div>
+        <Pagination page={page} total={total} limit={pageSize} onPageChange={setPage} />
       </div>
     </div>
   );

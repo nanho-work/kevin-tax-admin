@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
+import { MAX_PAGE_SIZE, normalizePage, normalizePageSize } from '@/lib/pagination'
 import type {
   WorkChatAttachment,
   WorkChatAttachmentUrlOut,
@@ -121,6 +122,7 @@ function normalizeRoom(raw: RawRecord): WorkChatRoom {
   return {
     id: toNumber(raw.id ?? raw.room_id),
     room_type: normalizeRoomType(raw.room_type ?? raw.type),
+    is_active: raw.is_active == null ? true : Boolean(raw.is_active),
     company_id: raw.company_id == null ? null : toNumber(raw.company_id, 0) || null,
     name: raw.name == null ? null : String(raw.name),
     display_name: raw.display_name == null ? null : String(raw.display_name),
@@ -297,10 +299,12 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       room_type?: WorkChatRoomType | ''
       include_hidden?: boolean
     }): Promise<WorkChatRoomListResponse> {
+      const page = normalizePage(params?.page, 1)
+      const size = normalizePageSize(params?.size, 20, MAX_PAGE_SIZE)
       const res = await httpClient.get(`${base}/rooms`, {
         params: {
-          page: params?.page ?? 1,
-          size: params?.size ?? 20,
+          page,
+          size,
           room_type: params?.room_type || undefined,
           include_hidden: params?.include_hidden ?? undefined,
         },
@@ -327,11 +331,13 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       roomId: number,
       params: { q: string; page?: number; size?: number }
     ): Promise<WorkChatMessageSearchResponse> {
+      const page = normalizePage(params.page, 1)
+      const size = normalizePageSize(params.size, 50, MAX_PAGE_SIZE)
       const res = await httpClient.get(`${base}/rooms/${roomId}/messages/search`, {
         params: {
           q: params.q,
-          page: params.page ?? 1,
-          size: params.size ?? 50,
+          page,
+          size,
         },
       })
       return normalizeMessageSearchListResponse(res.data)
