@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '@/components/admin/layout/AdminSidebar'
 import AdminHeader from '@/components/admin/layout/AdminHeader'
@@ -73,7 +73,9 @@ export default function ProtectedLayout({
 }) {
   return (
     <AdminSessionProvider>
-      <ProtectedShell>{children}</ProtectedShell>
+      <Suspense fallback={<p className="text-center mt-20 text-gray-500">로딩 중...</p>}>
+        <ProtectedShell>{children}</ProtectedShell>
+      </Suspense>
     </AdminSessionProvider>
   )
 }

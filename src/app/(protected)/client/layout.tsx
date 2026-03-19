@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ClientHeader from '@/components/client/layout/ClientHeader'
 import ClientSidebar from '@/components/client/layout/ClientSidebar'
@@ -72,7 +72,9 @@ export default function ClientLayout({
 }) {
   return (
     <ClientSessionProvider>
-      <ProtectedClientShell>{children}</ProtectedClientShell>
+      <Suspense fallback={<p className="mt-20 text-center text-gray-500">로딩 중...</p>}>
+        <ProtectedClientShell>{children}</ProtectedClientShell>
+      </Suspense>
     </ClientSessionProvider>
   )
 }
