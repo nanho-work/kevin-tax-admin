@@ -619,6 +619,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const participantAvatarMapRef = useRef<Map<string, string | null>>(new Map())
   const inlineAttachmentUrlRef = useRef<Record<number, { url: string; expiresAt: number }>>({})
   const inlineAttachmentLoadingRef = useRef<Set<number>>(new Set())
+  const inlineAttachmentRetryRef = useRef<Set<number>>(new Set())
   const groupCreateTooltipTimerRef = useRef<number | null>(null)
   const jumpHighlightTimerRef = useRef<number | null>(null)
   const nextBeforeMessageIdRef = useRef<number | null>(null)
@@ -2052,6 +2053,21 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       setImageViewer({ url, fileName })
       setImageViewerMode('fit')
       setImageViewerExpanded(true)
+    },
+    [ensureInlineAttachmentPreviewUrl]
+  )
+
+  const handleInlineAttachmentImageError = useCallback(
+    async (attachmentId: number) => {
+      if (!attachmentId) return
+      if (inlineAttachmentRetryRef.current.has(attachmentId)) {
+        return
+      }
+      inlineAttachmentRetryRef.current.add(attachmentId)
+      const refreshed = await ensureInlineAttachmentPreviewUrl(attachmentId, true)
+      if (!refreshed) {
+        inlineAttachmentRetryRef.current.delete(attachmentId)
+      }
     },
     [ensureInlineAttachmentPreviewUrl]
   )
@@ -4105,6 +4121,12 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                               src={inlinePreviewUrl}
                                               alt={attachment.file_name}
                                               className="max-h-56 w-full object-contain"
+                                              onLoad={() => {
+                                                inlineAttachmentRetryRef.current.delete(attachment.id)
+                                              }}
+                                              onError={() => {
+                                                void handleInlineAttachmentImageError(attachment.id)
+                                              }}
                                             />
                                           ) : (
                                             <div className={`flex h-32 items-center justify-center text-xs ${mine ? 'text-sky-100' : 'text-zinc-500'}`}>
@@ -4595,6 +4617,12 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                               src={inlinePreviewUrl}
                                               alt={attachment.file_name}
                                               className="max-h-40 w-full object-contain"
+                                              onLoad={() => {
+                                                inlineAttachmentRetryRef.current.delete(attachment.id)
+                                              }}
+                                              onError={() => {
+                                                void handleInlineAttachmentImageError(attachment.id)
+                                              }}
                                             />
                                           ) : (
                                             <div className={`flex h-24 items-center justify-center text-xs ${isMine ? 'text-sky-100' : 'text-zinc-500'}`}>
