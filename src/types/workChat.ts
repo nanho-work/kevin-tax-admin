@@ -11,6 +11,11 @@ export type WorkChatParticipant = {
   name: string
   avatar_url?: string | null
   subtitle?: string
+  online?: boolean
+  in_room?: boolean
+  room_id?: number | null
+  current_room_id?: number | null
+  last_seen_at?: string | null
 }
 
 export type WorkChatParticipantsResponse = {
@@ -50,6 +55,7 @@ export type WorkChatMessage = {
   sender_type: WorkChatSenderType
   sender_id: number | null
   sender_name?: string | null
+  sender_profile_image_url?: string | null
   message_type: WorkChatMessageType
   body: string | null
   attachment?: WorkChatAttachment | null
@@ -100,6 +106,7 @@ export type WorkChatMessageSearchItem = {
   sender_type: WorkChatSenderType
   sender_id: number | null
   sender_name?: string | null
+  sender_profile_image_url?: string | null
   message_type: WorkChatMessageType
   snippet: string
   created_at: string

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { listClients } from '@/services/client/clientService'
 import type { ClientOut, ClientStatus } from '@/types/Client'
 import { inputClass, statusMessage } from './constants'
@@ -53,30 +55,26 @@ export default function ClientCompanyListSection() {
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-zinc-900">검색</h2>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <input
-            className={inputClass}
+          <UiSearchInput
+            wrapperClassName={inputClass}
             placeholder="업체명/사업자번호 검색"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                loadList()
-              }
-            }}
+            onChange={setQ}
+            onSubmit={loadList}
           />
           <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value as ClientStatus | '')}>
             <option value="">전체 상태</option>
             <option value="active">활성</option>
             <option value="inactive">비활성</option>
           </select>
-          <button
+          <UiButton
             type="button"
             onClick={loadList}
-            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50"
+            variant="secondary"
+            size="lg"
           >
             조회
-          </button>
+          </UiButton>
         </div>
       </div>
 

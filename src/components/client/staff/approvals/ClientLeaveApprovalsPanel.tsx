@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
@@ -55,11 +56,9 @@ export default function ClientLeaveApprovalsPanel() {
   const [rejectReason, setRejectReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-
   const loadStaffs = async () => {
     try {
-      const limit = 200
+      const limit = 100
       let pageCursor = 1
       let totalCount = 0
       const merged: AdminOut[] = []
@@ -277,27 +276,7 @@ export default function ClientLeaveApprovalsPanel() {
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 
       {selectedItem && reviewMode ? (
         <div className="fixed inset-0 z-40 bg-black/30">

@@ -5,7 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import UiButton from '@/components/common/UiButton'
-import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
+import UiSearchInput from '@/components/common/UiSearchInput'
+import {
+  checkInAdmin,
+  checkOutAdmin,
+  getAttendanceLogs,
+} from '@/services/admin/attendanceLogService'
 import { listMailAccounts } from '@/services/admin/mailService'
 import { logoutAdmin } from '@/services/admin/adminService'
 import {
@@ -30,6 +35,7 @@ const Header = () => {
   const [headerKeyword, setHeaderKeyword] = useState('')
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null)
+  const [attendanceSubmitting, setAttendanceSubmitting] = useState<'check-in' | 'check-out' | null>(null)
   const [currentTime, setCurrentTime] = useState<string>(() =>
     new Date().toLocaleTimeString('ko-KR', {
       timeZone: 'Asia/Seoul',
@@ -42,6 +48,7 @@ const Header = () => {
   const [loggingOut, setLoggingOut] = useState(false)
   const isAdminMailInbox = pathname.startsWith('/admin/mail/inbox')
   const roleName = (session as any)?.role_name ?? (session as any)?.role?.name ?? ''
+  const companyName = (session as any)?.client?.company_name ?? ''
   const profileImageUrl =
     (session as any)?.profile_image_url ??
     (session as any)?.profileImageUrl ??
@@ -115,13 +122,25 @@ const Header = () => {
     return () => window.clearInterval(interval)
   }, [])
 
-  useEffect(() => {
+  const loadTodayAttendance = async () => {
     const accountId = Number((session as any)?.account_id ?? (session as any)?.id ?? 0)
     if (!accountId) {
       setCheckInTime(null)
       setCheckOutTime(null)
       return
     }
+
+    const toHm = (value?: string | null) => {
+      if (!value) return null
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return null
+      return date.toLocaleTimeString('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+
     const todayKst = new Intl.DateTimeFormat('sv-SE', {
       timeZone: 'Asia/Seoul',
       year: 'numeric',
@@ -129,27 +148,46 @@ const Header = () => {
       day: '2-digit',
     }).format(new Date())
 
-    void getAttendanceLogs({ date_to: todayKst, limit: 1, offset: 0 })
-      .then((res) => {
-        const row = res.items?.[0]
-        const toHm = (value?: string | null) => {
-          if (!value) return null
-          const date = new Date(value)
-          if (Number.isNaN(date.getTime())) return null
-          return date.toLocaleTimeString('ko-KR', {
-            timeZone: 'Asia/Seoul',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        }
-        setCheckInTime(toHm(row?.check_in))
-        setCheckOutTime(toHm(row?.check_out))
-      })
-      .catch(() => {
-        setCheckInTime(null)
-        setCheckOutTime(null)
-      })
+    try {
+      const res = await getAttendanceLogs({ date_to: todayKst, limit: 1, offset: 0 })
+      const row = res.items?.[0]
+      setCheckInTime(toHm(row?.check_in))
+      setCheckOutTime(toHm(row?.check_out))
+    } catch {
+      setCheckInTime(null)
+      setCheckOutTime(null)
+    }
+  }
+
+  useEffect(() => {
+    void loadTodayAttendance()
   }, [session])
+
+  const handleManualCheckIn = async () => {
+    if (attendanceSubmitting || checkInTime) return
+    setAttendanceSubmitting('check-in')
+    try {
+      await checkInAdmin()
+      await loadTodayAttendance()
+    } catch (error) {
+      console.warn('출근 처리 실패:', error)
+    } finally {
+      setAttendanceSubmitting(null)
+    }
+  }
+
+  const handleManualCheckOut = async () => {
+    if (attendanceSubmitting || !checkInTime || checkOutTime) return
+    setAttendanceSubmitting('check-out')
+    try {
+      await checkOutAdmin()
+      await loadTodayAttendance()
+    } catch (error) {
+      console.warn('퇴근 처리 실패:', error)
+    } finally {
+      setAttendanceSubmitting(null)
+    }
+  }
 
   const replaceHeaderSearch = (next: { accountId?: string; keyword?: string }) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -180,12 +218,17 @@ const Header = () => {
     }
   }
 
+  const canCheckIn = !checkInTime
+  const canCheckOut = Boolean(checkInTime) && !checkOutTime
+
   return (
     <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-neutral-900">KEVIN TAX ADMIN</div>
+            <div className="text-sm font-semibold text-neutral-900">
+              {companyName || 'KEVIN TAX ADMIN'}
+            </div>
             {backPath ? (
               <div className="mt-1 flex items-center gap-2">
                 <BackButton
@@ -230,17 +273,12 @@ const Header = () => {
                     </option>
                   ))}
                 </select>
-                <input
-                  className={`${uiHeaderInputClass} w-56`}
+                <UiSearchInput
+                  wrapperClassName={`${uiHeaderInputClass} w-56`}
                   value={headerKeyword}
-                  onChange={(e) => setHeaderKeyword(e.target.value)}
+                  onChange={setHeaderKeyword}
                   placeholder="제목/발신자/본문 검색"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      replaceHeaderSearch({ keyword: headerKeyword })
-                    }
-                  }}
+                  onSubmit={() => replaceHeaderSearch({ keyword: headerKeyword })}
                 />
               </>
             ) : null}
@@ -260,12 +298,45 @@ const Header = () => {
               <div className="min-w-0">
                 <p className="truncate font-semibold text-neutral-900">
                   {session?.name || '-'} {roleName}
+                  <span className="ml-1 text-xs font-medium text-neutral-500">
+                    · 현재{' '}
+                    <span className="inline-block min-w-[72px] text-right tabular-nums">
+                      {currentTime}
+                    </span>
+                  </span>
                 </p>
                 <p className="truncate text-neutral-500">
-                  출근 {checkInTime ?? '-'} · 퇴근 {checkOutTime ?? '-'} · 현재 {currentTime}
+                  출근{' '}
+                  <span className="inline-block min-w-[46px] text-right tabular-nums">
+                    {checkInTime ?? '-'}
+                  </span>{' '}
+                  · 퇴근{' '}
+                  <span className="inline-block min-w-[46px] text-right tabular-nums">
+                    {checkOutTime ?? '-'}
+                  </span>
                 </p>
               </div>
             </div>
+            {canCheckIn ? (
+              <UiButton
+                onClick={() => void handleManualCheckIn()}
+                disabled={attendanceSubmitting !== null}
+                variant="secondary"
+                size="sm"
+              >
+                {attendanceSubmitting === 'check-in' ? '출근 처리중...' : '출근'}
+              </UiButton>
+            ) : null}
+            {canCheckOut ? (
+              <UiButton
+                onClick={() => void handleManualCheckOut()}
+                disabled={attendanceSubmitting !== null}
+                variant="secondary"
+                size="sm"
+              >
+                {attendanceSubmitting === 'check-out' ? '퇴근 처리중...' : '퇴근'}
+              </UiButton>
+            ) : null}
             <PortalNotificationBell
               listNotifications={listAdminNotifications}
               fetchUnreadCount={fetchAdminNotificationUnreadCount}

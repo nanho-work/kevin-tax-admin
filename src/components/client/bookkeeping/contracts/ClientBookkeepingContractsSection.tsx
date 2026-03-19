@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   applyContractBulkUpload,
@@ -399,6 +402,10 @@ export default function ClientBookkeepingContractsSection() {
     }
   }
 
+  const handleBulkDrop = (files: FileList) => {
+    void handleBulkFileSelect(files?.[0] || null)
+  }
+
   const handleApplyBulk = async () => {
     if (!bulkFile || !bulkPreview) {
       toast.error('먼저 엑셀 검증을 진행해 주세요.')
@@ -423,22 +430,33 @@ export default function ClientBookkeepingContractsSection() {
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto_auto]">
           <div className="flex items-center gap-2">
-            <button
+            <UiButton
               type="button"
               onClick={openCreate}
-              className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
+              variant="primary"
+              size="lg"
             >
               고객사 추가
-            </button>
+            </UiButton>
             <TemplateDownloadButton code="BOOKKEEPING_CONTRACT_BULK" label="고객사 계약 일괄등록 양식" />
-            <button
-              type="button"
+            <FileDropzone
+              onFilesDrop={handleBulkDrop}
               onClick={() => bulkFileInputRef.current?.click()}
+              className="h-10"
+              idleClassName="rounded-md border border-zinc-300 bg-white"
+              activeClassName="rounded-md border border-sky-300 bg-sky-50"
               disabled={bulkPreviewLoading || bulkApplyLoading}
-              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
             >
-              {bulkPreviewLoading ? '검증 중...' : '엑셀파일 일괄등록'}
-            </button>
+              <UiButton
+                type="button"
+                disabled={bulkPreviewLoading || bulkApplyLoading}
+                variant="secondary"
+                size="lg"
+                className="h-full border-0"
+              >
+                {bulkPreviewLoading ? '검증 중...' : '엑셀파일 일괄등록'}
+              </UiButton>
+            </FileDropzone>
             <input
               ref={bulkFileInputRef}
               type="file"
@@ -449,17 +467,12 @@ export default function ClientBookkeepingContractsSection() {
               }}
             />
           </div>
-          <input
-            className={inputClass}
+          <UiSearchInput
+            wrapperClassName={inputClass}
             placeholder="회사명/사업자번호 검색"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                loadContracts()
-              }
-            }}
+            onChange={setQ}
+            onSubmit={loadContracts}
           />
           <label className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-300 px-3 text-sm text-zinc-700">
             <input
@@ -469,13 +482,14 @@ export default function ClientBookkeepingContractsSection() {
             />
             활성만
           </label>
-          <button
+          <UiButton
             type="button"
             onClick={loadContracts}
-            className="h-10 rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-50"
+            variant="secondary"
+            size="lg"
           >
             조회
-          </button>
+          </UiButton>
         </div>
       </div>
 
@@ -665,28 +679,32 @@ export default function ClientBookkeepingContractsSection() {
                     <td className="px-3 py-3 text-center">{row.is_active ? '활성' : '비활성'}</td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button
+                        <UiButton
                           type="button"
                           disabled={generatingId === row.id}
                           onClick={() => handleGenerateBillings(row)}
-                          className="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+                          variant="secondary"
+                          size="sm"
+                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
                         >
                           {generatingId === row.id ? '생성 중...' : '자동생성'}
-                        </button>
-                        <button
+                        </UiButton>
+                        <UiButton
                           type="button"
                           onClick={() => openEdit(row)}
-                          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           수정
-                        </button>
-                        <button
+                        </UiButton>
+                        <UiButton
                           type="button"
                           onClick={() => handleToggleActive(row)}
-                          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           {row.is_active ? '비활성' : '활성'}
-                        </button>
+                        </UiButton>
                       </div>
                       {generateResultMap[row.id] ? (
                         <div className="mt-1 text-[11px] text-zinc-500">
@@ -892,22 +910,25 @@ export default function ClientBookkeepingContractsSection() {
             </div>
 
             <div className="mt-4 flex justify-end gap-2">
-              <button
+              <UiButton
                 type="button"
                 onClick={closeModal}
                 disabled={saving}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                variant="secondary"
+                size="md"
               >
                 취소
-              </button>
-              <button
+              </UiButton>
+              <UiButton
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+                variant="primary"
+                size="md"
+                className="border-neutral-900 bg-neutral-900 hover:bg-neutral-800"
               >
                 {saving ? '저장 중...' : '저장'}
-              </button>
+              </UiButton>
             </div>
           </div>
         </div>

@@ -1,12 +1,15 @@
 'use client'
 
-import axios from 'axios'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import FileDropzone from '@/components/common/FileDropzone'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import RichTextEditor from '@/components/editor/RichTextEditor'
-import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
+import { adminHttp, clientHttp, getAdminAccessToken, getClientAccessToken } from '@/services/http'
+import { uiInputClass } from '@/styles/uiClasses'
 import {
   createApprovalDocument,
   getApprovalDocumentErrorMessage,
@@ -17,8 +20,7 @@ import type { AdminOut } from '@/types/admin'
 import type { ClientAccountOut } from '@/types/clientAccount'
 import type { TeamOut } from '@/types/team'
 
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const inputClass = uiInputClass
 
 const docTypeOptions: Array<{ value: ApprovalDocumentType; label: string }> = [
   { value: 'general', label: '일반 문서' },
@@ -106,11 +108,15 @@ function sortApprovers(rows: ApproverRow[]): ApproverRow[] {
   return copied
 }
 
-async function getWithFallback(urls: string[], headers: Record<string, string>) {
+async function getWithFallback(
+  urls: string[],
+  scope: 'admin' | 'client'
+) {
+  const httpClient = scope === 'admin' ? adminHttp : clientHttp
   let lastError: unknown = null
   for (const url of urls) {
     try {
-      const res = await axios.get(url, { headers, params: { offset: 0, limit: 300, page: 1 } })
+      const res = await httpClient.get(url, { params: { offset: 0, limit: 100, page: 1 } })
       return res.data
     } catch (error) {
       lastError = error
@@ -138,6 +144,7 @@ export default function AdminDocumentCreatePage() {
   const [loadingApproverSources, setLoadingApproverSources] = useState(false)
   const [selectingApproverId, setSelectingApproverId] = useState<number | null>(null)
   const [approverKeyword, setApproverKeyword] = useState('')
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -156,7 +163,7 @@ export default function AdminDocumentCreatePage() {
                   `${API_BASE}/admin/staffs/`,
                   `${API_BASE}/admin/staffs`,
                 ],
-                { Authorization: `Bearer ${adminToken}` }
+                'admin'
               )
             }
             return getWithFallback(
@@ -164,7 +171,7 @@ export default function AdminDocumentCreatePage() {
                 `${API_BASE}/client/staffs/`,
                 `${API_BASE}/client/staffs`,
               ],
-              { Authorization: `Bearer ${clientToken}` }
+              'client'
             )
           })(),
           (async () => {
@@ -174,7 +181,7 @@ export default function AdminDocumentCreatePage() {
                   `${API_BASE}/admin/teams/`,
                   `${API_BASE}/admin/teams`,
                 ],
-                { Authorization: `Bearer ${adminToken}` }
+                'admin'
               )
             }
             return getWithFallback(
@@ -182,7 +189,7 @@ export default function AdminDocumentCreatePage() {
                 `${API_BASE}/client/teams/`,
                 `${API_BASE}/client/teams`,
               ],
-              { Authorization: `Bearer ${clientToken}` }
+              'client'
             )
           })(),
           (async () => {
@@ -194,7 +201,7 @@ export default function AdminDocumentCreatePage() {
                     `${API_BASE}/admin/client-accounts/`,
                     `${API_BASE}/admin/client-accounts`,
                   ],
-                  { Authorization: `Bearer ${adminToken}` }
+                  'admin'
                 )
               )
             }
@@ -205,7 +212,7 @@ export default function AdminDocumentCreatePage() {
                     `${API_BASE}/client/client-accounts/`,
                     `${API_BASE}/client/client-accounts`,
                   ],
-                  { Authorization: `Bearer ${clientToken}` }
+                  'client'
                 )
               )
             }
@@ -392,6 +399,28 @@ export default function AdminDocumentCreatePage() {
 
   const removeShareRow = (id: number) => {
     setShares((prev) => prev.filter((row) => row.id !== id))
+  }
+
+  const appendAttachmentFiles = (filesToAdd: FileList) => {
+    const incoming = Array.from(filesToAdd || [])
+    if (incoming.length === 0) return
+    setFiles((prev) => {
+      const existing = new Set(prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`))
+      const merged = [...prev]
+      incoming.forEach((file) => {
+        const key = `${file.name}-${file.size}-${file.lastModified}`
+        if (existing.has(key)) return
+        existing.add(key)
+        merged.push(file)
+      })
+      return merged
+    })
+  }
+
+  const handleAttachmentFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files) return
+    appendAttachmentFiles(event.target.files)
+    event.target.value = ''
   }
 
   const buildApproversPayload = () => {
@@ -627,11 +656,9 @@ export default function AdminDocumentCreatePage() {
               </div>
 
               <div className="mt-3">
-                <input
-                  type="text"
-                  className={inputClass}
+                <UiSearchInput
                   value={approverKeyword}
-                  onChange={(e) => setApproverKeyword(e.target.value)}
+                  onChange={setApproverKeyword}
                   placeholder="이름/직급/부서/팀 검색"
                 />
               </div>
@@ -839,12 +866,25 @@ export default function AdminDocumentCreatePage() {
 
         <div className="mt-4">
           <label className="mb-1 block text-xs text-zinc-600">첨부파일</label>
-          <input
-            type="file"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            className={inputClass}
-          />
+          <input ref={attachmentInputRef} type="file" multiple onChange={handleAttachmentFileChange} className="hidden" />
+          <div className="flex flex-wrap items-stretch gap-2">
+            <FileDropzone
+              onFilesDrop={appendAttachmentFiles}
+              className="flex min-h-10 min-w-[220px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition"
+              idleClassName="border-zinc-300 bg-white text-zinc-500"
+              activeClassName="border-zinc-500 bg-zinc-50 text-zinc-800"
+            >
+              파일 드래그
+            </FileDropzone>
+            <UiButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => attachmentInputRef.current?.click()}
+            >
+              파일 선택
+            </UiButton>
+          </div>
           {files.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {files.map((file) => (
@@ -857,22 +897,24 @@ export default function AdminDocumentCreatePage() {
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <button
+          <UiButton
             type="button"
             onClick={() => handleSubmit(false)}
             disabled={submitting !== null}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+            variant="secondary"
+            size="md"
           >
             {submitting === 'draft' ? '저장 중...' : '임시저장'}
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             type="button"
             onClick={() => handleSubmit(true)}
             disabled={submitting !== null}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+            variant="primary"
+            size="md"
           >
             {submitting === 'submit' ? '제출 중...' : '제출'}
-          </button>
+          </UiButton>
         </div>
       </div>
     </section>

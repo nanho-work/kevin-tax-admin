@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import DOMPurify from 'isomorphic-dompurify'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
 import {
   cancelApprovalDocument,
   fetchApprovalDocumentDetail,
@@ -534,34 +536,37 @@ export default function AdminMyDocumentsPage() {
                     <td className="px-3 py-3 text-center text-zinc-500">{formatDateTime(item.submitted_at)}</td>
                     <td className="px-3 py-3 text-center">
                       {canReview(item, viewMode) ? (
-                        <button
+                        <UiButton
                           type="button"
                           onClick={() => {
                             setSelectedItem(item)
                             setDetail(null)
                             setReviewMode('approved')
                           }}
-                          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           결재
-                        </button>
+                        </UiButton>
                       ) : canRequestLeaveCancel(item, viewMode) ? (
-                        <button
+                        <UiButton
                           type="button"
                           onClick={() => handleOpenLeaveCancelRequest(item)}
-                          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           승인취소 요청
-                        </button>
+                        </UiButton>
                       ) : canCancel(item, viewMode) ? (
-                        <button
+                        <UiButton
                           type="button"
                           onClick={() => handleCancel(item)}
                           disabled={canceling}
-                          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                          variant="secondary"
+                          size="sm"
                         >
                           취소
-                        </button>
+                        </UiButton>
                       ) : (
                         <span className="text-zinc-400">-</span>
                       )}
@@ -574,27 +579,7 @@ export default function AdminMyDocumentsPage() {
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 
       {selectedItem !== null ? (
         <div className="fixed inset-0 z-40 bg-black/30">
@@ -606,7 +591,7 @@ export default function AdminMyDocumentsPage() {
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">{selectedItem.title}</p>
               </div>
-              <button
+              <UiButton
                 type="button"
                 onClick={() => {
                   setSelectedItem(null)
@@ -615,10 +600,11 @@ export default function AdminMyDocumentsPage() {
                   setReviewComment('')
                   setRejectedReason('')
                 }}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="md"
               >
                 닫기
-              </button>
+              </UiButton>
             </div>
 
             <div className="space-y-4 px-6 py-5">
@@ -675,13 +661,14 @@ export default function AdminMyDocumentsPage() {
                   </div>
                   {canRequestLeaveCancel(selectedItem, viewMode) ? (
                     <div className="mt-4 flex justify-end">
-                      <button
+                      <UiButton
                         type="button"
                         onClick={() => handleOpenLeaveCancelRequest(selectedItem)}
-                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                        variant="secondary"
+                        size="sm"
                       >
                         승인취소 요청
-                      </button>
+                      </UiButton>
                     </div>
                   ) : null}
                 </div>
@@ -859,20 +846,22 @@ export default function AdminMyDocumentsPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <button
+                              <UiButton
                                 type="button"
                                 onClick={() => handleOpenAttachment(attachment.id, 'preview')}
-                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                                variant="secondary"
+                                size="sm"
                               >
                                 미리보기
-                              </button>
-                              <button
+                              </UiButton>
+                              <UiButton
                                 type="button"
                                 onClick={() => handleOpenAttachment(attachment.id, 'download')}
-                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                                variant="secondary"
+                                size="sm"
                               >
                                 다운로드
-                              </button>
+                              </UiButton>
                             </div>
                           </div>
                         ))
@@ -932,17 +921,18 @@ export default function AdminMyDocumentsPage() {
                       </div>
 
                       <div className="mt-4 flex justify-end gap-2">
-                        <button
+                        <UiButton
                           type="button"
                           onClick={() => {
                             setReviewMode(null)
                             setReviewComment('')
                             setRejectedReason('')
                           }}
-                          className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                          variant="secondary"
+                          size="md"
                         >
                           초기화
-                        </button>
+                        </UiButton>
                         <button
                           type="button"
                           onClick={handleReview}
@@ -969,17 +959,18 @@ export default function AdminMyDocumentsPage() {
                 <h2 className="text-lg font-semibold text-zinc-900">승인취소 요청</h2>
                 <p className="mt-1 text-sm text-zinc-500">{leaveCancelRequestTarget.title}</p>
               </div>
-              <button
+              <UiButton
                 type="button"
                 onClick={() => {
                   if (leaveCancelSubmitting) return
                   setLeaveCancelRequestTarget(null)
                   setLeaveCancelReason('')
                 }}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="md"
               >
                 닫기
-              </button>
+              </UiButton>
             </div>
 
             <div className="space-y-4 px-6 py-5">
@@ -996,17 +987,18 @@ export default function AdminMyDocumentsPage() {
             </div>
 
             <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
-              <button
+              <UiButton
                 type="button"
                 onClick={() => {
                   if (leaveCancelSubmitting) return
                   setLeaveCancelRequestTarget(null)
                   setLeaveCancelReason('')
                 }}
-                className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="md"
               >
                 취소
-              </button>
+              </UiButton>
               <button
                 type="button"
                 onClick={handleSubmitLeaveCancelRequest}

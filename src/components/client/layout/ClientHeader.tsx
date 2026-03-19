@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { uiHeaderInputClass } from '@/styles/uiClasses'
 import { logoutClient } from '@/services/client/clientAuthService'
 import { listMailAccounts } from '@/services/client/clientMailService'
@@ -182,17 +183,12 @@ export default function ClientHeader() {
                     </option>
                   ))}
                 </select>
-                <input
-                  className={`${uiHeaderInputClass} w-56`}
+                <UiSearchInput
+                  wrapperClassName={`${uiHeaderInputClass} w-56`}
                   value={headerKeyword}
-                  onChange={(e) => setHeaderKeyword(e.target.value)}
+                  onChange={setHeaderKeyword}
                   placeholder="제목/발신자/본문 검색"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      replaceHeaderSearch({ keyword: headerKeyword })
-                    }
-                  }}
+                  onSubmit={() => replaceHeaderSearch({ keyword: headerKeyword })}
                 />
               </>
             ) : null}

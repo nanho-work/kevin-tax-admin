@@ -5,6 +5,8 @@ import { fetchCompanyTaxList } from '@/services/company';
 import type { CompanyTaxDetail } from '@/types/admin_campany';
 import { useRouter } from 'next/navigation';
 import CompanyReportTabs from '@/components/Company/CompanyReportTabs';
+import UiSearchInput from '@/components/common/UiSearchInput';
+import { uiInputClass } from '@/styles/uiClasses';
 
 export default function CompanyTaxDetailReport() {
   const [companies, setCompanies] = useState<CompanyTaxDetail[]>([]);
@@ -43,15 +45,14 @@ export default function CompanyTaxDetailReport() {
   return (
     <div className="p-5 overflow-x-auto">
       <div className="mb-4 flex gap-6 flex-wrap items-end">
-        <input
-          type="text"
+        <UiSearchInput
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={setKeyword}
           placeholder="회사명 검색"
-          className="border px-3 py-1 rounded"
+          wrapperClassName={uiInputClass}
         />
         <select
-          className="border px-3 py-1 rounded"
+          className={uiInputClass}
           value={selectedCompanyId ?? ''}
           onChange={(e) => {
             const id = Number(e.target.value);

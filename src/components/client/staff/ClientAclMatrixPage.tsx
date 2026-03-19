@@ -185,7 +185,7 @@ export default function ClientAclMatrixPage() {
   }, [roles])
 
   const loadAllClientStaffs = async () => {
-    const limit = 200
+    const limit = 100
     let pageCursor = 1
     let total = 0
     const merged: AdminOut[] = []

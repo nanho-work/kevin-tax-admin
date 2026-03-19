@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { listClients } from '@/services/client/clientService'
 import { deactivateClientAccount, listClientAccounts } from '@/services/client/clientManagementService'
 import type { ClientAccountOut } from '@/types/clientAccount'
@@ -91,10 +93,10 @@ export default function ClientAccountListSection() {
             <option value="false">비활성만</option>
             <option value="">전체</option>
           </select>
-          <input className={inputClass} placeholder="검색(q)" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button type="button" className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm hover:bg-zinc-50" onClick={loadList}>
+          <UiSearchInput wrapperClassName={inputClass} placeholder="검색(q)" value={q} onChange={setQ} onSubmit={loadList} />
+          <UiButton type="button" variant="secondary" size="lg" onClick={loadList}>
             조회
-          </button>
+          </UiButton>
         </div>
       </div>
 
@@ -135,14 +137,15 @@ export default function ClientAccountListSection() {
                   <td className="px-3 py-3 text-center">{row.is_active ? '활성' : '비활성'}</td>
                   <td className="px-3 py-3 text-center">
                     {row.is_active ? (
-                      <button
+                      <UiButton
                         type="button"
                         disabled={workingId === row.id}
                         onClick={() => handleDeactivate(row.id)}
-                        className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        variant="danger"
+                        size="sm"
                       >
                         {workingId === row.id ? '처리 중...' : '비활성화'}
-                      </button>
+                      </UiButton>
                     ) : (
                       <span className="text-xs text-zinc-500">완료</span>
                     )}

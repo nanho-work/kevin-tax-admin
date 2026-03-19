@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import DOMPurify from 'isomorphic-dompurify'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
   fetchClientApprovalDocumentDetail,
@@ -586,27 +588,7 @@ export default function ClientApprovalDocumentsPage() {
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={limit} onPageChange={setPage} />
 
       {selectedItem ? (
         <div className="fixed inset-0 z-40 bg-black/30">
@@ -618,13 +600,14 @@ export default function ClientApprovalDocumentsPage() {
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">{selectedItem.title}</p>
               </div>
-              <button
+              <UiButton
                 type="button"
                 onClick={closePanel}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="md"
               >
                 닫기
-              </button>
+              </UiButton>
             </div>
 
             <div className="space-y-4 px-6 py-5">
@@ -788,20 +771,22 @@ export default function ClientApprovalDocumentsPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <button
+                              <UiButton
                                 type="button"
                                 onClick={() => handleOpenAttachment(attachment.id, 'preview')}
-                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                                variant="secondary"
+                                size="sm"
                               >
                                 미리보기
-                              </button>
-                              <button
+                              </UiButton>
+                              <UiButton
                                 type="button"
                                 onClick={() => handleOpenAttachment(attachment.id, 'download')}
-                                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+                                variant="secondary"
+                                size="sm"
                               >
                                 다운로드
-                              </button>
+                              </UiButton>
                             </div>
                           </div>
                         ))
@@ -881,13 +866,14 @@ export default function ClientApprovalDocumentsPage() {
             </div>
 
             <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
-              <button
+              <UiButton
                 type="button"
                 onClick={closePanel}
-                className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                variant="secondary"
+                size="md"
               >
                 닫기
-              </button>
+              </UiButton>
               {reviewMode ? (
                 <button
                   type="button"

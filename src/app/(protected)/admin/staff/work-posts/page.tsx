@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import {
   fetchAdminWorkPostDetail,
@@ -67,6 +68,7 @@ export default function AdminWorkPostsInboxPage() {
 
   const sourceType = (searchParams.get('source_type') || '').toLowerCase()
   const sourceId = Number(searchParams.get('source_id') || searchParams.get('post_id') || '')
+  const queryPostType = (searchParams.get('post_type') || '').toLowerCase()
   const isWorkPostSource =
     !sourceType ||
     sourceType === 'work_post' ||
@@ -75,7 +77,7 @@ export default function AdminWorkPostsInboxPage() {
     sourceType === 'work-posts'
   const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && isWorkPostSource ? sourceId : null
 
-  const [postType, setPostType] = useState<WorkPostType | ''>('')
+  const [postType, setPostType] = useState<WorkPostType | ''>('notice')
   const [status, setStatus] = useState<WorkPostReceiptStatus | ''>('')
   const [page, setPage] = useState(1)
   const [size] = useState(12)
@@ -138,6 +140,12 @@ export default function AdminWorkPostsInboxPage() {
   useEffect(() => {
     setPage(1)
   }, [postType, status])
+
+  useEffect(() => {
+    if (queryPostType === 'notice' || queryPostType === 'task') {
+      setPostType(queryPostType)
+    }
+  }, [queryPostType])
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
@@ -204,8 +212,8 @@ export default function AdminWorkPostsInboxPage() {
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h1 className="text-lg font-semibold text-neutral-900">공지/업무지시 수신함</h1>
-        <p className="mt-1 text-sm text-neutral-500">수신한 공지/업무지시를 확인하고 상태를 변경합니다.</p>
+        <h1 className="text-lg font-semibold text-neutral-900">게시판 수신함</h1>
+        <p className="mt-1 text-sm text-neutral-500">수신한 공지사항과 업무지시를 확인하고 상태를 변경합니다.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -228,7 +236,7 @@ export default function AdminWorkPostsInboxPage() {
               </select>
             </div>
 
-            <div className="mt-3 space-y-2">
+            <div className="mt-3">
               {loading ? (
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500">불러오는 중...</div>
               ) : items.length === 0 ? (
@@ -236,45 +244,60 @@ export default function AdminWorkPostsInboxPage() {
                   수신한 게시글이 없습니다.
                 </div>
               ) : (
-                items.map((item) => {
-                  const selected = selectedPostId === item.post_id
-                  return (
-                    <button
-                      key={item.receipt_id}
-                      type="button"
-                      onClick={() => setSelectedPostId(item.post_id)}
-                      className={`w-full rounded-md border px-3 py-3 text-left transition ${
-                        selected
-                          ? 'border-sky-300 bg-sky-50'
-                          : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-zinc-500">{postTypeLabelMap[item.post_type]}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${receiptStatusBadgeMap[item.status]}`}>
-                          {receiptStatusLabelMap[item.status]}
-                        </span>
-                      </div>
-                      <p className="mt-1 line-clamp-1 text-sm font-semibold text-zinc-900">{item.title}</p>
-                      <p className="mt-1 text-xs text-zinc-500">수신일 {formatDateTime(item.created_at)}</p>
-                    </button>
-                  )
-                })
+                <div className="overflow-hidden rounded-md border border-zinc-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full table-fixed text-xs">
+                      <thead className="bg-zinc-50 text-zinc-600">
+                        <tr>
+                          <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
+                          <th className="px-2 py-2 text-left font-medium">제목</th>
+                          <th className="w-16 px-2 py-2 text-center font-medium">첨부</th>
+                          <th className="w-24 px-2 py-2 text-center font-medium">작성자</th>
+                          <th className="w-28 px-2 py-2 text-center font-medium">작성일</th>
+                          <th className="w-16 px-2 py-2 text-center font-medium">조회수</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, index) => {
+                          const selected = selectedPostId === item.post_id
+                          const rowNumber = Math.max(1, total - (page - 1) * size - index)
+                          return (
+                            <tr
+                              key={item.receipt_id}
+                              onClick={() => setSelectedPostId(item.post_id)}
+                              className={`cursor-pointer border-t border-zinc-100 transition first:border-t-0 ${
+                                selected ? 'bg-sky-50' : 'hover:bg-zinc-50'
+                              }`}
+                            >
+                              <td className="px-2 py-2 text-center text-zinc-600">{rowNumber}</td>
+                              <td className="px-2 py-2">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                                    {postTypeLabelMap[item.post_type]}
+                                  </span>
+                                  <span className="truncate text-sm font-medium text-zinc-900">{item.title}</span>
+                                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${receiptStatusBadgeMap[item.status]}`}>
+                                    {receiptStatusLabelMap[item.status]}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{formatDateTime(item.created_at)}</td>
+                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-              <span>
-                {page} / {totalPages} 페이지 (총 {total}건)
-              </span>
-              <div className="flex items-center gap-1">
-                <UiButton size="xs" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
-                  이전
-                </UiButton>
-                <UiButton size="xs" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
-                  다음
-                </UiButton>
-              </div>
+            <div className="mt-3 text-xs text-zinc-500">
+              <p className="text-center">총 {total}건</p>
+              <Pagination className="mt-2" page={page} total={total} limit={size} onPageChange={setPage} />
             </div>
           </div>
         </div>

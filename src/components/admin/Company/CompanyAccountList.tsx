@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import {
   getCompanyAccounts,
   updateCompanyAccountStatus,
 } from '@/services/admin/companyAccountService'
+import { uiInputClass } from '@/styles/uiClasses'
 import type { CompanyAccountOut, CompanyAccountStatus } from '@/types/companyAccount'
 
 function formatDateTime(value?: string | null) {
@@ -63,8 +67,6 @@ export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }
     load(1)
   }, [refreshKey])
 
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-
   const handleStatusChange = async (row: CompanyAccountOut) => {
     const nextStatus: CompanyAccountStatus = row.status === 'active' ? 'inactive' : 'active'
     try {
@@ -90,20 +92,15 @@ export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }
 
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <input
-            className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+          <UiSearchInput
+            wrapperClassName={uiInputClass}
             placeholder="login_id 또는 회사명 검색"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                load(1)
-              }
-            }}
+            onChange={setQ}
+            onSubmit={() => load(1)}
           />
           <select
-            className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+            className={uiInputClass}
             value={status}
             onChange={(e) => setStatus(e.target.value as '' | CompanyAccountStatus)}
           >
@@ -112,18 +109,19 @@ export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }
             <option value="inactive">비활성</option>
           </select>
           <input
-            className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+            className={uiInputClass}
             placeholder="회사 ID (선택)"
             value={companyId}
             onChange={(e) => setCompanyId(e.target.value.replace(/[^\d]/g, ''))}
           />
-          <button
+          <UiButton
             type="button"
             onClick={() => load(1)}
-            className="h-10 rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-50"
+            variant="secondary"
+            size="lg"
           >
             조회
-          </button>
+          </UiButton>
           <div className="flex items-center justify-end text-sm text-zinc-500">총 {total}개</div>
         </div>
       </div>
@@ -166,13 +164,14 @@ export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }
                   <td className="px-3 py-3 text-center">{formatDateTime(row.created_at)}</td>
                   <td className="px-3 py-3 text-center">{formatDateTime(row.updated_at)}</td>
                   <td className="px-3 py-3 text-center">
-                    <button
+                    <UiButton
                       type="button"
                       onClick={() => handleStatusChange(row)}
-                      className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      variant="secondary"
+                      size="sm"
                     >
                       {row.status === 'active' ? '비활성화' : '활성화'}
-                    </button>
+                    </UiButton>
                   </td>
                 </tr>
               ))
@@ -181,27 +180,7 @@ export default function CompanyAccountList({ refreshKey = 0, hideTitle = false }
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => load(Math.max(1, page - 1))}
-          disabled={page <= 1}
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
-        >
-          ◀
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          onClick={() => load(Math.min(totalPages, page + 1))}
-          disabled={page >= totalPages}
-          className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
-        >
-          ▶
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={limit} onPageChange={(nextPage) => load(nextPage)} />
     </section>
   )
 }

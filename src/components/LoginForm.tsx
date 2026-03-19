@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
-import { checkInAdmin } from '@/services/attendanceLogService'
 import type { LoginRequest } from '@/types/admin'
 
 export default function LoginForm() {
@@ -29,12 +28,6 @@ export default function LoginForm() {
     try {
       const loginResponse = await adminLogin(form)
       localStorage.setItem("admin_access_token", loginResponse.access_token)
-
-      try {
-        await checkInAdmin()
-      } catch (checkInError: any) {
-        // 출근 실패는 로그인 자체를 막지 않으므로 조용히 처리
-      }
 
       router.push('/dashboard')
     } catch (err: any) {

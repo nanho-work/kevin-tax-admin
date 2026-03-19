@@ -103,6 +103,17 @@ function normalizeParticipant(raw: RawRecord, fallbackType: WorkChatMemberType):
                 ? String(raw.logo_url)
                 : null,
     subtitle: pickSubtitle(raw),
+    online: Boolean(raw.online),
+    in_room: Boolean(raw.in_room),
+    room_id:
+      raw.current_room_id == null
+        ? raw.room_id == null
+          ? null
+          : toNumber(raw.room_id, 0) || null
+        : toNumber(raw.current_room_id, 0) || null,
+    current_room_id:
+      raw.current_room_id == null ? null : toNumber(raw.current_room_id, 0) || null,
+    last_seen_at: raw.last_seen_at == null ? null : String(raw.last_seen_at),
   }
 }
 
@@ -205,6 +216,12 @@ function normalizeMessage(raw: RawRecord): WorkChatMessage {
         ? null
         : toNumber(raw.sender_id, 0),
     sender_name: raw.sender_name == null ? null : String(raw.sender_name),
+    sender_profile_image_url:
+      raw.sender_profile_image_url == null
+        ? raw.profile_image_url == null
+          ? null
+          : String(raw.profile_image_url)
+        : String(raw.sender_profile_image_url),
     message_type: normalizeMessageType(raw.message_type ?? raw.type),
     body: raw.body == null ? null : String(raw.body),
     attachment,
@@ -237,6 +254,12 @@ function normalizeMessageSearchListResponse(data: any): WorkChatMessageSearchRes
       sender_type: normalizeSenderType(raw.sender_type),
       sender_id: raw.sender_id == null ? null : toNumber(raw.sender_id, 0),
       sender_name: raw.sender_name == null ? null : String(raw.sender_name),
+      sender_profile_image_url:
+        raw.sender_profile_image_url == null
+          ? raw.profile_image_url == null
+            ? null
+            : String(raw.profile_image_url)
+          : String(raw.sender_profile_image_url),
       message_type: normalizeMessageType(raw.message_type),
       snippet: String(raw.snippet ?? ''),
       created_at: String(raw.created_at ?? ''),
@@ -296,6 +319,14 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
   return {
     async listParticipants(): Promise<WorkChatParticipantsResponse> {
       const res = await httpClient.get(`${base}/participants`)
+      return normalizeParticipantsResponse(res.data)
+    },
+    async listParticipantsPresence(params?: { room_id?: number | null }): Promise<WorkChatParticipantsResponse> {
+      const res = await httpClient.get(`${base}/participants/presence`, {
+        params: {
+          room_id: params?.room_id ?? undefined,
+        },
+      })
       return normalizeParticipantsResponse(res.data)
     },
     async listRooms(params?: {

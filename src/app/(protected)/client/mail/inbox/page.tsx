@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { CheckCheck, FolderInput, Mail, MailOpen, Paperclip, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
@@ -44,7 +45,6 @@ import type {
 
 const BULK_READ_FETCH_SIZE = 100
 const BULK_UPDATE_CHUNK_SIZE = 30
-const PAGE_GROUP_SIZE = 5
 
 function parseEmails(raw: string): string[] {
   return raw
@@ -96,15 +96,8 @@ export default function ClientMailInboxPage() {
   const [bulkMoveFolders, setBulkMoveFolders] = useState<MailFolder[]>([])
   const [manualSyncLoading, setManualSyncLoading] = useState(false)
   const [candidates, setCandidates] = useState<Array<{ company_id: number; company_name: string; score: number; reasons: string[]; already_linked: boolean }>>([])
-  const totalPages = Math.max(1, Math.ceil(total / size))
   const currentStart = total === 0 ? 0 : (page - 1) * size + 1
   const currentEnd = total === 0 ? 0 : Math.min(page * size, total)
-  const pageGroupStart = Math.floor((page - 1) / PAGE_GROUP_SIZE) * PAGE_GROUP_SIZE + 1
-  const pageGroupEnd = Math.min(pageGroupStart + PAGE_GROUP_SIZE - 1, totalPages)
-  const visiblePages = Array.from(
-    { length: pageGroupEnd - pageGroupStart + 1 },
-    (_, index) => pageGroupStart + index
-  )
   const searchParams = useSearchParams()
   const listRequestSeqRef = useRef(0)
   const currentAccount =
@@ -1137,55 +1130,7 @@ export default function ClientMailInboxPage() {
             <p className="text-xs text-zinc-500">
               총 {total.toLocaleString('ko-KR')}건 · 현재 {currentStart}-{currentEnd}
             </p>
-            <div className="flex items-center justify-center gap-2">
-              <UiButton
-                disabled={pageGroupStart <= 1}
-                onClick={() => setPage(Math.max(1, pageGroupStart - PAGE_GROUP_SIZE))}
-                variant="secondary"
-                size="sm"
-                className="min-w-8 px-2"
-              >
-                &laquo;
-              </UiButton>
-              <UiButton
-                disabled={page <= 1}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                variant="secondary"
-                size="sm"
-                className="min-w-8 px-2"
-              >
-                &lt;
-              </UiButton>
-              {visiblePages.map((pageNumber) => (
-                <UiButton
-                  key={pageNumber}
-                  onClick={() => setPage(pageNumber)}
-                  variant={pageNumber === page ? 'primary' : 'secondary'}
-                  size="sm"
-                  className="min-w-8 px-2.5"
-                >
-                  {pageNumber}
-                </UiButton>
-              ))}
-              <UiButton
-                disabled={page >= totalPages}
-                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                variant="secondary"
-                size="sm"
-                className="min-w-8 px-2"
-              >
-                &gt;
-              </UiButton>
-              <UiButton
-                disabled={pageGroupEnd >= totalPages}
-                onClick={() => setPage(Math.min(totalPages, pageGroupStart + PAGE_GROUP_SIZE))}
-                variant="secondary"
-                size="sm"
-                className="min-w-8 px-2"
-              >
-                &raquo;
-              </UiButton>
-            </div>
+            <Pagination page={page} total={total} limit={size} onPageChange={setPage} className="mt-0" windowSize={5} />
             <div aria-hidden="true" />
           </div>
         </div>

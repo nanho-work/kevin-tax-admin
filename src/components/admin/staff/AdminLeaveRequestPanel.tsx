@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import {
   cancelAnnualLeaveRequest,
@@ -99,8 +100,6 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
     reason: '',
   })
 
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-
   const loadRequests = async (targetPage = page, targetTab = listTab) => {
     try {
       setLoading(true)
@@ -135,7 +134,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
     try {
       setRemainingLoading(true)
       setRemainingError(null)
-      const res = await fetchAnnualLeaves({ offset: 0, limit: 200 })
+      const res = await fetchAnnualLeaves({ offset: 0, limit: 100 })
       const totalRemaining = (res.items || []).reduce((sum, item) => sum + Number(item.remaining_days || 0), 0)
       const normalized = Math.max(0, Math.round(totalRemaining * 10) / 10)
       setRemainingDays(normalized)
@@ -509,27 +508,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
           </table>
         </div>
 
-        <div className="mt-4 flex items-center justify-center gap-2">
-          <UiButton
-            disabled={page <= 1}
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            variant="secondary"
-            size="sm"
-          >
-            이전
-          </UiButton>
-          <span className="text-sm text-zinc-600">
-            {page} / {totalPages}
-          </span>
-          <UiButton
-            disabled={page >= totalPages}
-            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-            variant="secondary"
-            size="sm"
-          >
-            다음
-          </UiButton>
-        </div>
+        <Pagination className="mt-4" page={page} total={total} limit={limit} onPageChange={setPage} />
       </div>
 
       {cancelRequestTarget ? (

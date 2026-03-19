@@ -201,18 +201,18 @@ export default function AdminAttendancePage() {
         const [attendanceRes, leaveRes, leaveLedgerRes] = await Promise.all([
           getAttendanceLogs({
             offset: 0,
-            limit: 200,
+            limit: 100,
             date_from: startText,
             date_to: endText,
           }),
           fetchMyAnnualLeaveRequests({
             offset: 0,
-            limit: 200,
+            limit: 100,
           }),
           fetchAnnualLeaves({
             year: selectedYear,
             offset: 0,
-            limit: 200,
+            limit: 100,
           }).catch(() => null),
         ])
 
@@ -670,18 +670,18 @@ export default function AdminAttendancePage() {
             const [attendanceRes, leaveRes, leaveLedgerRes] = await Promise.all([
               getAttendanceLogs({
                 offset: 0,
-                limit: 200,
+                limit: 100,
                 date_from: startText,
                 date_to: endText,
               }),
               fetchMyAnnualLeaveRequests({
                 offset: 0,
-                limit: 200,
+                limit: 100,
               }),
               fetchAnnualLeaves({
                 year: selectedYear,
                 offset: 0,
-                limit: 200,
+                limit: 100,
               }).catch(() => null),
             ])
             setLogs(attendanceRes.items || [])

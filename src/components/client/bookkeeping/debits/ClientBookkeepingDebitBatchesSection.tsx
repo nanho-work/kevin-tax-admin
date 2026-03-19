@@ -4,20 +4,22 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
 import {
   deleteBookkeepingDebitBatch,
   listBookkeepingDebitBatchItems,
   listBookkeepingDebitBatches,
   uploadBookkeepingDebits,
 } from '@/services/client/clientBookkeepingService'
+import { uiInputClass } from '@/styles/uiClasses'
 import type { ClientDebitUploadBatchOut } from '@/types/clientBookkeeping'
 
 type Props = {
   mode?: 'upload' | 'history'
 }
 
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const inputClass = uiInputClass
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
 function getCurrentYearMonth() {
@@ -75,8 +77,6 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
   const [page, setPage] = useState(1)
   const [size] = useState(20)
   const [total, setTotal] = useState(0)
-
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size])
 
   const loadBatches = async (nextPage = page) => {
     try {
@@ -216,30 +216,33 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
           </div>
           {isUploadMode ? (
             uploadedBatchId ? (
-              <button
+              <UiButton
                 type="button"
+                variant="secondary"
+                size="md"
                 onClick={() => router.push(`/client/bookkeeping/debits/history/${uploadedBatchId}`)}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 방금 업로드한 이력 보기
-              </button>
+              </UiButton>
             ) : (
-              <button
+              <UiButton
                 type="button"
+                variant="secondary"
+                size="md"
                 onClick={() => router.push('/client/bookkeeping/debits/history')}
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 업로드 이력 보기
-              </button>
+              </UiButton>
             )
           ) : (
-            <button
+            <UiButton
               type="button"
+              variant="secondary"
+              size="md"
               onClick={() => router.push('/client/bookkeeping/debits/upload')}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
             >
               새 파일 업로드
-            </button>
+            </UiButton>
           )}
         </div>
 
@@ -262,16 +265,18 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
               />
               {file ? file.name : '파일을 드래그 하시거나 파일을 선택해주세요'}
             </FileDropzone>
-            <button
+            <UiButton
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleUpload}
               disabled={uploading}
-              className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full"
             >
               {uploading ? '업로드 중...' : '업로드'}
-            </button>
+            </UiButton>
             <textarea
-              className="md:col-span-3 min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+              className="md:col-span-3 min-h-24 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
               placeholder="업로드 메모"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
@@ -340,23 +345,25 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
                     {row.memo ? <span className="block max-w-[360px] truncate" title={row.memo}>{row.memo}</span> : '-'}
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <button
+                    <UiButton
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => router.push(`/client/bookkeeping/debits/history/${row.id}`)}
-                      className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
                     >
                       상세보기
-                    </button>
+                    </UiButton>
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <button
+                    <UiButton
                       type="button"
+                      variant="danger"
+                      size="sm"
                       disabled={deletingBatchId === row.id}
                       onClick={() => setDeleteTarget(row)}
-                      className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
                     >
                       {deletingBatchId === row.id ? '삭제 중...' : '삭제'}
-                    </button>
+                    </UiButton>
                   </td>
                 </tr>
               ))
@@ -365,27 +372,7 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => loadBatches(page - 1)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => loadBatches(page + 1)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={size} onPageChange={(nextPage) => loadBatches(nextPage)} />
 
       {deleteTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
@@ -393,22 +380,25 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
             <h3 className="text-base font-semibold text-zinc-900">배치 삭제 확인</h3>
             <p className="mt-2 text-sm text-zinc-600">삭제 후 복구 불가입니다. 계속하시겠습니까?</p>
             <div className="mt-4 flex justify-end gap-2">
-              <button
+              <UiButton
                 type="button"
+                variant="secondary"
+                size="md"
                 disabled={Boolean(deletingBatchId)}
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
               >
                 취소
-              </button>
-              <button
+              </UiButton>
+              <UiButton
                 type="button"
+                variant="danger"
+                size="md"
                 disabled={Boolean(deletingBatchId)}
                 onClick={handleDelete}
-                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:opacity-60"
+                className="border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
               >
                 {deletingBatchId ? '삭제 중...' : '삭제'}
-              </button>
+              </UiButton>
             </div>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Briefcase,
   Building2,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   Mail,
@@ -50,8 +51,12 @@ const staffManagementMenus = [
   { label: '직원가입신청', href: '/client/staff/signup-requests' },
   { label: '직원 근태/휴가 관리', href: '/client/staff/leave' },
   { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
-  { label: '공지/업무지시', href: '/client/staff/work-posts' },
+  { label: '업무지시', href: '/client/staff/work-posts?post_type=task' },
   { label: '초기비밀번호 재설정/잠금해제', href: '/client/staff/account-security' },
+]
+
+const boardMenus = [
+  { label: '공지사항', href: '/client/staff/work-posts?post_type=notice' },
 ]
 
 const clientManagementMenus = [
@@ -122,7 +127,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const router = useRouter()
   const hasMailPath = pathname.startsWith('/client/mail')
   const hasCompanyManagementPath = pathname.startsWith('/client/companies') || pathname.startsWith('/client/schedule')
-  const hasStaffManagementPath = pathname.startsWith('/client/staff')
+  const isWorkPostPath = pathname.startsWith('/client/staff/work-posts')
+  const workPostType = (searchParams.get('post_type') || '').toLowerCase()
+  const hasBoardPath = isWorkPostPath && workPostType !== 'task'
+  const hasStaffManagementPath = pathname.startsWith('/client/staff') && (!isWorkPostPath || workPostType === 'task')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
   const hasSettingPath = pathname.startsWith('/client/setting')
@@ -141,7 +149,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
   const [pendingSignupCount, setPendingSignupCount] = useState(0)
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'mail' | 'company' | 'staff' | 'bookkeeping' | 'setting' | 'client-management'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'mail' | 'company' | 'staff' | 'board' | 'bookkeeping' | 'setting' | 'client-management'>('dashboard')
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -178,6 +186,13 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       active: hasStaffManagementPath,
     },
     {
+      key: 'board',
+      label: '게시',
+      href: '/client/staff/work-posts?post_type=notice',
+      icon: ClipboardList,
+      active: hasBoardPath,
+    },
+    {
       key: 'bookkeeping',
       label: '기장',
       href: '/client/bookkeeping/contracts',
@@ -205,7 +220,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'bookkeeping' | 'setting' | 'client-management'
+    const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'board' | 'bookkeeping' | 'setting' | 'client-management'
 
     // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
     if (!collapsed && key === activeRailSection) {
@@ -246,13 +261,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
   useEffect(() => {
     if (hasMailPath) setActiveRailSection('mail')
+    else if (hasBoardPath) setActiveRailSection('board')
     else if (hasStaffManagementPath) setActiveRailSection('staff')
     else if (hasCompanyManagementPath) setActiveRailSection('company')
     else if (hasBookkeepingPath) setActiveRailSection('bookkeeping')
     else if (hasSettingPath) setActiveRailSection('setting')
     else if (hasClientManagementPath && canManageClients) setActiveRailSection('client-management')
     else setActiveRailSection('dashboard')
-  }, [canManageClients, hasBookkeepingPath, hasClientManagementPath, hasCompanyManagementPath, hasMailPath, hasSettingPath, hasStaffManagementPath])
+  }, [canManageClients, hasBoardPath, hasBookkeepingPath, hasClientManagementPath, hasCompanyManagementPath, hasMailPath, hasSettingPath, hasStaffManagementPath])
 
   useEffect(() => {
     if (!selectedMailAccountId) return
@@ -975,6 +991,33 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           </span>
                         ) : null}
                       </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+        </div>
+        ) : null}
+
+        {activeRailSection === 'board' ? (
+        <div className="order-2 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+            <span className="inline-flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />
+              <span>게시판</span>
+            </span>
+          </div>
+          <div className="space-y-1 px-2 py-2">
+              {boardMenus.map((menu) => {
+                const active = pathname === menu.href
+                return (
+                  <Link key={menu.href} href={menu.href}>
+                    <div
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
+                      }`}
+                    >
+                      {menu.label}
                     </div>
                   </Link>
                 )

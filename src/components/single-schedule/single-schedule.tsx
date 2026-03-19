@@ -5,6 +5,9 @@ import { fetchSingleTaxes, updateSingleTaxStatus } from '@/services/single_sched
 import { SingleTaxResponse, StatusUpdateRequest } from '@/types/single_schedule';
 import SingleScheduleForm from './single-schedule-form';
 import Pagination from '../common/Pagination';
+import UiButton from '@/components/common/UiButton';
+import UiSearchInput from '@/components/common/UiSearchInput';
+import { uiInputClass } from '@/styles/uiClasses';
 
 const SingleSchedulePage = () => {
   const STATUS_LABELS: Record<string, string> = {
@@ -44,30 +47,31 @@ const SingleSchedulePage = () => {
       <div className="mb-4 flex text-sm flex-wrap items-start justify-between gap-4 w-full">
         {/* 좌측: 검색 + 필터 */}
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
+          <UiSearchInput
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={setKeyword}
             placeholder="제목 또는 고객명 검색"
-            className="border border-gray-300 rounded px-3 py-2 w-64"
+            wrapperClassName={`${uiInputClass} w-64`}
           />
-          <button
+          <UiButton
             onClick={() => setPage(1)}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mr-6"
+            variant="primary"
+            size="lg"
+            className="mr-6"
           >
             검색
-          </button>
+          </UiButton>
 
           {/* 상태 필터 버튼 */}
           {['ALL', 'PENDING', 'DONE', 'CANCELED'].map((status) => (
-            <button
+            <UiButton
               key={status}
               onClick={() => setStatusFilter(status as any)}
-              className={`px-4 py-2 rounded ${statusFilter === status ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
-                }`}
+              variant={statusFilter === status ? 'tabActive' : 'tabInactive'}
+              size="md"
             >
               {STATUS_LABELS[status] ?? '전체'}
-            </button>
+            </UiButton>
           ))}
         </div>
 
@@ -106,7 +110,7 @@ const SingleSchedulePage = () => {
                   <td className="border border-gray-300 px-4 py-2">{item.created_at?.slice(0, 10)}</td>
                   <td className="border border-gray-300 px-4 py-2">
                     <select
-                      className="border rounded px-2 py-1"
+                      className={uiInputClass}
                       value={item.status ?? 'PENDING'}
                       onChange={async (e) => {
                         const newStatus = e.target.value as StatusUpdateRequest['status'];

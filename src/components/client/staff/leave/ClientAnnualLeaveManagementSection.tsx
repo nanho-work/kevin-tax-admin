@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
@@ -132,7 +133,7 @@ export default function ClientAnnualLeaveManagementSection() {
   const loadLeaves = async (targetYear: number | '' = year, targetKeyword = keyword) => {
     try {
       setLoading(true)
-      const limit = 200
+      const limit = 100
       let offset = 0
       let total = 0
       const merged: AnnualLeave[] = []
@@ -160,7 +161,7 @@ export default function ClientAnnualLeaveManagementSection() {
 
   const loadStaffs = async (targetKeyword = keyword) => {
     try {
-      const limit = 200
+      const limit = 100
       let pageCursor = 1
       let total = 0
       const merged: AdminOut[] = []
@@ -230,7 +231,6 @@ export default function ClientAnnualLeaveManagementSection() {
     return Object.values(grouped).sort((a, b) => a.admin_name.localeCompare(b.admin_name, 'ko'))
   }, [items, staffs])
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
   const paginatedRows = useMemo(() => {
     const start = (page - 1) * pageSize
     return rows.slice(start, start + pageSize)
@@ -508,27 +508,7 @@ export default function ClientAnnualLeaveManagementSection() {
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={rows.length} limit={pageSize} onPageChange={setPage} />
 
       {actionMode && selectedRow ? (
         <div className="fixed inset-0 z-40 bg-black/30">

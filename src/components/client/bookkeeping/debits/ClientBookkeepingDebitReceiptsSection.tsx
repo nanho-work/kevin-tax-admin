@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import {
   getClientBookkeepingErrorMessage,
   getDebitSummary,
@@ -78,7 +79,6 @@ export default function ClientBookkeepingDebitReceiptsSection() {
   const [page, setPage] = useState(1)
   const [size] = useState(20)
   const [total, setTotal] = useState(0)
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size])
 
   const [year, setYear] = useState(new Date().getFullYear())
 
@@ -328,27 +328,7 @@ export default function ClientBookkeepingDebitReceiptsSection() {
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => loadReceipts(page - 1)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => loadReceipts(page + 1)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination page={page} total={total} limit={size} onPageChange={(nextPage) => loadReceipts(nextPage)} />
 
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">

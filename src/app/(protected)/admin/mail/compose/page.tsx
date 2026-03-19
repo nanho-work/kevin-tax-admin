@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import RichTextEditor from '@/components/editor/RichTextEditor'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { fetchCompanyTaxList } from '@/services/admin/company'
@@ -642,10 +643,9 @@ export default function AdminMailComposePage() {
                 닫기
               </button>
             </div>
-            <input
-              className={uiInputClass}
+            <UiSearchInput
               value={addressBookKeyword}
-              onChange={(e) => setAddressBookKeyword(e.target.value)}
+              onChange={setAddressBookKeyword}
               placeholder="회사명/이메일 검색"
             />
             <div className="mt-3 max-h-[calc(100vh-140px)] space-y-2 overflow-auto pr-1">

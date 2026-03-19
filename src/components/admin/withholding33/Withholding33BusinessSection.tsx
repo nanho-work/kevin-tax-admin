@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import {
   getAdminWithholding33Detail,
   getAdminWithholding33List,
@@ -15,6 +16,8 @@ import type {
 } from '@/types/admin_withholding33'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import UiButton from '@/components/common/UiButton'
+import { uiInputClass } from '@/styles/uiClasses'
 
 function toMonthInput(value: string) {
   if (!value) return ''
@@ -363,34 +366,30 @@ export default function Withholding33BusinessSection() {
         <div className="space-y-4 xl:col-span-3">
           <div className="rounded-lg border border-zinc-200 bg-white p-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <input
-                className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+              <UiSearchInput
+                wrapperClassName={uiInputClass}
                 placeholder="대상자명/사업자번호/주민번호"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    loadList(selectedCompanyId)
-                  }
-                }}
+                onChange={setQ}
+                onSubmit={() => loadList(selectedCompanyId)}
                 disabled={!selectedCompanyId}
               />
               <input
                 type="month"
-                className="h-10 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                className={uiInputClass}
                 value={toMonthInput(targetMonth)}
                 onChange={(e) => setTargetMonth(e.target.value)}
                 disabled={!selectedCompanyId}
               />
-              <button
+              <UiButton
                 type="button"
                 onClick={() => loadList(selectedCompanyId)}
-                className="h-10 rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                variant="secondary"
+                size="lg"
                 disabled={!selectedCompanyId}
               >
                 조회
-              </button>
+              </UiButton>
               <div className="flex items-center justify-end text-sm text-zinc-500">신고대기 {total}건</div>
             </div>
           </div>
@@ -543,26 +542,14 @@ export default function Withholding33BusinessSection() {
             </div>
           )}
 
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1 || !selectedCompanyId}
-              className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
-            >
-              ◀
-            </button>
-            <span className="text-sm text-zinc-600">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={page >= totalPages || !selectedCompanyId}
-              className="rounded border border-zinc-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
-            >
-              ▶
-            </button>
+          <div className="mt-2">
+            <Pagination
+              page={page}
+              total={total}
+              limit={size}
+              onPageChange={setPage}
+              className={!selectedCompanyId ? 'pointer-events-none opacity-50' : undefined}
+            />
           </div>
         </div>
       </div>

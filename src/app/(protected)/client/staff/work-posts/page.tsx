@@ -1,9 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import axios from 'axios'
 import { useSearchParams } from 'next/navigation'
+import { Paperclip } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
+import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import RichTextEditor from '@/components/editor/RichTextEditor'
 import { getClientStaffs } from '@/services/client/clientStaffService'
@@ -21,6 +24,7 @@ import {
 import { listClientAccounts } from '@/services/client/clientManagementService'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import { getTeams } from '@/services/client/teamService'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import type { AdminOut } from '@/types/admin'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
 import type { ClientAccountOut } from '@/types/clientAccount'
@@ -38,6 +42,7 @@ import type {
   WorkPostType,
   WorkPostUpdatePayload,
 } from '@/types/workPost'
+import { getClientRoleRank } from '@/utils/roleRank'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 const inputClass =
@@ -128,11 +133,24 @@ function formatDateTime(value?: string | null): string {
   return formatKSTDateTimeAssumeUTC(value)
 }
 
+function getErrorStatus(error: unknown): number | null {
+  if (!axios.isAxiosError(error)) return null
+  return typeof error.response?.status === 'number' ? error.response.status : null
+}
+
+function getErrorDetail(error: unknown): string {
+  if (!axios.isAxiosError(error)) return ''
+  const detail = (error.response?.data as any)?.detail
+  return typeof detail === 'string' ? detail : ''
+}
+
 export default function ClientWorkPostsPage() {
+  const { session } = useClientSessionContext()
   const searchParams = useSearchParams()
 
   const sourceType = (searchParams.get('source_type') || '').toLowerCase()
   const sourceId = Number(searchParams.get('source_id') || searchParams.get('post_id') || '')
+  const queryPostType = (searchParams.get('post_type') || '').toLowerCase()
   const isWorkPostSource =
     !sourceType ||
     sourceType === 'work_post' ||
@@ -141,7 +159,7 @@ export default function ClientWorkPostsPage() {
     sourceType === 'work-posts'
   const sourcePostId = Number.isFinite(sourceId) && sourceId > 0 && isWorkPostSource ? sourceId : null
 
-  const [postType, setPostType] = useState<WorkPostType | ''>('')
+  const [postType, setPostType] = useState<WorkPostType | ''>('notice')
   const [postStatus, setPostStatus] = useState<WorkPostStatus | ''>('')
   const [page, setPage] = useState(1)
   const [size] = useState(12)
@@ -185,6 +203,7 @@ export default function ClientWorkPostsPage() {
   const [clientAccounts, setClientAccounts] = useState<ClientAccountOut[]>([])
 
   const totalPages = Math.max(1, Math.ceil(total / size))
+  const isClientSuper = getClientRoleRank(session) === 0
 
   const receiptSummary = useMemo(() => {
     return selectedReceipts.reduce<Record<string, number>>((acc, receipt) => {
@@ -208,6 +227,25 @@ export default function ClientWorkPostsPage() {
   const clientAccountOptionMap = useMemo(() => {
     return new Map(clientAccounts.map((account) => [account.id, `${account.name} (${account.login_id})`]))
   }, [clientAccounts])
+
+  const canManagePost = useCallback(
+    (post?: WorkPostDetail | null) => {
+      if (!post) return false
+      if (isClientSuper) return true
+      if (post.created_by_type !== 'client_account') return false
+      const writerId = Number(post.created_by_id || 0)
+      const myAccountId = Number(session?.account_id || 0)
+      return writerId > 0 && myAccountId > 0 && writerId === myAccountId
+    },
+    [isClientSuper, session?.account_id]
+  )
+
+  const canManageSelectedPost = useMemo(
+    () => canManagePost(selectedPost),
+    [canManagePost, selectedPost]
+  )
+
+  const canUploadAttachmentsInEditor = editorMode === 'create' || canManageSelectedPost
 
   const resetEditorForCreate = useCallback(() => {
     setEditorMode('create')
@@ -256,9 +294,13 @@ export default function ClientWorkPostsPage() {
       toast.error('수정할 게시글을 먼저 선택해 주세요.')
       return
     }
+    if (!canManageSelectedPost) {
+      toast.error('수정/삭제 권한이 없습니다.')
+      return
+    }
     applyEditorFromDetail(selectedPost)
     setIsEditorOpen(true)
-  }, [applyEditorFromDetail, selectedPost])
+  }, [applyEditorFromDetail, canManageSelectedPost, selectedPost])
 
   const loadReferences = useCallback(async () => {
     try {
@@ -303,7 +345,7 @@ export default function ClientWorkPostsPage() {
       setDetailLoading(true)
       const [detail, receipts] = await Promise.all([
         fetchClientWorkPostDetail(postId),
-        fetchClientWorkPostReceipts(postId, { page: 1, size: 200 }),
+        fetchClientWorkPostReceipts(postId, { page: 1, size: 100 }),
       ])
       setSelectedPost(detail)
       setSelectedReceipts(receipts.items || [])
@@ -327,6 +369,12 @@ export default function ClientWorkPostsPage() {
   useEffect(() => {
     setPage(1)
   }, [postStatus, postType])
+
+  useEffect(() => {
+    if (queryPostType === 'notice' || queryPostType === 'task') {
+      setPostType(queryPostType)
+    }
+  }, [queryPostType])
 
   useEffect(() => {
     if (page > totalPages) {
@@ -453,9 +501,14 @@ export default function ClientWorkPostsPage() {
       due_at: dueAt,
       targets: targetsPayload,
     }
+    let uploadPhase = false
 
     try {
       setSubmitting(true)
+      if (editorMode === 'edit' && !canManageSelectedPost) {
+        toast.error('수정/삭제 권한이 없습니다.')
+        return
+      }
 
       let saved: WorkPostDetail
       if (editorMode === 'create') {
@@ -469,6 +522,11 @@ export default function ClientWorkPostsPage() {
       }
 
       if (pendingFiles.length > 0) {
+        if (!canUploadAttachmentsInEditor) {
+          toast.error('수정/삭제 권한이 없습니다.')
+          return
+        }
+        uploadPhase = true
         for (const file of pendingFiles) {
           await uploadClientWorkPostAttachment(saved.id, file)
         }
@@ -482,6 +540,19 @@ export default function ClientWorkPostsPage() {
       applyEditorFromDetail(saved)
       setIsEditorOpen(false)
     } catch (error) {
+      const status = getErrorStatus(error)
+      if (status === 403 && (editorMode === 'edit' || uploadPhase)) {
+        toast.error('수정/삭제 권한이 없습니다.')
+        return
+      }
+      if (uploadPhase && status === 400) {
+        toast.error(getErrorDetail(error) || '파일 정책 위반으로 업로드할 수 없습니다.')
+        return
+      }
+      if (uploadPhase && status === 409) {
+        toast.error('동시 업로드 충돌, 다시 시도해 주세요.')
+        return
+      }
       toast.error(getClientWorkPostErrorMessage(error))
     } finally {
       setSubmitting(false)
@@ -490,6 +561,10 @@ export default function ClientWorkPostsPage() {
 
   const handleDeletePost = async () => {
     if (!selectedPostId) return
+    if (!canManageSelectedPost) {
+      toast.error('수정/삭제 권한이 없습니다.')
+      return
+    }
     if (!window.confirm('선택한 게시글을 삭제하시겠습니까?')) return
 
     try {
@@ -503,6 +578,10 @@ export default function ClientWorkPostsPage() {
       setIsEditorOpen(false)
       await loadPosts()
     } catch (error) {
+      if (getErrorStatus(error) === 403) {
+        toast.error('수정/삭제 권한이 없습니다.')
+        return
+      }
       toast.error(getClientWorkPostErrorMessage(error))
     } finally {
       setDeleting(false)
@@ -511,6 +590,10 @@ export default function ClientWorkPostsPage() {
 
   const handleDeleteAttachment = async (attachmentId: number) => {
     if (!selectedPostId) return
+    if (!canManageSelectedPost) {
+      toast.error('수정/삭제 권한이 없습니다.')
+      return
+    }
     if (!window.confirm('첨부파일을 삭제하시겠습니까?')) return
 
     try {
@@ -519,6 +602,11 @@ export default function ClientWorkPostsPage() {
       toast.success('첨부파일이 삭제되었습니다.')
       await loadSelectedPost(selectedPostId)
     } catch (error) {
+      const status = getErrorStatus(error)
+      if (status === 403) {
+        toast.error('수정/삭제 권한이 없습니다.')
+        return
+      }
       toast.error(getClientWorkPostErrorMessage(error))
     } finally {
       setDeletingAttachmentId(null)
@@ -551,8 +639,8 @@ export default function ClientWorkPostsPage() {
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-neutral-900">공지/업무지시</h1>
-            <p className="mt-1 text-sm text-neutral-500">공지와 업무지시를 작성하고 수신 현황을 확인합니다.</p>
+            <h1 className="text-lg font-semibold text-neutral-900">게시판</h1>
+            <p className="mt-1 text-sm text-neutral-500">공지사항과 업무지시를 관리하고 수신 현황을 확인합니다.</p>
           </div>
           <div className="flex items-center gap-2">
             <UiButton
@@ -563,12 +651,16 @@ export default function ClientWorkPostsPage() {
             </UiButton>
             <UiButton
               variant="secondary"
-              disabled={!selectedPost}
+              disabled={!selectedPost || !canManageSelectedPost}
               onClick={openEditEditor}
             >
               선택 글 수정
             </UiButton>
-            <UiButton variant="danger" disabled={!selectedPostId || deleting} onClick={() => void handleDeletePost()}>
+            <UiButton
+              variant="danger"
+              disabled={!selectedPostId || deleting || !canManageSelectedPost}
+              onClick={() => void handleDeletePost()}
+            >
               삭제
             </UiButton>
           </div>
@@ -595,7 +687,7 @@ export default function ClientWorkPostsPage() {
               </select>
             </div>
 
-            <div className="mt-3 space-y-2">
+            <div className="mt-3">
               {loading ? (
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500">불러오는 중...</div>
               ) : posts.length === 0 ? (
@@ -603,47 +695,74 @@ export default function ClientWorkPostsPage() {
                   표시할 게시글이 없습니다.
                 </div>
               ) : (
-                posts.map((post) => {
-                  const isSelected = selectedPostId === post.id
-                  return (
-                    <button
-                      key={post.id}
-                      type="button"
-                      onClick={() => setSelectedPostId(post.id)}
-                      className={`w-full rounded-md border px-3 py-3 text-left transition ${
-                        isSelected
-                          ? 'border-sky-300 bg-sky-50'
-                          : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-zinc-500">{postTypeLabelMap[post.post_type]}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusBadgeClassMap[post.status]}`}>
-                          {post.status === 'draft' ? '임시저장' : post.status === 'published' ? '게시' : '보관'}
-                        </span>
-                      </div>
-                      <p className="mt-1 line-clamp-1 text-sm font-semibold text-zinc-900">{post.title}</p>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        작성일 {formatDateTime(post.created_at)} · 첨부 {post.attachment_count}건
-                      </p>
-                    </button>
-                  )
-                })
+                <div className="overflow-hidden rounded-md border border-zinc-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full table-fixed text-xs">
+                      <thead className="bg-zinc-50 text-zinc-600">
+                        <tr>
+                          <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
+                          <th className="px-2 py-2 text-left font-medium">제목</th>
+                          <th className="w-16 px-2 py-2 text-center font-medium">첨부</th>
+                          <th className="w-24 px-2 py-2 text-center font-medium">작성자</th>
+                          <th className="w-28 px-2 py-2 text-center font-medium">작성일</th>
+                          <th className="w-16 px-2 py-2 text-center font-medium">조회수</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {posts.map((post, index) => {
+                          const isSelected = selectedPostId === post.id
+                          const rowNumber = Math.max(1, total - (page - 1) * size - index)
+                          const writerLabel =
+                            post.created_by_type === 'client_account'
+                              ? '클라이언트'
+                              : post.created_by_type === 'admin'
+                                ? '직원'
+                                : '시스템'
+                          return (
+                            <tr
+                              key={post.id}
+                              onClick={() => setSelectedPostId(post.id)}
+                              className={`cursor-pointer border-t border-zinc-100 transition first:border-t-0 ${
+                                isSelected ? 'bg-sky-50' : 'hover:bg-zinc-50'
+                              }`}
+                            >
+                              <td className="px-2 py-2 text-center text-zinc-600">{rowNumber}</td>
+                              <td className="px-2 py-2">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                                    {postTypeLabelMap[post.post_type]}
+                                  </span>
+                                  <span className="truncate text-sm font-medium text-zinc-900">{post.title}</span>
+                                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClassMap[post.status]}`}>
+                                    {post.status === 'draft' ? '임시저장' : post.status === 'published' ? '게시' : '보관'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-2 py-2 text-center text-zinc-600">
+                                {post.attachment_count > 0 ? (
+                                  <span className="inline-flex items-center justify-center" title={`${post.attachment_count}개`}>
+                                    <Paperclip className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{writerLabel}</td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{formatDateTime(post.created_at)}</td>
+                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-              <span>
-                {page} / {totalPages} 페이지 (총 {total}건)
-              </span>
-              <div className="flex items-center gap-1">
-                <UiButton size="xs" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
-                  이전
-                </UiButton>
-                <UiButton size="xs" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
-                  다음
-                </UiButton>
-              </div>
+            <div className="mt-3 text-xs text-zinc-500">
+              <p className="text-center">총 {total}건</p>
+              <Pagination className="mt-2" page={page} total={total} limit={size} onPageChange={setPage} />
             </div>
           </div>
         </div>
@@ -735,7 +854,7 @@ export default function ClientWorkPostsPage() {
                             <UiButton
                               size="xs"
                               variant="danger"
-                              disabled={deletingAttachmentId === attachment.id}
+                              disabled={deletingAttachmentId === attachment.id || !canManageSelectedPost}
                               onClick={() => void handleDeleteAttachment(attachment.id)}
                             >
                               삭제
@@ -954,12 +1073,14 @@ export default function ClientWorkPostsPage() {
             <div className="mt-3">
               <label className="mb-1 block text-xs text-zinc-600">첨부파일</label>
               <input id={pendingFileInputId} type="file" multiple className="hidden" onChange={(e) => {
+                if (!canUploadAttachmentsInEditor) return
                 appendPendingFiles(e.target.files)
                 e.currentTarget.value = ''
               }} />
               <div className="flex flex-wrap items-stretch gap-2">
                 <FileDropzone
                   onFilesDrop={appendPendingFiles}
+                  disabled={!canUploadAttachmentsInEditor}
                   className="flex min-h-10 min-w-[240px] flex-1 items-center rounded-md border border-dashed px-3 text-xs transition"
                   idleClassName="border-zinc-300 bg-white text-zinc-500"
                   activeClassName="border-zinc-500 bg-zinc-50 text-zinc-800"
@@ -968,7 +1089,11 @@ export default function ClientWorkPostsPage() {
                 </FileDropzone>
                 <label
                   htmlFor={pendingFileInputId}
-                  className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+                  className={`inline-flex h-7 items-center justify-center rounded-md border px-2 text-xs font-medium transition ${
+                    canUploadAttachmentsInEditor
+                      ? 'cursor-pointer border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
+                      : 'cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400'
+                  }`}
                 >
                   파일 선택
                 </label>
@@ -994,7 +1119,11 @@ export default function ClientWorkPostsPage() {
             <UiButton variant="secondary" onClick={resetEditorForCreate}>
               초기화
             </UiButton>
-            <UiButton variant="primary" disabled={submitting} onClick={() => void handleSubmit()}>
+            <UiButton
+              variant="primary"
+              disabled={submitting || (editorMode === 'edit' && !canManageSelectedPost)}
+              onClick={() => void handleSubmit()}
+            >
               {submitting ? '저장 중...' : editorMode === 'create' ? '등록' : '수정'}
             </UiButton>
           </div>

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   listBookkeepingDebitBatchItems,
@@ -10,6 +13,7 @@ import {
   patchBookkeepingDebitItemLink,
   rematchBookkeepingDebitBatch,
 } from '@/services/client/clientBookkeepingService'
+import { uiInputClass } from '@/styles/uiClasses'
 import type {
   ClientDebitBatchRematchResponse,
   ClientDebitUploadBatchOut,
@@ -89,7 +93,6 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
   const [page, setPage] = useState(1)
   const [size] = useState(50)
   const [total, setTotal] = useState(0)
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size])
 
   const [matchStats, setMatchStats] = useState<{ total: number; matched: number; unmatched: number; failed: number }>({
     total: 0,
@@ -362,35 +365,32 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
 
       <div className="rounded-lg border border-zinc-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <UiButton
             type="button"
+            size="md"
+            variant={tab === 'all' ? 'tabActive' : 'tabInactive'}
             onClick={() => setTab('all')}
-            className={`rounded-md px-3 py-2 text-sm ${
-              tab === 'all' ? 'bg-zinc-900 text-white' : 'border border-zinc-300 bg-white text-zinc-700'
-            }`}
           >
             전체
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             type="button"
+            size="md"
+            variant={tab === 'unmapped' ? 'tabActive' : 'tabInactive'}
             onClick={() => setTab('unmapped')}
-            className={`rounded-md px-3 py-2 text-sm ${
-              tab === 'unmapped' ? 'bg-zinc-900 text-white' : 'border border-zinc-300 bg-white text-zinc-700'
-            }`}
           >
             미매핑
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             type="button"
+            size="md"
+            variant={tab === 'mapped' ? 'tabActive' : 'tabInactive'}
             onClick={() => setTab('mapped')}
-            className={`rounded-md px-3 py-2 text-sm ${
-              tab === 'mapped' ? 'bg-zinc-900 text-white' : 'border border-zinc-300 bg-white text-zinc-700'
-            }`}
           >
             매핑완료
-          </button>
+          </UiButton>
           <select
-            className="ml-auto h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+            className={`ml-auto ${uiInputClass}`}
             value={withdrawStatus}
             onChange={(e) => setWithdrawStatus(e.target.value)}
           >
@@ -401,14 +401,16 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
               </option>
             ))}
           </select>
-          <button
+          <UiButton
             type="button"
+            size="md"
+            variant="secondary"
             disabled={rematchLoading}
             onClick={handleRematch}
-            className="h-10 rounded-md border border-blue-300 bg-white px-3 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
           >
             {rematchLoading ? '재매칭 중...' : '미매핑 재매칭'}
-          </button>
+          </UiButton>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-zinc-700">
@@ -478,13 +480,14 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
                       ) : !linkable ? (
                         <span className="text-xs text-zinc-400">매핑 제외</span>
                       ) : (
-                        <button
+                        <UiButton
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           onClick={() => openLinkModal(row)}
-                          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                         >
                           회사 선택
-                        </button>
+                        </UiButton>
                       )}
                     </td>
                     <td className="max-w-[190px] border-r border-zinc-100 px-3 py-3 text-center">
@@ -508,40 +511,26 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
         </table>
       </div>
 
-      <div className="flex items-center justify-center gap-2">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => loadItems(page - 1, withdrawStatus, tab)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          이전
-        </button>
-        <span className="text-sm text-zinc-600">
-          {page} / {totalPages}
-        </span>
-        <button
-          type="button"
-          disabled={page >= totalPages}
-          onClick={() => loadItems(page + 1, withdrawStatus, tab)}
-          className="rounded border border-zinc-300 px-3 py-1 text-sm text-zinc-700 disabled:opacity-50"
-        >
-          다음
-        </button>
-      </div>
+      <Pagination
+        page={page}
+        total={total}
+        limit={size}
+        onPageChange={(nextPage) => loadItems(nextPage, withdrawStatus, tab)}
+      />
 
       {linkTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
           <div className="w-full max-w-2xl rounded-lg border border-zinc-200 bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-zinc-900">미매핑 수동 매핑</h2>
-              <button
+              <UiButton
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={closeLinkModal}
-                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
               >
                 닫기
-              </button>
+              </UiButton>
             </div>
             <p className="mt-2 text-sm text-zinc-600">
               입금자명: <strong>{linkTarget.member_name || '-'}</strong>
@@ -549,10 +538,15 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
 
             <div className="mt-4 space-y-3">
               <div className="relative">
-                <input
+                <UiSearchInput
                   value={companyQuery}
-                  onChange={(e) => {
-                    setCompanyQuery(e.target.value)
+                  onChange={(value) => {
+                    setCompanyQuery(value)
+                    setSelectedCompanyId('')
+                    setCompanyDropdownOpen(true)
+                  }}
+                  onClear={() => {
+                    setCompanyQuery('')
                     setSelectedCompanyId('')
                     setCompanyDropdownOpen(true)
                   }}
@@ -561,25 +555,27 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
                     window.setTimeout(() => setCompanyDropdownOpen(false), 120)
                   }}
                   placeholder="회사 선택 (회사명/사업자번호 입력)"
-                  className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                  wrapperClassName={uiInputClass}
                 />
                 {companyDropdownOpen ? (
                   <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-zinc-200 bg-white p-1 shadow-lg">
                     {visibleCompanyOptions.length > 0 ? (
                       visibleCompanyOptions.map((company) => (
-                        <button
+                        <UiButton
                           key={company.id}
                           type="button"
+                          variant="secondary"
+                          size="md"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
                             setSelectedCompanyId(company.id)
                             setCompanyQuery(formatCompanyOption(company))
                             setCompanyDropdownOpen(false)
                           }}
-                          className="block w-full rounded px-2 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100"
+                          className="block w-full justify-start text-left"
                         >
                           {formatCompanyOption(company)}
-                        </button>
+                        </UiButton>
                       ))
                     ) : (
                       <div className="px-2 py-2 text-sm text-zinc-500">일치하는 회사가 없습니다.</div>
@@ -590,21 +586,23 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
             </div>
 
             <div className="mt-4 flex justify-end gap-2">
-              <button
+              <UiButton
                 type="button"
+                variant="secondary"
+                size="md"
                 onClick={closeLinkModal}
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 취소
-              </button>
-              <button
+              </UiButton>
+              <UiButton
                 type="button"
+                variant="primary"
+                size="md"
                 onClick={handleLink}
                 disabled={statusWorkingId === linkTarget.id}
-                className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
               >
                 {statusWorkingId === linkTarget.id ? '처리 중...' : '매핑 저장'}
-              </button>
+              </UiButton>
             </div>
           </div>
         </div>

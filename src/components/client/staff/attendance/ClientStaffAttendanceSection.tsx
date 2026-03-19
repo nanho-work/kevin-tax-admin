@@ -373,7 +373,7 @@ export default function ClientStaffAttendanceSection() {
     const loadStaffs = async () => {
       try {
         const merged: AdminOut[] = []
-        const pageSize = 200
+        const pageSize = 100
         let page = 1
         let total = 0
 
@@ -424,7 +424,7 @@ export default function ClientStaffAttendanceSection() {
     const loadAnnualLeaves = async () => {
       try {
         const merged: AnnualLeave[] = []
-        const limit = 200
+        const limit = 100
         let offsetCursor = 0
         let total = 0
 
@@ -461,7 +461,7 @@ export default function ClientStaffAttendanceSection() {
       try {
         setLeaveLoading(true)
         const merged: AnnualLeaveRequest[] = []
-        const limit = 200
+        const limit = 100
         let offsetCursor = 0
         let total = 0
 
@@ -566,7 +566,7 @@ export default function ClientStaffAttendanceSection() {
           anchor_date: toDateParam(anchorDate),
           keyword: selected.name,
           offset: 0,
-          limit: 200,
+          limit: 100,
         })
 
         if (!mounted) return
@@ -607,7 +607,7 @@ export default function ClientStaffAttendanceSection() {
           year,
           month,
           offset: 0,
-          limit: 200,
+          limit: 100,
         })
         if (!mounted) return
         setMonthlySummaryItems(Array.isArray(res.items) ? res.items : [])
@@ -636,7 +636,7 @@ export default function ClientStaffAttendanceSection() {
           year,
           month,
           offset: 0,
-          limit: 200,
+          limit: 100,
         })
         if (!mounted) return
         setMonthlySettlementItems(Array.isArray(res.items) ? res.items : [])

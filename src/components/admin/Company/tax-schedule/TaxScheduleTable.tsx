@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import UiButton from '@/components/common/UiButton'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import { fetchTaxSchedules, updateTaxScheduleStatus } from '@/services/admin/taxSchedulService'
 import { TaxSchedule } from '@/types/taxSchedule'
 import { toast } from 'react-hot-toast'
-
-const inputClass =
-  'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
 type TaxColumnKey = 'VAT' | 'WITHHOLDING' | 'INCOME_TAX'
 
@@ -150,21 +149,21 @@ export default function TaxScheduleTable() {
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <input
-            className={inputClass}
+          <UiSearchInput
             placeholder="회사명 검색"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
           />
-          <button
+          <UiButton
             type="button"
-            className="h-10 rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-700 transition hover:bg-zinc-50"
+            variant="secondary"
+            size="lg"
             onClick={() => {
               setQuery('')
             }}
           >
             필터 초기화
-          </button>
+          </UiButton>
         </div>
       </div>
 
