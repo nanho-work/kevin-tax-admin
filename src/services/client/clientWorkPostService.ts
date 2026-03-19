@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { clientHttp } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   WorkPostActionResponse,
   WorkPostAttachment,
@@ -14,6 +15,12 @@ import type {
 } from '@/types/workPost'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/work-posts`
+const uploadClientWorkPostAttachmentAdapter = createMultipartUploadAdapter<
+  WorkPostAttachment,
+  { file: File; postId: number }
+>({
+  url: ({ postId }) => `${BASE}/${postId}/attachments`,
+})
 
 export function getClientWorkPostErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -84,14 +91,7 @@ export async function fetchClientWorkPostReceipts(
 }
 
 export async function uploadClientWorkPostAttachment(postId: number, file: File): Promise<WorkPostAttachment> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await clientHttp.post<WorkPostAttachment>(`${BASE}/${postId}/attachments`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-  return res.data
+  return uploadViaAdapter(clientHttp, uploadClientWorkPostAttachmentAdapter, { postId, file })
 }
 
 export async function fetchClientWorkPostAttachments(postId: number): Promise<WorkPostAttachmentListResponse> {
@@ -113,4 +113,3 @@ export async function hideClientWorkPost(postId: number, isHidden: boolean): Pro
   })
   return res.data
 }
-

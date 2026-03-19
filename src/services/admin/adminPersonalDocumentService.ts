@@ -1,5 +1,6 @@
 import type { AxiosError } from 'axios'
 import http, { getAdminAccessToken } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   PersonalDocument,
   PersonalDocumentDocType,
@@ -21,6 +22,14 @@ function authHeader() {
   }
 }
 
+const uploadMyPersonalDocumentAdapter = createMultipartUploadAdapter<
+  PersonalDocument,
+  { file: File; docTypeCode: PersonalDocumentDocType }
+>({
+  url: ({ docTypeCode }) => `${BASE}/${docTypeCode}`,
+  requestConfig: () => authHeader(),
+})
+
 export function getAdminPersonalDocumentErrorMessage(error: unknown) {
   const axiosError = error as AxiosError<ApiErrorPayload>
   const status = axiosError?.response?.status
@@ -34,16 +43,7 @@ export function getAdminPersonalDocumentErrorMessage(error: unknown) {
 }
 
 export async function uploadMyPersonalDocument(docTypeCode: PersonalDocumentDocType, file: File): Promise<PersonalDocument> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await http.post<PersonalDocument>(`${BASE}/${docTypeCode}`, formData, {
-    ...authHeader(),
-    headers: {
-      ...authHeader().headers,
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-  return res.data
+  return uploadViaAdapter(http, uploadMyPersonalDocumentAdapter, { docTypeCode, file })
 }
 
 export async function fetchMyPersonalDocuments(): Promise<PersonalDocumentListResponse> {

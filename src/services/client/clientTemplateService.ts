@@ -1,4 +1,5 @@
 import { clientHttp } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   SupervisorTemplateCodeCreateRequest,
   SupervisorTemplateCodeListResponse,
@@ -9,6 +10,12 @@ import type {
 } from '@/types/clientTemplate'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/templates`
+const uploadClientTemplateFileByCodeAdapter = createMultipartUploadAdapter<
+  SupervisorTemplateUploadResponse,
+  { file: File; code: string }
+>({
+  url: ({ code }) => `${BASE}/${encodeURIComponent(code)}/upload`,
+})
 
 export async function listClientTemplates(params?: { is_active?: boolean }): Promise<SupervisorTemplateCodeListResponse> {
   const res = await clientHttp.get<SupervisorTemplateCodeListResponse>(`${BASE}/`, { params })
@@ -34,10 +41,7 @@ export async function uploadClientTemplateFileByCode(
   code: string,
   file: File
 ): Promise<SupervisorTemplateUploadResponse> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await clientHttp.post<SupervisorTemplateUploadResponse>(`${BASE}/${encodeURIComponent(code)}/upload`, form)
-  return res.data
+  return uploadViaAdapter(clientHttp, uploadClientTemplateFileByCodeAdapter, { code, file })
 }
 
 export async function getClientTemplateDownloadUrlByCode(
@@ -46,4 +50,3 @@ export async function getClientTemplateDownloadUrlByCode(
   const res = await clientHttp.get<SupervisorTemplateDownloadResponse>(`${BASE}/${encodeURIComponent(code)}/download-url`)
   return res.data
 }
-

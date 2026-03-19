@@ -13,71 +13,11 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Toolbar } from './TiptapToolbar';
-import { getClientAccessToken } from '@/services/http';
+import {
+  uploadEditorContentImageByUrl,
+  uploadEditorImageFile,
+} from '@/services/editorImageUploadService'
 
-
-const BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/+$/, '');
-const UPLOAD_BY_URL_ENDPOINT = `${BASE_URL}/blog/posts/content-image-upload-by-url`;
-const THUMBNAIL_UPLOAD_ENDPOINT = `${BASE_URL}/blog/posts/thumbnail-upload`;
-
-/** 외부 URL을 서버에 전달 → 서버가 다운로드/S3 업로드 → { url } 반환 */
-async function uploadContentImageByUrl(imageUrl: string): Promise<string | null> {
-  try {
-    const token = getClientAccessToken();
-
-    const res = await fetch(UPLOAD_BY_URL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ url: imageUrl }),
-      cache: 'no-store',
-      credentials: 'include', // 쿠키 세션을 쓰면 유지, 아니면 제거 가능
-    });
-
-    if (!res.ok) {
-      // 서버에서 에러 메시지를 주면 디버깅에 도움
-      const msg = await res.text().catch(() => '');
-      throw new Error(`upload-by-url failed: ${res.status} ${res.statusText} ${msg}`);
-    }
-
-    const data = (await res.json()) as { url?: string };
-    return data?.url ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function uploadImageFile(file: File): Promise<string | null> {
-  try {
-    const token = getClientAccessToken();
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const res = await fetch(THUMBNAIL_UPLOAD_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: formData,
-      cache: 'no-store',
-      credentials: 'include',
-    });
-
-    if (!res.ok) {
-      const msg = await res.text().catch(() => '');
-      throw new Error(`image upload failed: ${res.status} ${res.statusText} ${msg}`);
-    }
-
-    const data = (await res.json()) as { thumbnail_url?: string };
-    return data?.thumbnail_url ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /** 내부/허용 도메인인지 판별(이미 우리 S3 등인 경우 업로드 스킵) */
 function isAllowedInternalSrc(src: string): boolean {
@@ -110,7 +50,7 @@ async function rewriteImageSrcsToS3(html: string): Promise<string> {
     if (isAllowedInternalSrc(src) || isDataOrBase64(src) || !isHttpUrl(src)) continue;
 
     // 서버 업로드 → 성공 시 교체, 실패 시 원본 유지
-    const uploaded = await uploadContentImageByUrl(src);
+    const uploaded = await uploadEditorContentImageByUrl(src);
     if (uploaded) img.setAttribute('src', uploaded);
   }
 
@@ -188,7 +128,7 @@ export default function TiptapEditor({
           if (!file) return true;
 
           (async () => {
-            const uploaded = await uploadImageFile(file);
+            const uploaded = await uploadEditorImageFile(file);
             if (uploaded) {
               editor?.chain().focus().setImage({ src: uploaded }).run();
             }
@@ -221,7 +161,7 @@ export default function TiptapEditor({
   });
 
   const handleImageFileSelect = async (file: File) => {
-    const uploaded = await uploadImageFile(file)
+    const uploaded = await uploadEditorImageFile(file)
     if (!uploaded) return
     editor?.chain().focus().setImage({ src: uploaded }).run()
   }

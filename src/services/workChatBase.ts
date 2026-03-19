@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
 import { MAX_PAGE_SIZE, normalizePage, normalizePageSize } from '@/lib/pagination'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   WorkChatAttachment,
   WorkChatAttachmentUrlOut,
@@ -287,6 +288,10 @@ export function getWorkChatErrorMessage(error: unknown, defaultMessage = '채팅
 
 export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | '/client' | '/company') {
   const base = `${process.env.NEXT_PUBLIC_API_BASE_URL}${prefix}/chats`
+  const uploadAttachmentAdapter = createMultipartUploadAdapter<WorkChatMessage, { file: File; roomId: number }>({
+    url: ({ roomId }) => `${base}/rooms/${roomId}/attachments`,
+    responseMapper: (raw) => normalizeMessage(raw?.message ?? raw),
+  })
 
   return {
     async listParticipants(): Promise<WorkChatParticipantsResponse> {
@@ -347,10 +352,7 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       return normalizeMessage(res.data)
     },
     async uploadAttachment(roomId: number, file: File): Promise<WorkChatMessage> {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await httpClient.post(`${base}/rooms/${roomId}/attachments`, form)
-      return normalizeMessage(res.data?.message ?? res.data)
+      return uploadViaAdapter(httpClient, uploadAttachmentAdapter, { roomId, file })
     },
     async markRead(roomId: number, lastReadMessageId?: number | null): Promise<void> {
       await httpClient.post(`${base}/rooms/${roomId}/read`, {

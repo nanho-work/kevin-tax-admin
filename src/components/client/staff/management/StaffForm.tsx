@@ -139,31 +139,23 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
                 setMessage({ type: 'error', text: '로그인 아이디를 입력해 주세요.' })
                 return
             }
-            const formData = new FormData()
-            formData.append('login_id', form.login_id.trim())
-            formData.append('email', form.email)
-            formData.append('name', form.name)
-            formData.append('password', form.password)
-            formData.append('phone', form.phone ?? '')
-            formData.append('hired_at', normalizeFlexibleDate(form.hired_at ?? ''))
-            formData.append('birth_date', normalizeFlexibleDate(form.birth_date ?? ''))
-            formData.append('client_id', String(form.client_id))
             if (form.initial_remaining_days !== '') {
                 const parsedInitialRemainingDays = Number(form.initial_remaining_days)
                 if (!Number.isFinite(parsedInitialRemainingDays) || parsedInitialRemainingDays < 0) {
                     setMessage({ type: 'error', text: '초기 잔여 연차는 0 이상으로 입력해 주세요.' })
                     return
                 }
-                formData.append('initial_remaining_days', String(parsedInitialRemainingDays))
-            }
-            if (form.team_id) formData.append('team_id', String(form.team_id))
-            if (form.role_id) formData.append('role_id', String(form.role_id))
-            // Removed department_id append line
-            if (profileImage) {
-                formData.append('profile_image', profileImage)
             }
 
-            await createClientStaff(formData)
+            await createClientStaff({
+              ...form,
+              login_id: form.login_id.trim(),
+              hired_at: normalizeFlexibleDate(form.hired_at ?? ''),
+              birth_date: normalizeFlexibleDate(form.birth_date ?? ''),
+              initial_remaining_days:
+                form.initial_remaining_days !== '' ? String(Number(form.initial_remaining_days)) : '',
+              profile_image: profileImage,
+            })
             setMessage({ type: 'success', text: '직원 등록이 완료되었습니다.' })
             setForm((prev) => ({ ...createInitialForm(), client_id: prev.client_id }))
             setProfileImage(null)

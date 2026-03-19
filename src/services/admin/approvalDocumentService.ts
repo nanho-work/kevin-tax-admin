@@ -1,5 +1,6 @@
 import type { AxiosError } from 'axios'
 import http, { getAdminAccessToken } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   ApprovalAttachmentAction,
   ApprovalAttachment,
@@ -25,6 +26,14 @@ function authHeader() {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   }
 }
+
+const uploadApprovalDocumentAttachmentAdapter = createMultipartUploadAdapter<
+  ApprovalAttachment,
+  { file: File; documentId: number }
+>({
+  url: ({ documentId }) => `${BASE}${documentId}/attachments`,
+  requestConfig: () => authHeader(),
+})
 
 export function getApprovalDocumentErrorMessage(error: unknown) {
   const axiosError = error as AxiosError<ApiErrorPayload>
@@ -87,16 +96,7 @@ export async function reviewApprovalDocument(
 }
 
 export async function uploadApprovalDocumentAttachment(documentId: number, file: File): Promise<ApprovalAttachment> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await http.post<ApprovalAttachment>(`${BASE}${documentId}/attachments`, formData, {
-    ...authHeader(),
-    headers: {
-      ...authHeader().headers,
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-  return res.data
+  return uploadViaAdapter(http, uploadApprovalDocumentAttachmentAdapter, { documentId, file })
 }
 
 export async function getApprovalDocumentAttachmentDownloadUrl(

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { adminLogin } from '@/services/adminService'
+import { adminLogin } from '@/services/admin/adminService'
 import { checkInAdmin } from '@/services/attendanceLogService'
 import type { LoginRequest } from '@/types/admin'
 

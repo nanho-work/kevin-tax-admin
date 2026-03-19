@@ -1,5 +1,6 @@
 import type { AxiosError } from 'axios'
 import { clientHttp } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   ClientBookkeepingBillingCreateRequest,
   ClientBookkeepingBillingListFilters,
@@ -40,6 +41,33 @@ import type {
 } from '@/types/clientBookkeeping'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/bookkeeping`
+const previewBookkeepingContractBulkUploadAdapter = createMultipartUploadAdapter<
+  ClientBookkeepingContractBulkPreviewResponse,
+  { file: File }
+>({
+  url: () => `${BASE}/contracts/upload/preview`,
+})
+
+const applyBookkeepingContractBulkUploadAdapter = createMultipartUploadAdapter<
+  ClientBookkeepingContractBulkApplyResponse,
+  { file: File }
+>({
+  url: () => `${BASE}/contracts/upload/apply`,
+})
+
+const uploadBookkeepingDebitsAdapter = createMultipartUploadAdapter<
+  ClientDebitUploadBatchOut,
+  { file: File; source_name?: string; memo?: string }
+>({
+  url: () => `${BASE}/debits/upload`,
+  buildFields: ({ source_name, memo }) => ({
+    source_name: source_name?.trim() || undefined,
+    memo: memo?.trim() || undefined,
+  }),
+  requestConfig: () => ({
+    timeout: 120000,
+  }),
+})
 
 type ApiErrorDetailItem = {
   msg?: string
@@ -118,19 +146,13 @@ export async function generateBookkeepingContractBillings(
 export async function previewBookkeepingContractBulkUpload(
   file: File
 ): Promise<ClientBookkeepingContractBulkPreviewResponse> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await clientHttp.post<ClientBookkeepingContractBulkPreviewResponse>(`${BASE}/contracts/upload/preview`, form)
-  return res.data
+  return uploadViaAdapter(clientHttp, previewBookkeepingContractBulkUploadAdapter, { file })
 }
 
 export async function applyBookkeepingContractBulkUpload(
   file: File
 ): Promise<ClientBookkeepingContractBulkApplyResponse> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await clientHttp.post<ClientBookkeepingContractBulkApplyResponse>(`${BASE}/contracts/upload/apply`, form)
-  return res.data
+  return uploadViaAdapter(clientHttp, applyBookkeepingContractBulkUploadAdapter, { file })
 }
 
 export async function createBookkeepingBilling(
@@ -241,16 +263,7 @@ export async function uploadBookkeepingDebits(params: {
   source_name?: string
   memo?: string
 }): Promise<ClientDebitUploadBatchOut> {
-  const form = new FormData()
-  form.append('file', params.file)
-  if (params.source_name?.trim()) form.append('source_name', params.source_name.trim())
-  if (params.memo?.trim()) form.append('memo', params.memo.trim())
-
-  const res = await clientHttp.post<ClientDebitUploadBatchOut>(`${BASE}/debits/upload`, form, {
-    // Let browser/axios set multipart boundary automatically.
-    timeout: 120000,
-  })
-  return res.data
+  return uploadViaAdapter(clientHttp, uploadBookkeepingDebitsAdapter, params)
 }
 
 export async function listBookkeepingDebitBatches(

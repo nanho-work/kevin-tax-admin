@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { logoutAdmin } from '@/services/adminService'
+import { logoutAdmin } from '@/services/admin/adminService'
 import NotificationBell from './single-schedule/NotificationBell'
 import { checkOutAdmin } from '@/services/attendanceLogService'
 import { useMemo } from 'react'

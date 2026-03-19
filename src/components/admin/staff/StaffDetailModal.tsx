@@ -7,7 +7,7 @@
 
 import { AdminOut } from '@/types/admin'
 import { useEffect, useRef, useState } from 'react'
-import { updateAdminStaff } from '@/services/adminService'
+import { updateAdminStaff } from '@/services/admin/adminStaffService'
 import { getRoles } from '@/services/roleService'
 import { getDepartments } from '@/services/departmentService'
 import { getTeams } from '@/services/teamService'
@@ -90,19 +90,16 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
   const handleSubmit = async () => {
     try {
       setLoading(true)
-      const formData = new FormData()
-      if (form.name) formData.append('name', form.name)
-      if (form.phone) formData.append('phone', form.phone)
-      if (form.role_id !== undefined) formData.append('role_id', String(form.role_id))
-      if (form.team_id !== undefined) formData.append('team_id', String(form.team_id))
-      if (form.hired_at) formData.append('hired_at', form.hired_at)
-      if (form.birth_date) formData.append('birth_date', form.birth_date)
-      if (form.retired_at) formData.append('retired_at', form.retired_at)
-      if (form.profile_image) {
-        formData.append('file', form.profile_image)  // 'profile_image' → 'file'
-      }
-
-      const result = await updateAdminStaff(staff.id, formData)
+      const result = await updateAdminStaff(staff.id, {
+        name: form.name || undefined,
+        phone: form.phone || undefined,
+        role_id: form.role_id,
+        team_id: form.team_id,
+        hired_at: form.hired_at || undefined,
+        birth_date: form.birth_date || undefined,
+        retired_at: form.retired_at || undefined,
+        profile_image: form.profile_image,
+      })
       setSuccess('정보가 저장되었습니다.')
 
       if (form.profile_image) {

@@ -2,7 +2,11 @@
 
 import { AdminOut } from '@/types/admin'
 import { useEffect, useState } from 'react'
-import { patchClientStaffTeam, updateClientStaff } from '@/services/client/clientStaffService'
+import {
+  patchClientStaffTeam,
+  updateClientStaff,
+  type UpdateClientStaffPayload,
+} from '@/services/client/clientStaffService'
 import {
   deleteClientStaffPersonalDocument,
   fetchClientStaffPersonalDocumentDownloadUrl,
@@ -384,34 +388,34 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
       const birthDateChanged = form.birth_date !== (staff.birth_date || '')
       const retiredAtChanged = form.retired_at !== (staff.retired_at || '')
 
-      const formData = new FormData()
       let hasGeneralChanges = false
+      const updatePayload: UpdateClientStaffPayload = {}
       if (nameChanged && form.name) {
-        formData.append('name', form.name)
+        updatePayload.name = form.name
         hasGeneralChanges = true
       }
       if (phoneChanged && form.phone) {
-        formData.append('phone', form.phone)
+        updatePayload.phone = form.phone
         hasGeneralChanges = true
       }
       if (roleChanged && form.role_id !== undefined) {
-        formData.append('role_id', String(form.role_id))
+        updatePayload.role_id = form.role_id
         hasGeneralChanges = true
       }
       if (hiredAtChanged && form.hired_at) {
-        formData.append('hired_at', form.hired_at)
+        updatePayload.hired_at = form.hired_at
         hasGeneralChanges = true
       }
       if (birthDateChanged && form.birth_date) {
-        formData.append('birth_date', form.birth_date)
+        updatePayload.birth_date = form.birth_date
         hasGeneralChanges = true
       }
       if (retiredAtChanged && form.retired_at) {
-        formData.append('retired_at', form.retired_at)
+        updatePayload.retired_at = form.retired_at
         hasGeneralChanges = true
       }
       if (form.profile_image) {
-        formData.append('file', form.profile_image)
+        updatePayload.profile_image = form.profile_image
         hasGeneralChanges = true
       }
 
@@ -422,7 +426,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
       }
 
       if (hasGeneralChanges) {
-        await updateClientStaff(staff.id, formData)
+        await updateClientStaff(staff.id, updatePayload)
       }
 
       if (teamChanged) {

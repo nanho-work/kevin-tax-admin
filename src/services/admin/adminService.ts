@@ -1,4 +1,5 @@
 import http, { clearAdminAccessToken, getAdminAccessToken, setAdminAccessToken } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   LoginRequest,
   LoginResponse,
@@ -40,6 +41,15 @@ function authHeader() {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   }
 }
+
+const uploadMyProfileImageAdapter = createMultipartUploadAdapter<
+  { message: string; profile_image_url?: string | null },
+  { file: File }
+>({
+  method: 'put',
+  url: () => `${ADMIN_AUTH_BASE}/me/profile-image`,
+  requestConfig: () => authHeader(),
+})
 
 export interface PaginatedResponse<T> {
   items: T[]
@@ -117,16 +127,7 @@ export async function changeAdminPassword(payload: {
 }
 
 export async function uploadMyProfileImage(file: File): Promise<{ message: string; profile_image_url?: string | null }> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await http.put<{ message: string; profile_image_url?: string | null }>(`${ADMIN_AUTH_BASE}/me/profile-image`, formData, {
-    ...authHeader(),
-    headers: {
-      ...authHeader().headers,
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-  return res.data
+  return uploadViaAdapter(http, uploadMyProfileImageAdapter, { file })
 }
 
 export async function deleteMyProfileImage(): Promise<{ message: string }> {

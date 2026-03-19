@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getAttendanceLogs } from '@/services/attendanceLogService'
-import { checkAdminSession } from '@/services/adminService'
+import { checkAdminSession } from '@/services/admin/adminService'
 import { format } from 'date-fns'
 import { RoleOut } from '@/types/role'
 

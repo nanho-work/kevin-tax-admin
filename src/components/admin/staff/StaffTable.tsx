@@ -6,7 +6,7 @@ import { AdminOut } from '@/types/admin'
 import {
     getAdminStaffs, activateAdminStaff,
     deactivateAdminStaff, updateAdminStaff,
-} from '@/services/adminService'
+} from '@/services/admin/adminStaffService'
 import StaffDetailModal from './StaffDetailModal'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'

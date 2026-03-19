@@ -1,5 +1,6 @@
 // src/services/blogService.ts
 import http, { getAccessToken } from '@/services/http';
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   BlogPostCreate, BlogPostResponse,
   BlogCategoryCreate, BlogCategoryResponse,
@@ -14,6 +15,13 @@ export interface Paginated<T> {
 }
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/blog`;
+const uploadAdminBlogThumbnailAdapter = createMultipartUploadAdapter<
+  { thumbnail_url: string },
+  { file: File }
+>({
+  url: () => `${BASE}/posts/thumbnail-upload`,
+  requestConfig: () => authHeader(),
+})
 
 // 공통 인증 헤더
 function authHeader() {
@@ -97,10 +105,7 @@ export async function deleteKeyword(keywordId: number): Promise<void> {
 // ---------------------- 이미지 유틸 --------------------
 /** 썸네일 업로드 → { thumbnail_url } 반환 */
 export async function uploadThumbnail(file: File): Promise<{ thumbnail_url: string }> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await http.post(`${BASE}/posts/thumbnail-upload`, fd, { ...authHeader() });
-  return res.data as { thumbnail_url: string };
+  return uploadViaAdapter(http, uploadAdminBlogThumbnailAdapter, { file })
 }
 
 /** 본문/썸네일 이미지 URL로 삭제 (백엔드가 form-data image_urls[] 받는 경우) */

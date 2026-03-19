@@ -1,4 +1,5 @@
 import { adminHttp } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import { getCommonMailErrorMessage } from '@/utils/mailApiError'
 import type {
   MailActionLogListResponse,
@@ -55,6 +56,9 @@ import type {
 } from '@/types/adminMail'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/mail`
+const uploadMailComposeAttachmentAdapter = createMultipartUploadAdapter<MailComposeAttachmentUploadResponse, { file: File }>({
+  url: () => `${BASE}/compose/attachments`,
+})
 
 export function getAdminMailErrorMessage(error: unknown): string {
   return getCommonMailErrorMessage(error)
@@ -275,14 +279,7 @@ export async function sendMail(payload: MailSendPayload): Promise<MailSendRespon
 }
 
 export async function uploadMailComposeAttachment(file: File): Promise<MailComposeAttachmentUploadResponse> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await adminHttp.post<MailComposeAttachmentUploadResponse>(`${BASE}/compose/attachments`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
-  return res.data
+  return uploadViaAdapter(adminHttp, uploadMailComposeAttachmentAdapter, { file })
 }
 
 export async function listMailDrafts(page = 1, size = 20): Promise<MailDraftListResponse> {

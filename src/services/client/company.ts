@@ -1,4 +1,5 @@
 import { clientHttp, getClientAccessToken } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
@@ -12,6 +13,21 @@ const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/companies`
 export const COMPANY_DOC_TYPE_BUSINESS_LICENSE = 'business_license'
 export const COMPANY_DOC_TYPE_OWNER_ID = 'id_card'
 export const COMPANY_DOC_TYPE_BANKBOOK = 'bank_account'
+
+const uploadClientCompanyDocumentAdapter = createMultipartUploadAdapter<
+  unknown,
+  { file: File; company_id: number; doc_type_code: string }
+>({
+  url: ({ company_id, doc_type_code }) => `${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}`,
+})
+
+const uploadClientCompanyCustomDocumentAdapter = createMultipartUploadAdapter<
+  ClientCompanyCustomDocumentOut,
+  { file: File; company_id: number; title: string }
+>({
+  url: ({ company_id }) => `${BASE}/${company_id}/custom-documents`,
+  buildFields: ({ title }) => ({ title }),
+})
 
 export interface ClientCompanyDocumentPreviewResponse {
   file_name: string
@@ -205,10 +221,11 @@ export async function uploadClientCompanyDocument(
   doc_type_code: string,
   file: File
 ): Promise<unknown> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await clientHttp.post(`${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}`, form)
-  return res.data
+  return uploadViaAdapter(clientHttp, uploadClientCompanyDocumentAdapter, {
+    company_id,
+    doc_type_code,
+    file,
+  })
 }
 
 export async function deleteClientCompanyBusinessLicense(company_id: number): Promise<{ message: string }> {
@@ -229,11 +246,11 @@ export async function uploadClientCompanyCustomDocument(
   company_id: number,
   params: { title: string; file: File }
 ): Promise<ClientCompanyCustomDocumentOut> {
-  const form = new FormData()
-  form.append('title', params.title)
-  form.append('file', params.file)
-  const res = await clientHttp.post<ClientCompanyCustomDocumentOut>(`${BASE}/${company_id}/custom-documents`, form)
-  return res.data
+  return uploadViaAdapter(clientHttp, uploadClientCompanyCustomDocumentAdapter, {
+    company_id,
+    title: params.title,
+    file: params.file,
+  })
 }
 
 export async function listClientCompanyCustomDocuments(

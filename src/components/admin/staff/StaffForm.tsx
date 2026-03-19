@@ -7,7 +7,8 @@
 
 import { useState, useEffect } from 'react'
 import type { CreateStaffRequest } from '@/types/admin'
-import { createAdminStaff, fetchAdminSession } from '@/services/adminService'
+import { createAdminStaff } from '@/services/admin/adminStaffService'
+import { fetchAdminSession } from '@/services/admin/adminService'
 import { getRoles } from '@/services/roleService'
 import { getTeams } from '@/services/teamService'
 import { getDepartments } from '@/services/departmentService'
@@ -89,23 +90,10 @@ export default function StaffForm() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
-            const formData = new FormData()
-            formData.append('login_id', form.login_id)
-            formData.append('email', form.email)
-            formData.append('name', form.name)
-            formData.append('password', form.password)
-            formData.append('phone', form.phone ?? '')
-            formData.append('hired_at', form.hired_at ?? '')
-            formData.append('birth_date', form.birth_date ?? '')
-            formData.append('client_id', String(form.client_id))
-            formData.append('team_id', form.team_id ? String(form.team_id) : '')
-            formData.append('role_id', form.role_id ? String(form.role_id) : '')
-            // Removed department_id append line
-            if (profileImage) {
-                formData.append('profile_image', profileImage)
-            }
-
-            const res = await createAdminStaff(formData)
+            const res = await createAdminStaff({
+              ...form,
+              profile_image: profileImage,
+            })
             alert(`직원 등록 완료: ${res.email}`)
             window.location.reload();
         } catch (err) {
