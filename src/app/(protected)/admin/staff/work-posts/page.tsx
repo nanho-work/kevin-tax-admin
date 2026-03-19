@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
@@ -19,6 +19,8 @@ import type {
   WorkPostType,
 } from '@/types/workPost'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+
+type BoardTabKey = 'notice' | 'library' | 'qna' | 'workflow' | 'forms' | 'free'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -43,6 +45,15 @@ const postTypeLabelMap: Record<WorkPostType, string> = {
   task: '업무지시',
 }
 
+const boardTabs: Array<{ key: BoardTabKey; label: string }> = [
+  { key: 'notice', label: '공지사항' },
+  { key: 'library', label: '자료실' },
+  { key: 'qna', label: 'QnA' },
+  { key: 'workflow', label: '업무방식' },
+  { key: 'forms', label: '서류양식' },
+  { key: 'free', label: '자유게시판' },
+]
+
 const receiptStatusLabelMap: Record<WorkPostReceiptStatus, string> = {
   unread: '안읽음',
   read: '읽음',
@@ -63,7 +74,31 @@ function formatDateTime(value?: string | null): string {
   return formatKSTDateTimeAssumeUTC(value)
 }
 
+function formatBoardDate(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  const now = new Date()
+  const dayKey = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const isToday = dayKey.format(date) === dayKey.format(now)
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour12: false,
+    ...(isToday
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: '2-digit', day: '2-digit' }),
+  })
+    .format(date)
+    .replace(/\.\s?$/, '')
+}
+
 export default function AdminWorkPostsInboxPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
 
   const sourceType = (searchParams.get('source_type') || '').toLowerCase()
@@ -91,6 +126,7 @@ export default function AdminWorkPostsInboxPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [statusSubmitting, setStatusSubmitting] = useState<Exclude<WorkPostReceiptStatus, 'unread'> | null>(null)
   const [hiding, setHiding] = useState(false)
+  const [boardTab, setBoardTab] = useState<BoardTabKey>('notice')
   const noticeAutoReadReceiptRef = useRef<number | null>(null)
 
   const selectedInboxItem = useMemo(
@@ -99,6 +135,9 @@ export default function AdminWorkPostsInboxPage() {
   )
 
   const totalPages = Math.max(1, Math.ceil(total / size))
+  const isTaskView = postType === 'task'
+  const isNoticeBoardTab = boardTab === 'notice'
+  const showInlineDetail = false
 
   const loadInbox = useCallback(async () => {
     try {
@@ -210,33 +249,46 @@ export default function AdminWorkPostsInboxPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+    <section className="space-y-2">
+      <div className="px-1 py-1">
         <h1 className="text-lg font-semibold text-neutral-900">게시판 수신함</h1>
-        <p className="mt-1 text-sm text-neutral-500">수신한 공지사항과 업무지시를 확인하고 상태를 변경합니다.</p>
+        <p className="mt-1 text-sm text-neutral-500">
+          {isTaskView ? '수신한 업무지시를 확인하고 상태를 변경합니다.' : '수신한 공지사항을 확인합니다.'}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-4">
-          <div className="rounded-xl border border-neutral-200 bg-white p-4">
-            <div className="grid grid-cols-2 gap-2">
-              <select className={inputClass} value={postType} onChange={(e) => setPostType(e.target.value as WorkPostType | '')}>
-                {postTypeOptions.map((option) => (
-                  <option key={option.value || 'all'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value as WorkPostReceiptStatus | '')}>
-                {receiptStatusOptions.map((option) => (
-                  <option key={option.value || 'all'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {!isTaskView ? (
+        <div className="border-b border-neutral-200 pb-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {boardTabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setBoardTab(tab.key)}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${
+                  boardTab === tab.key
+                    ? 'bg-sky-600 font-medium text-white'
+                    : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
-            <div className="mt-3">
+      {!isTaskView && !isNoticeBoardTab ? (
+        <div className="border border-dashed border-neutral-300 bg-transparent p-10 text-center">
+          <p className="text-sm text-zinc-500">준비중인 메뉴입니다.</p>
+        </div>
+      ) : null}
+
+      {isTaskView || isNoticeBoardTab ? (
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className={showInlineDetail ? 'xl:col-span-4' : 'xl:col-span-12'}>
+          <div className="bg-transparent px-0 py-2">
+            <div>
               {loading ? (
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500">불러오는 중...</div>
               ) : items.length === 0 ? (
@@ -247,8 +299,8 @@ export default function AdminWorkPostsInboxPage() {
                 <div className="overflow-hidden rounded-md border border-zinc-200">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed text-xs">
-                      <thead className="bg-zinc-50 text-zinc-600">
-                        <tr>
+                      <thead className="bg-white text-zinc-600">
+                        <tr className="border-b border-zinc-200">
                           <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
                           <th className="px-2 py-2 text-left font-medium">제목</th>
                           <th className="w-16 px-2 py-2 text-center font-medium">첨부</th>
@@ -257,16 +309,19 @@ export default function AdminWorkPostsInboxPage() {
                           <th className="w-16 px-2 py-2 text-center font-medium">조회수</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="bg-white">
                         {items.map((item, index) => {
-                          const selected = selectedPostId === item.post_id
                           const rowNumber = Math.max(1, total - (page - 1) * size - index)
                           return (
                             <tr
                               key={item.receipt_id}
-                              onClick={() => setSelectedPostId(item.post_id)}
-                              className={`cursor-pointer border-t border-zinc-100 transition first:border-t-0 ${
-                                selected ? 'bg-sky-50' : 'hover:bg-zinc-50'
+                              onClick={() => {
+                                const q = new URLSearchParams()
+                                if (postType) q.set('post_type', postType)
+                                router.push(`/admin/staff/work-posts/${item.post_id}${q.toString() ? `?${q.toString()}` : ''}`)
+                              }}
+                              className={`cursor-pointer border-t border-zinc-100 bg-white transition first:border-t-0 ${
+                                'hover:bg-zinc-50'
                               }`}
                             >
                               <td className="px-2 py-2 text-center text-zinc-600">{rowNumber}</td>
@@ -283,7 +338,7 @@ export default function AdminWorkPostsInboxPage() {
                               </td>
                               <td className="px-2 py-2 text-center text-zinc-500">-</td>
                               <td className="px-2 py-2 text-center text-zinc-500">-</td>
-                              <td className="px-2 py-2 text-center text-zinc-600">{formatDateTime(item.created_at)}</td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{formatBoardDate(item.created_at)}</td>
                               <td className="px-2 py-2 text-center text-zinc-500">-</td>
                             </tr>
                           )
@@ -302,7 +357,7 @@ export default function AdminWorkPostsInboxPage() {
           </div>
         </div>
 
-        <div className="xl:col-span-8">
+        {showInlineDetail ? <div className="xl:col-span-8">
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <h2 className="text-base font-semibold text-zinc-900">
               {selectedPost?.post_type === 'notice'
@@ -405,8 +460,9 @@ export default function AdminWorkPostsInboxPage() {
               </div>
             )}
           </div>
-        </div>
+        </div> : null}
       </div>
+      ) : null}
     </section>
   )
 }

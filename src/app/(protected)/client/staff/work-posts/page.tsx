@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import axios from 'axios'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Paperclip } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
@@ -55,6 +55,7 @@ type TargetDraftRow = {
 }
 
 type EditorMode = 'create' | 'edit'
+type BoardTabKey = 'notice' | 'library' | 'qna' | 'workflow' | 'forms' | 'free'
 
 const postTypeOptions: Array<{ value: WorkPostType | ''; label: string }> = [
   { value: '', label: '전체 유형' },
@@ -109,6 +110,15 @@ const postTypeLabelMap: Record<WorkPostType, string> = {
   task: '업무지시',
 }
 
+const boardTabs: Array<{ key: BoardTabKey; label: string }> = [
+  { key: 'notice', label: '공지사항' },
+  { key: 'library', label: '자료실' },
+  { key: 'qna', label: 'QnA' },
+  { key: 'workflow', label: '업무방식' },
+  { key: 'forms', label: '서류양식' },
+  { key: 'free', label: '자유게시판' },
+]
+
 function makeTargetRow(partial?: Partial<TargetDraftRow>): TargetDraftRow {
   return {
     rowId: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -133,6 +143,29 @@ function formatDateTime(value?: string | null): string {
   return formatKSTDateTimeAssumeUTC(value)
 }
 
+function formatBoardDate(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  const now = new Date()
+  const dayKey = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const isToday = dayKey.format(date) === dayKey.format(now)
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour12: false,
+    ...(isToday
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: '2-digit', day: '2-digit' }),
+  })
+    .format(date)
+    .replace(/\.\s?$/, '')
+}
+
 function getErrorStatus(error: unknown): number | null {
   if (!axios.isAxiosError(error)) return null
   return typeof error.response?.status === 'number' ? error.response.status : null
@@ -146,6 +179,7 @@ function getErrorDetail(error: unknown): string {
 
 export default function ClientWorkPostsPage() {
   const { session } = useClientSessionContext()
+  const router = useRouter()
   const searchParams = useSearchParams()
 
   const sourceType = (searchParams.get('source_type') || '').toLowerCase()
@@ -196,6 +230,7 @@ export default function ClientWorkPostsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<number | null>(null)
+  const [boardTab, setBoardTab] = useState<BoardTabKey>('notice')
 
   const [teams, setTeams] = useState<TeamOut[]>([])
   const [staffs, setStaffs] = useState<AdminOut[]>([])
@@ -204,6 +239,9 @@ export default function ClientWorkPostsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / size))
   const isClientSuper = getClientRoleRank(session) === 0
+  const isTaskView = postType === 'task'
+  const isNoticeBoardTab = boardTab === 'notice'
+  const showInlineDetail = false
 
   const receiptSummary = useMemo(() => {
     return selectedReceipts.reduce<Record<string, number>>((acc, receipt) => {
@@ -533,12 +571,12 @@ export default function ClientWorkPostsPage() {
       }
 
       toast.success(editorMode === 'create' ? '게시글이 등록되었습니다.' : '게시글이 수정되었습니다.')
-      setSelectedPostId(saved.id)
       setPendingFiles([])
       await loadPosts()
-      await loadSelectedPost(saved.id)
-      applyEditorFromDetail(saved)
       setIsEditorOpen(false)
+      const q = new URLSearchParams()
+      if (form.post_type) q.set('post_type', form.post_type)
+      router.push(`/client/staff/work-posts/${saved.id}${q.toString() ? `?${q.toString()}` : ''}`)
     } catch (error) {
       const status = getErrorStatus(error)
       if (status === 403 && (editorMode === 'edit' || uploadPhase)) {
@@ -635,59 +673,50 @@ export default function ClientWorkPostsPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="space-y-2">
+      <div className="px-1 py-1">
+        <div className="flex flex-wrap items-center gap-3">
           <div>
             <h1 className="text-lg font-semibold text-neutral-900">게시판</h1>
-            <p className="mt-1 text-sm text-neutral-500">공지사항과 업무지시를 관리하고 수신 현황을 확인합니다.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <UiButton
-              variant={editorMode === 'create' && isEditorOpen ? 'primary' : 'secondary'}
-              onClick={openCreateEditor}
-            >
-              새 글 작성
-            </UiButton>
-            <UiButton
-              variant="secondary"
-              disabled={!selectedPost || !canManageSelectedPost}
-              onClick={openEditEditor}
-            >
-              선택 글 수정
-            </UiButton>
-            <UiButton
-              variant="danger"
-              disabled={!selectedPostId || deleting || !canManageSelectedPost}
-              onClick={() => void handleDeletePost()}
-            >
-              삭제
-            </UiButton>
+            <p className="mt-1 text-sm text-neutral-500">
+              {isTaskView ? '업무지시를 관리하고 수신 현황을 확인합니다.' : '공지사항 게시판입니다.'}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-4">
-          <div className="rounded-xl border border-neutral-200 bg-white p-4">
-            <div className="grid grid-cols-2 gap-2">
-              <select className={inputClass} value={postType} onChange={(e) => setPostType(e.target.value as WorkPostType | '')}>
-                {postTypeOptions.map((option) => (
-                  <option key={option.value || 'all'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select className={inputClass} value={postStatus} onChange={(e) => setPostStatus(e.target.value as WorkPostStatus | '')}>
-                {postStatusOptions.map((option) => (
-                  <option key={option.value || 'all'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {!isTaskView ? (
+        <div className="border-b border-neutral-200 pb-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {boardTabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setBoardTab(tab.key)}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${
+                  boardTab === tab.key
+                    ? 'bg-sky-600 font-medium text-white'
+                    : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
-            <div className="mt-3">
+      {!isTaskView && !isNoticeBoardTab ? (
+        <div className="border border-dashed border-neutral-300 bg-transparent p-10 text-center">
+          <p className="text-sm text-zinc-500">준비중인 메뉴입니다.</p>
+        </div>
+      ) : null}
+
+      {isTaskView || isNoticeBoardTab ? (
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className={showInlineDetail ? 'xl:col-span-4' : 'xl:col-span-12'}>
+          <div className="bg-transparent px-0 py-2">
+            <div>
               {loading ? (
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500">불러오는 중...</div>
               ) : posts.length === 0 ? (
@@ -698,8 +727,8 @@ export default function ClientWorkPostsPage() {
                 <div className="overflow-hidden rounded-md border border-zinc-200">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed text-xs">
-                      <thead className="bg-zinc-50 text-zinc-600">
-                        <tr>
+                      <thead className="bg-white text-zinc-600">
+                        <tr className="border-b border-zinc-200">
                           <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
                           <th className="px-2 py-2 text-left font-medium">제목</th>
                           <th className="w-16 px-2 py-2 text-center font-medium">첨부</th>
@@ -708,22 +737,26 @@ export default function ClientWorkPostsPage() {
                           <th className="w-16 px-2 py-2 text-center font-medium">조회수</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="bg-white">
                         {posts.map((post, index) => {
-                          const isSelected = selectedPostId === post.id
                           const rowNumber = Math.max(1, total - (page - 1) * size - index)
                           const writerLabel =
                             post.created_by_type === 'client_account'
-                              ? '클라이언트'
+                              ? clientAccounts.find((account) => account.id === Number(post.created_by_id || 0))?.name ||
+                                `클라이언트#${post.created_by_id || ''}`.replace(/#$/, '')
                               : post.created_by_type === 'admin'
                                 ? '직원'
                                 : '시스템'
                           return (
                             <tr
                               key={post.id}
-                              onClick={() => setSelectedPostId(post.id)}
-                              className={`cursor-pointer border-t border-zinc-100 transition first:border-t-0 ${
-                                isSelected ? 'bg-sky-50' : 'hover:bg-zinc-50'
+                              onClick={() => {
+                                const q = new URLSearchParams()
+                                if (postType) q.set('post_type', postType)
+                                router.push(`/client/staff/work-posts/${post.id}${q.toString() ? `?${q.toString()}` : ''}`)
+                              }}
+                              className={`cursor-pointer border-t border-zinc-100 bg-white transition first:border-t-0 ${
+                                'hover:bg-zinc-50'
                               }`}
                             >
                               <td className="px-2 py-2 text-center text-zinc-600">{rowNumber}</td>
@@ -748,7 +781,7 @@ export default function ClientWorkPostsPage() {
                                 )}
                               </td>
                               <td className="px-2 py-2 text-center text-zinc-600">{writerLabel}</td>
-                              <td className="px-2 py-2 text-center text-zinc-600">{formatDateTime(post.created_at)}</td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{formatBoardDate(post.created_at)}</td>
                               <td className="px-2 py-2 text-center text-zinc-500">-</td>
                             </tr>
                           )
@@ -760,14 +793,27 @@ export default function ClientWorkPostsPage() {
               )}
             </div>
 
-            <div className="mt-3 text-xs text-zinc-500">
-              <p className="text-center">총 {total}건</p>
-              <Pagination className="mt-2" page={page} total={total} limit={size} onPageChange={setPage} />
+            <div className="mt-3 border-t border-zinc-200 pt-2">
+              <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                <div>
+                  <UiButton
+                    size="sm"
+                    variant={editorMode === 'create' && isEditorOpen ? 'primary' : 'secondary'}
+                    onClick={openCreateEditor}
+                  >
+                    새 글 작성
+                  </UiButton>
+                </div>
+                <div className="text-xs text-zinc-500">
+                  <Pagination className="justify-center" page={page} total={total} limit={size} onPageChange={setPage} />
+                </div>
+                <div className="text-right text-xs text-zinc-500">총 {total}건</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="xl:col-span-8">
+        {showInlineDetail ? <div className="xl:col-span-8">
           <div className="rounded-xl border border-neutral-200 bg-white p-4">
             <h2 className="text-base font-semibold text-zinc-900">선택 게시글 상세</h2>
             {!selectedPostId ? (
@@ -880,8 +926,9 @@ export default function ClientWorkPostsPage() {
               </div>
             )}
           </div>
-        </div>
+        </div> : null}
       </div>
+      ) : null}
 
       {isEditorOpen ? <button type="button" aria-label="작성 패널 닫기" className="fixed inset-0 z-40 bg-black/30" onClick={() => setIsEditorOpen(false)} /> : null}
       <aside

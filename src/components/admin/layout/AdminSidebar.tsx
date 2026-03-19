@@ -158,6 +158,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const [folderEditLoading, setFolderEditLoading] = useState(false)
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
+  const shouldHideSecondSidebar = activeRailSection === 'board'
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -328,7 +329,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     },
     {
       key: 'board',
-      label: '게시',
+      label: '게시판',
       href: '/admin/staff/work-posts?post_type=notice',
       icon: ClipboardList,
       active: activeSection === 'board',
@@ -600,7 +601,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection)
 
   return (
-    <aside className="flex h-full w-full border-r border-neutral-200 bg-white">
+    <aside className={`flex h-full border-r border-neutral-200 bg-white ${collapsed || shouldHideSecondSidebar ? 'w-14' : 'w-full'}`}>
       <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
@@ -626,7 +627,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
           </div>
         </nav>
       </div>
-      {!collapsed ? (
+      {!collapsed && !shouldHideSecondSidebar ? (
       <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>

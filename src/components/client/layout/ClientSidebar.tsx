@@ -156,6 +156,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   }, [searchParams])
   const { session, loading } = useClientSessionContext()
   const canManageClients = getClientRoleRank(session) === 0
+  const shouldHideSecondSidebar = activeRailSection === 'board'
   const collapsedQuickMenus = [
     {
       key: 'dashboard',
@@ -187,7 +188,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     },
     {
       key: 'board',
-      label: '게시',
+      label: '게시판',
       href: '/client/staff/work-posts?post_type=notice',
       icon: ClipboardList,
       active: hasBoardPath,
@@ -645,7 +646,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     })
 
   return (
-    <aside className="flex h-full w-full border-r border-neutral-200 bg-white">
+    <aside className={`flex h-full border-r border-neutral-200 bg-white ${collapsed || shouldHideSecondSidebar ? 'w-14' : 'w-full'}`}>
       <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
@@ -671,7 +672,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           </div>
         </nav>
       </div>
-      {!collapsed ? (
+      {!collapsed && !shouldHideSecondSidebar ? (
       <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
@@ -991,33 +992,6 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           </span>
                         ) : null}
                       </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-        </div>
-        ) : null}
-
-        {activeRailSection === 'board' ? (
-        <div className="order-2 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
-            <span className="inline-flex items-center gap-2">
-              <ClipboardList className="h-4 w-4" />
-              <span>게시판</span>
-            </span>
-          </div>
-          <div className="space-y-1 px-2 py-2">
-              {boardMenus.map((menu) => {
-                const active = pathname === menu.href
-                return (
-                  <Link key={menu.href} href={menu.href}>
-                    <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
-                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
-                      }`}
-                    >
-                      {menu.label}
                     </div>
                   </Link>
                 )

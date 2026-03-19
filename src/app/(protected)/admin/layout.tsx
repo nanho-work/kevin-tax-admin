@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '@/components/admin/layout/AdminSidebar'
 import AdminHeader from '@/components/admin/layout/AdminHeader'
 import WorkChatLauncher from '@/components/common/work-chat/WorkChatLauncher'
@@ -9,8 +9,12 @@ import { AdminSessionProvider, useAdminSessionContext } from '@/contexts/AdminSe
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { loading, session } = useAdminSessionContext()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const isBoardRoute = pathname.startsWith('/admin/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task'
+  const effectiveCollapsed = isSidebarCollapsed || isBoardRoute
 
   useEffect(() => {
     const saved = window.localStorage.getItem('admin_sidebar_collapsed')
@@ -36,9 +40,9 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${isSidebarCollapsed ? 'w-14' : 'w-[260px]'}`}>
+      <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${effectiveCollapsed ? 'w-14' : 'w-[260px]'}`}>
         <AdminSidebar
-          collapsed={isSidebarCollapsed}
+          collapsed={effectiveCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         />
       </div>
