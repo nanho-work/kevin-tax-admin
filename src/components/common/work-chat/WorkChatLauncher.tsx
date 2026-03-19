@@ -12,6 +12,7 @@ import {
   GripHorizontal,
   MessageCircle,
   MoreHorizontal,
+  Image as ImageIcon,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
@@ -463,6 +464,16 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(-1)
   const [activeSearchMessageId, setActiveSearchMessageId] = useState<number | null>(null)
   const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<number | null>(null)
+  const [roomContextMenu, setRoomContextMenu] = useState<{
+    roomId: number
+    x: number
+    y: number
+  } | null>(null)
+  const [messageContextMenu, setMessageContextMenu] = useState<{
+    messageId: number
+    x: number
+    y: number
+  } | null>(null)
   const [wsConnected, setWsConnected] = useState(false)
   const [wsConnecting, setWsConnecting] = useState(false)
   const [wsCloseInfo, setWsCloseInfo] = useState<{ code: number; reason: string } | null>(null)
@@ -487,8 +498,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const launcherRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const chatWindowRef = useRef<HTMLDivElement | null>(null)
+  const roomContextMenuRef = useRef<HTMLDivElement | null>(null)
+  const messageContextMenuRef = useRef<HTMLDivElement | null>(null)
   const roomActionMenuRef = useRef<HTMLDivElement | null>(null)
   const composeFileInputRef = useRef<HTMLInputElement | null>(null)
+  const composeImageInputRef = useRef<HTMLInputElement | null>(null)
   const chatWindowDragStateRef = useRef<{
     startX: number
     startY: number
@@ -912,6 +926,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const closeChatWindow = useCallback(() => {
     setChatWindowOpen(false)
     setSelectedRoomId(null)
+    setMessageContextMenu(null)
     setMessages([])
     setRoomMembers([])
     setRoomActionMenuOpen(false)
@@ -1615,6 +1630,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     composeFileInputRef.current?.click()
   }, [selectedRoomId, uploadingAttachment])
 
+  const handleSelectImageAttachmentClick = useCallback(() => {
+    if (!selectedRoomId || uploadingAttachment) return
+    composeImageInputRef.current?.click()
+  }, [selectedRoomId, uploadingAttachment])
+
   const ensureInlineAttachmentPreviewUrl = useCallback(
     async (attachmentId: number, force = false): Promise<string | null> => {
       if (!force) {
@@ -1744,6 +1764,43 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       }
     },
     [api, getErrorMessage, loadMessages, selectedRoomId]
+  )
+
+  const openMessageContextMenu = useCallback(
+    (event: React.MouseEvent, messageId: number) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const menuWidth = 132
+      const menuHeight = 44
+      const viewportPadding = 8
+      const x = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+      const y = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+      setMessageContextMenu({
+        messageId,
+        x: Math.max(viewportPadding, x),
+        y: Math.max(viewportPadding, y),
+      })
+    },
+    []
+  )
+
+  const openRoomContextMenu = useCallback(
+    (event: React.MouseEvent, roomId: number) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const menuWidth = 156
+      const menuHeight = 44
+      const viewportPadding = 8
+      const x = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
+      const y = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
+      setRoomContextMenu({
+        roomId,
+        x: Math.max(viewportPadding, x),
+        y: Math.max(viewportPadding, y),
+      })
+      setMessageContextMenu(null)
+    },
+    []
   )
 
   const handleMessageBodyChange = useCallback(
@@ -2447,6 +2504,8 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   useEffect(() => {
     setRoomActionMenuOpen(false)
     setShowRoomMembersPanel(false)
+    setRoomContextMenu(null)
+    setMessageContextMenu(null)
     setShowRoomSearchPanel(false)
     setRoomSearchKeyword('')
     setRoomSearchResults([])
@@ -2478,6 +2537,42 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   }, [roomActionMenuOpen])
 
   useEffect(() => {
+    if (!messageContextMenu) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!messageContextMenuRef.current) return
+      if (messageContextMenuRef.current.contains(event.target as Node)) return
+      setMessageContextMenu(null)
+    }
+    const closeMenu = () => setMessageContextMenu(null)
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('resize', closeMenu)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('resize', closeMenu)
+    }
+  }, [messageContextMenu])
+
+  useEffect(() => {
+    if (!roomContextMenu) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!roomContextMenuRef.current) return
+      if (roomContextMenuRef.current.contains(event.target as Node)) return
+      setRoomContextMenu(null)
+    }
+    const closeMenu = () => setRoomContextMenu(null)
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('resize', closeMenu)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('resize', closeMenu)
+    }
+  }, [roomContextMenu])
+
+  useEffect(() => {
     return () => {
       if (groupCreateTooltipTimerRef.current) {
         window.clearTimeout(groupCreateTooltipTimerRef.current)
@@ -2504,6 +2599,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     if (!chatWindowOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (roomContextMenu) {
+        setRoomContextMenu(null)
+        return
+      }
+      if (messageContextMenu) {
+        setMessageContextMenu(null)
+        return
+      }
       if (imageViewer) {
         setImageViewer(null)
         return
@@ -2520,9 +2623,11 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [chatWindowOpen, closeChatWindow, imageViewer, showRoomSearchPanel, showSaveCompanyPanel])
+  }, [chatWindowOpen, closeChatWindow, imageViewer, messageContextMenu, roomContextMenu, showRoomSearchPanel, showSaveCompanyPanel])
 
   const handleDragMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    setRoomContextMenu(null)
+    setMessageContextMenu(null)
     if (event.button !== 0) return
     dragStateRef.current = {
       startX: event.clientX,
@@ -2534,6 +2639,8 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   }
 
   const handleChatWindowDragMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    setRoomContextMenu(null)
+    setMessageContextMenu(null)
     if (event.button !== 0) return
     chatWindowDragStateRef.current = {
       startX: event.clientX,
@@ -2893,17 +3000,20 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     <div className="divide-y divide-zinc-100">
                       {filteredRooms.map((room) => {
                         const active = selectedRoomId === room.id
-                        const leavingCurrentRow = leavingRoomId === room.id
                         return (
                           <div
                             key={room.id}
-                            className={`group flex items-center gap-1 px-2 py-2 transition ${
+                            onContextMenu={(event) => openRoomContextMenu(event, room.id)}
+                            className={`group px-2 py-2 transition ${
                               active ? 'bg-sky-50' : 'hover:bg-zinc-50'
                             }`}
                           >
                             <button
                               type="button"
-                              onClick={() => void openRoom(room.id)}
+                              onClick={() => {
+                                setRoomContextMenu(null)
+                                void openRoom(room.id)
+                              }}
                               className="min-w-0 flex-1 text-left"
                             >
                               <div className="flex items-center justify-between gap-2">
@@ -2936,16 +3046,6 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                   {formatRoomListDateTime(room.last_message_at)}
                                 </p>
                               </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleLeaveRoomByRoom(room)}
-                              disabled={leavingCurrentRow}
-                              className="shrink-0 rounded border border-zinc-300 bg-white px-1.5 py-1 text-[10px] text-zinc-600 opacity-0 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label="대화방 나가기"
-                              title={room.room_type === 'company_bridge' ? '대화방 나가기(목록 숨김)' : '대화방 나가기'}
-                            >
-                              {leavingCurrentRow ? '...' : '나가기'}
                             </button>
                           </div>
                         )
@@ -3252,6 +3352,10 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                 </p>
                               ) : (
                                 <div
+                                  onContextMenu={(event) => {
+                                    if (!mine || message.message_type === 'system' || message.is_deleted) return
+                                    openMessageContextMenu(event, message.id)
+                                  }}
                                   className={`w-[66.6667%] rounded-lg border px-3 py-2 transition ${
                                     mine
                                       ? 'border-sky-600 bg-sky-600 text-white'
@@ -3408,17 +3512,6 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                       )}
                                     </p>
                                   )}
-                                  {mine ? (
-                                    <div className="mt-1 flex items-center justify-end">
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeleteMessage(message.id)}
-                                        className="text-[10px] text-sky-100 underline hover:text-white"
-                                      >
-                                        삭제
-                                      </button>
-                                    </div>
-                                  ) : null}
                                 </div>
                               )}
                               {!mine ? (
@@ -3466,6 +3559,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 event.currentTarget.value = ''
               }}
             />
+            <input
+              ref={composeImageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void uploadAttachmentFile(file)
+                event.currentTarget.value = ''
+              }}
+            />
             <div className="flex flex-col gap-2">
               <textarea
                 value={messageBody}
@@ -3488,7 +3592,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                 }}
               />
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={handleSelectAttachmentClick}
@@ -3498,6 +3602,16 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     title={uploadingAttachment ? '파일 업로드 중' : '파일 첨부'}
                   >
                     <Paperclip className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectImageAttachmentClick}
+                    disabled={!selectedRoomId || uploadingAttachment}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded bg-transparent text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={uploadingAttachment ? '이미지 업로드 중' : '이미지 첨부'}
+                    title={uploadingAttachment ? '이미지 업로드 중' : '이미지 첨부'}
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <UiButton
@@ -3645,6 +3759,54 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             className="absolute bottom-0 right-0 z-40 h-3.5 w-3.5 cursor-nwse-resize"
             onMouseDown={(event) => handleChatWindowResizeMouseDown('corner', event)}
           />
+        </div>
+      ) : null}
+
+      {chatWindowOpen && messageContextMenu ? (
+        <div
+          ref={messageContextMenuRef}
+          className="fixed z-[120] min-w-[120px] overflow-hidden rounded-md border border-zinc-200 bg-white py-1 shadow-xl"
+          style={{
+            left: messageContextMenu.x,
+            top: messageContextMenu.y,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const targetMessageId = messageContextMenu.messageId
+              setMessageContextMenu(null)
+              void handleDeleteMessage(targetMessageId)
+            }}
+            className="w-full px-3 py-1.5 text-left text-[12px] text-rose-600 hover:bg-rose-50"
+          >
+            메시지 삭제
+          </button>
+        </div>
+      ) : null}
+
+      {open && roomContextMenu ? (
+        <div
+          ref={roomContextMenuRef}
+          className="fixed z-[120] min-w-[140px] overflow-hidden rounded-md border border-zinc-200 bg-white py-1 shadow-xl"
+          style={{
+            left: roomContextMenu.x,
+            top: roomContextMenu.y,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const targetRoom = rooms.find((room) => room.id === roomContextMenu.roomId)
+              setRoomContextMenu(null)
+              if (!targetRoom) return
+              void handleLeaveRoomByRoom(targetRoom)
+            }}
+            disabled={Boolean(leavingRoomId && leavingRoomId === roomContextMenu.roomId)}
+            className="w-full px-3 py-1.5 text-left text-[12px] text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {leavingRoomId && leavingRoomId === roomContextMenu.roomId ? '처리 중...' : '나가기'}
+          </button>
         </div>
       ) : null}
 

@@ -1,19 +1,30 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
 import type { LoginRequest } from '@/types/admin'
 import { setAdminAccessToken } from '@/services/http'
 import { toLoginErrorMessage } from '@/utils/loginError'
 
+const STAFF_LOGIN_REMEMBER_KEY = 'staff_login_remember_id'
+
 export default function LoginForm() {
   const router = useRouter()
   const [form, setForm] = useState<LoginRequest>({ login_id: '', password: '' })
+  const [rememberLoginId, setRememberLoginId] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const rememberedLoginId = window.localStorage.getItem(STAFF_LOGIN_REMEMBER_KEY)
+    if (!rememberedLoginId) return
+    setForm((prev) => ({ ...prev, login_id: rememberedLoginId }))
+    setRememberLoginId(true)
+  }, [])
 
   // ✅ 입력값 변경 핸들러: 폼 상태 업데이트 및 에러 초기화
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,6 +42,13 @@ export default function LoginForm() {
     try {
       const loginResponse = await adminLogin(form)
       setAdminAccessToken(loginResponse.access_token)
+      if (typeof window !== 'undefined') {
+        if (rememberLoginId && form.login_id.trim()) {
+          window.localStorage.setItem(STAFF_LOGIN_REMEMBER_KEY, form.login_id.trim())
+        } else {
+          window.localStorage.removeItem(STAFF_LOGIN_REMEMBER_KEY)
+        }
+      }
 
       router.replace('/admin/dashboard')
     } catch (err: any) {
@@ -100,6 +118,16 @@ export default function LoginForm() {
               </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-zinc-700">
+            <input
+              type="checkbox"
+              checked={rememberLoginId}
+              onChange={(event) => setRememberLoginId(event.target.checked)}
+              className="h-4 w-4 rounded border-zinc-300 text-blue-900 focus:ring-blue-900"
+            />
+            아이디 기억하기
+          </label>
 
           {/* ✅ 로그인 버튼 */}
           <button
