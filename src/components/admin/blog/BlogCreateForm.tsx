@@ -115,8 +115,8 @@ export default function BlogCreateForm() {
       category_id: Number(categoryId),
       // 백엔드에서 자동 생성 로직이 있다면 빈 문자열로 넘기거나 제거 가능
       slug: slugify(title) || 'post',
-      status: 'draft',
-      published_at: null,
+      status: 'published',
+      published_at: new Date().toISOString(),
       keyword_ids: keywordIds,
       // author_name은 서버에서 토큰 기반으로 주입되므로 보내지 않음
     }

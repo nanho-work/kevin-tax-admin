@@ -2064,12 +2064,34 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         return
       }
       inlineAttachmentRetryRef.current.add(attachmentId)
+      const releaseRetryLock = () => {
+        window.setTimeout(() => {
+          inlineAttachmentRetryRef.current.delete(attachmentId)
+        }, 1200)
+      }
       const refreshed = await ensureInlineAttachmentPreviewUrl(attachmentId, true)
-      if (!refreshed) {
-        inlineAttachmentRetryRef.current.delete(attachmentId)
+      if (refreshed) {
+        releaseRetryLock()
+        return
+      }
+      try {
+        const fallback = await api.getAttachmentDownloadUrl(attachmentId)
+        if (fallback?.url) {
+          const expiresInSec = Number(fallback.expires_in ?? 300)
+          inlineAttachmentUrlRef.current[attachmentId] = {
+            url: fallback.url,
+            expiresAt: Date.now() + Math.max(30, expiresInSec - 10) * 1000,
+          }
+          releaseRetryLock()
+          return
+        }
+      } catch {
+        // ignore and keep placeholder UI
+      } finally {
+        releaseRetryLock()
       }
     },
-    [ensureInlineAttachmentPreviewUrl]
+    [api, ensureInlineAttachmentPreviewUrl]
   )
 
   const handleDownloadAttachment = useCallback(

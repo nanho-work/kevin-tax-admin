@@ -147,8 +147,8 @@ export default function BlogCreateForm() {
       thumbnail_url: thumbnailUrl || null,
       category_id: Number(categoryId),
       slug: slugify(title) || 'post',
-      status: 'draft',
-      published_at: null,
+      status: 'published',
+      published_at: new Date().toISOString(),
       keyword_ids: keywordIds,
     }
 

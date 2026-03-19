@@ -35,6 +35,7 @@ const Header = () => {
   const [headerKeyword, setHeaderKeyword] = useState('')
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null)
+  const [isProfileImageBroken, setIsProfileImageBroken] = useState(false)
   const [attendanceSubmitting, setAttendanceSubmitting] = useState<'check-in' | 'check-out' | null>(null)
   const [currentTime, setCurrentTime] = useState<string>(() =>
     new Date().toLocaleTimeString('ko-KR', {
@@ -53,6 +54,7 @@ const Header = () => {
     (session as any)?.profile_image_url ??
     (session as any)?.profileImageUrl ??
     null
+  const resolvedProfileImageUrl = !isProfileImageBroken ? profileImageUrl : null
   const profileInitial = (session?.name || '?').trim().charAt(0) || '?'
 
   const currentLabel = useMemo(() => {
@@ -121,6 +123,10 @@ const Header = () => {
     }, 1000)
     return () => window.clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    setIsProfileImageBroken(false)
+  }, [profileImageUrl])
 
   const loadTodayAttendance = async () => {
     const accountId = Number((session as any)?.account_id ?? (session as any)?.id ?? 0)
@@ -284,12 +290,13 @@ const Header = () => {
             ) : null}
             <div className="hidden items-center gap-2.5 text-xs lg:flex">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 text-[11px] font-semibold text-neutral-600">
-                {profileImageUrl ? (
+                {resolvedProfileImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={profileImageUrl}
+                    src={resolvedProfileImageUrl}
                     alt="프로필 이미지"
                     className="h-full w-full object-cover"
+                    onError={() => setIsProfileImageBroken(true)}
                   />
                 ) : (
                   <span>{profileInitial}</span>
@@ -361,4 +368,3 @@ const Header = () => {
 }
 
 export default Header
-
