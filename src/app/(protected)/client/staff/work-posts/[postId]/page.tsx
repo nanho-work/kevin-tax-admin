@@ -4,33 +4,48 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import {
+  deleteClientWorkPost,
   fetchClientWorkPostDetail,
   fetchClientWorkPostReceipts,
   getClientWorkPostErrorMessage,
+  markClientWorkPostView,
 } from '@/services/client/clientWorkPostService'
 import type { WorkPostDetail, WorkPostReceipt } from '@/types/workPost'
-import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getClientRoleRank } from '@/utils/roleRank'
 
 const postTypeLabelMap = {
   notice: '공지사항',
   task: '업무지시',
 } as const
 
-const priorityLabelMap = {
-  low: '낮음',
-  normal: '보통',
-  high: '높음',
-  critical: '긴급',
-} as const
+const VIEW_MARK_DEDUPE_MS = 2500
+const recentViewMarkAtByPostId = new Map<number, number>()
+
+function formatKSTDate(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(date)
+    .replace(/\.\s?$/, '')
+}
 
 export default function ClientWorkPostDetailPage() {
   const params = useParams<{ postId: string }>()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { session } = useClientSessionContext()
   const postId = Number(params?.postId || '')
 
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [post, setPost] = useState<WorkPostDetail | null>(null)
   const [receipts, setReceipts] = useState<WorkPostReceipt[]>([])
 
@@ -40,6 +55,16 @@ export default function ClientWorkPostDetailPage() {
     if (postType === 'notice' || postType === 'task') q.set('post_type', postType)
     return `/client/staff/work-posts${q.toString() ? `?${q.toString()}` : ''}`
   }, [searchParams])
+
+  const canManagePost = useMemo(() => {
+    if (!post || !session) return false
+    const isClientSuper = getClientRoleRank(session) === 0
+    if (isClientSuper) return true
+    return (
+      post.created_by_type === 'client_account' &&
+      Number(post.created_by_id || 0) === Number(session.account_id || 0)
+    )
+  }, [post, session])
 
   useEffect(() => {
     if (!Number.isFinite(postId) || postId <= 0) return
@@ -66,34 +91,52 @@ export default function ClientWorkPostDetailPage() {
     }
   }, [postId])
 
-  return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-5">
-        <div>
-          <h1 className="text-lg font-semibold text-neutral-900">게시글 상세</h1>
-          <p className="mt-1 text-sm text-neutral-500">게시글 내용을 확인합니다.</p>
-        </div>
-        <UiButton variant="secondary" onClick={() => router.push(backHref)}>
-          목록으로
-        </UiButton>
-      </div>
+  useEffect(() => {
+    if (!Number.isFinite(postId) || postId <= 0) return
+    const now = Date.now()
+    const lastMarkedAt = recentViewMarkAtByPostId.get(postId) || 0
+    if (now - lastMarkedAt < VIEW_MARK_DEDUPE_MS) return
+    recentViewMarkAtByPostId.set(postId, now)
+    void markClientWorkPostView(postId).catch(() => {})
+  }, [postId])
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+  const handleDelete = async () => {
+    if (!canManagePost) {
+      toast.error('수정/삭제 권한이 없습니다.')
+      return
+    }
+    if (!window.confirm('이 게시글을 삭제하시겠습니까?')) return
+    try {
+      setDeleting(true)
+      await deleteClientWorkPost(postId)
+      toast.success('게시글이 삭제되었습니다.')
+      router.push(backHref)
+    } catch (error) {
+      toast.error(getClientWorkPostErrorMessage(error))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <section className="-m-6 min-h-[calc(100vh-64px)] bg-white p-6 space-y-4">
+      <div className="bg-white p-5">
         {loading ? (
           <p className="text-sm text-zinc-500">불러오는 중...</p>
         ) : !post ? (
           <p className="text-sm text-zinc-500">게시글을 찾을 수 없습니다.</p>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-              <p className="text-zinc-600">유형: <span className="font-medium text-zinc-900">{postTypeLabelMap[post.post_type]}</span></p>
-              <p className="text-zinc-600">우선순위: <span className="font-medium text-zinc-900">{priorityLabelMap[post.priority]}</span></p>
-              <p className="text-zinc-600">작성일: <span className="font-medium text-zinc-900">{formatKSTDateTimeAssumeUTC(post.created_at)}</span></p>
-              <p className="text-zinc-600">게시일: <span className="font-medium text-zinc-900">{formatKSTDateTimeAssumeUTC(post.published_at)}</span></p>
-            </div>
-
-            <div>
-              <p className="text-sm font-semibold text-zinc-900">{post.title}</p>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  {postTypeLabelMap[post.post_type]}
+                </span>
+                <p className="truncate text-sm font-semibold text-zinc-900">{post.title}</p>
+              </div>
+              <p className="shrink-0 text-xs text-zinc-600">
+                작성일 {formatKSTDate(post.created_at)} | 마감일 {formatKSTDate(post.due_at)}
+              </p>
             </div>
 
             <div
@@ -131,7 +174,27 @@ export default function ClientWorkPostDetailPage() {
           </div>
         )}
       </div>
+
+      <div className="px-1">
+        <div className="flex items-center justify-between gap-2">
+          <UiButton variant="secondary" onClick={() => router.push(backHref)}>
+            목록으로
+          </UiButton>
+          {canManagePost ? (
+            <div className="flex items-center gap-2">
+              <UiButton
+                variant="secondary"
+                onClick={() => router.push(`/client/staff/work-posts/${postId}/edit?post_type=${post?.post_type || 'notice'}`)}
+              >
+                수정
+              </UiButton>
+              <UiButton variant="danger" disabled={deleting} onClick={() => void handleDelete()}>
+                삭제
+              </UiButton>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </section>
   )
 }
-

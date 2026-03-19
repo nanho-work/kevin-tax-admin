@@ -222,7 +222,7 @@ const Header = () => {
   const canCheckOut = Boolean(checkInTime) && !checkOutTime
 
   return (
-    <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-neutral-200 bg-sky-50/70 backdrop-blur">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">

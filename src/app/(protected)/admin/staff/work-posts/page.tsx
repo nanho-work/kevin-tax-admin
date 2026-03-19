@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Paperclip } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
@@ -138,6 +139,17 @@ export default function AdminWorkPostsInboxPage() {
   const isTaskView = postType === 'task'
   const isNoticeBoardTab = boardTab === 'notice'
   const showInlineDetail = false
+  const pinnedNoticeItems = useMemo(() => {
+    if (isTaskView) return []
+    const now = Date.now()
+    return items.filter((item) => {
+      if (item.post_type !== 'notice') return false
+      if (!item.due_at) return true
+      const dueAt = new Date(item.due_at).getTime()
+      if (Number.isNaN(dueAt)) return true
+      return dueAt > now
+    })
+  }, [isTaskView, items])
 
   const loadInbox = useCallback(async () => {
     try {
@@ -249,14 +261,7 @@ export default function AdminWorkPostsInboxPage() {
   }
 
   return (
-    <section className="space-y-2">
-      <div className="px-1 py-1">
-        <h1 className="text-lg font-semibold text-neutral-900">게시판 수신함</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          {isTaskView ? '수신한 업무지시를 확인하고 상태를 변경합니다.' : '수신한 공지사항을 확인합니다.'}
-        </p>
-      </div>
-
+    <section className="-m-6 min-h-[calc(100vh-64px)] bg-white p-6 space-y-2">
       {!isTaskView ? (
         <div className="border-b border-neutral-200 pb-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -299,7 +304,7 @@ export default function AdminWorkPostsInboxPage() {
                 <div className="overflow-hidden rounded-md border border-zinc-200">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed text-xs">
-                      <thead className="bg-white text-zinc-600">
+                      <thead className="bg-zinc-100 text-zinc-600">
                         <tr className="border-b border-zinc-200">
                           <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
                           <th className="px-2 py-2 text-left font-medium">제목</th>
@@ -310,8 +315,61 @@ export default function AdminWorkPostsInboxPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white">
+                        {!isTaskView && pinnedNoticeItems.map((item) => (
+                          <tr
+                            key={`pinned-row-${item.receipt_id}`}
+                            onClick={() => {
+                              const q = new URLSearchParams()
+                              if (postType) q.set('post_type', postType)
+                              router.push(`/admin/staff/work-posts/${item.post_id}${q.toString() ? `?${q.toString()}` : ''}`)
+                            }}
+                            className="cursor-pointer border-t border-amber-200 bg-amber-50 transition hover:bg-amber-100/60 first:border-t-0"
+                          >
+                            <td className="px-2 py-2 text-center text-zinc-600">고정</td>
+                            <td className="px-2 py-2">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span className="shrink-0 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                                  공지
+                                </span>
+                                <span className="truncate text-sm font-semibold text-zinc-900">{item.title}</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-center text-zinc-500">
+                              {(item.attachment_count || 0) > 0 ? (
+                                <span className="inline-flex items-center justify-center" title={`${item.attachment_count}개`}>
+                                  <Paperclip className="h-3.5 w-3.5" />
+                                </span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-2 py-2 text-center text-zinc-600">
+                              {item.writer_name?.trim() ||
+                                item.created_by_name?.trim() ||
+                                (item.created_by_type === 'client_account'
+                                  ? '클라이언트'
+                                  : item.created_by_type === 'admin'
+                                    ? '직원'
+                                    : item.created_by_type === 'system'
+                                      ? '시스템'
+                                      : '-')}
+                            </td>
+                            <td className="px-2 py-2 text-center text-zinc-600">{formatBoardDate(item.created_at)}</td>
+                            <td className="px-2 py-2 text-center text-zinc-500">{item.view_count ?? 0}</td>
+                          </tr>
+                        ))}
                         {items.map((item, index) => {
                           const rowNumber = Math.max(1, total - (page - 1) * size - index)
+                          const writerLabel =
+                            item.writer_name?.trim() ||
+                            item.created_by_name?.trim() ||
+                            (item.created_by_type === 'client_account'
+                              ? '클라이언트'
+                              : item.created_by_type === 'admin'
+                                ? '직원'
+                                : item.created_by_type === 'system'
+                                  ? '시스템'
+                                  : '-')
                           return (
                             <tr
                               key={item.receipt_id}
@@ -336,10 +394,18 @@ export default function AdminWorkPostsInboxPage() {
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
-                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                              <td className="px-2 py-2 text-center text-zinc-600">
+                                {(item.attachment_count || 0) > 0 ? (
+                                  <span className="inline-flex items-center justify-center" title={`${item.attachment_count}개`}>
+                                    <Paperclip className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-center text-zinc-600">{writerLabel}</td>
                               <td className="px-2 py-2 text-center text-zinc-600">{formatBoardDate(item.created_at)}</td>
-                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                              <td className="px-2 py-2 text-center text-zinc-500">{item.view_count ?? 0}</td>
                             </tr>
                           )
                         })}

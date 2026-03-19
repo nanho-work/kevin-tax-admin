@@ -135,7 +135,7 @@ export default function ClientHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-neutral-200 bg-sky-50/70 backdrop-blur">
       <div className="px-4 py-3">
         <div className="grid grid-cols-[1fr_auto] items-stretch gap-3">
           <div className="min-w-0">

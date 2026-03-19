@@ -51,6 +51,7 @@ export interface WorkPostItem {
   post_type: WorkPostType
   title: string
   body_html: string
+  view_count?: number
   status: WorkPostStatus
   priority: WorkPostPriority
   published_at?: string | null
@@ -119,6 +120,12 @@ export interface WorkPostInboxItem {
   post_id: number
   post_type: WorkPostType
   title: string
+  view_count?: number
+  attachment_count?: number
+  writer_name?: string | null
+  created_by_name?: string | null
+  created_by_type?: 'client_account' | 'admin' | 'system' | null
+  created_by_id?: number | null
   priority: WorkPostPriority
   status: WorkPostReceiptStatus
   read_at?: string | null
@@ -136,4 +143,3 @@ export interface WorkPostInboxListResponse {
   total: number
   items: WorkPostInboxItem[]
 }
-

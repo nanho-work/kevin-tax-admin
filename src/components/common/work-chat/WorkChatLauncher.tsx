@@ -3408,13 +3408,13 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-[70] inline-flex h-14 w-14 items-center justify-center rounded-full border border-sky-500 bg-sky-600 text-white shadow-lg transition hover:bg-sky-700"
+          className="fixed bottom-5 right-5 z-[70] inline-flex h-12 w-12 items-center justify-center rounded-full border border-sky-500 bg-sky-600 text-white shadow-lg transition hover:bg-sky-700"
           aria-label="채팅 열기"
           title="채팅"
         >
-          <MessageCircle className="h-5 w-5" />
+          <MessageCircle className="h-[21px] w-[21px]" />
           {unreadTotal > 0 ? (
-            <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+            <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
               {unreadTotal > 99 ? '99+' : unreadTotal}
             </span>
           ) : null}

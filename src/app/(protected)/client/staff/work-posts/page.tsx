@@ -673,18 +673,7 @@ export default function ClientWorkPostsPage() {
   }
 
   return (
-    <section className="space-y-2">
-      <div className="px-1 py-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-neutral-900">게시판</h1>
-            <p className="mt-1 text-sm text-neutral-500">
-              {isTaskView ? '업무지시를 관리하고 수신 현황을 확인합니다.' : '공지사항 게시판입니다.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
+    <section className="-m-6 min-h-[calc(100vh-64px)] bg-white p-6 space-y-2">
       {!isTaskView ? (
         <div className="border-b border-neutral-200 pb-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -727,7 +716,7 @@ export default function ClientWorkPostsPage() {
                 <div className="overflow-hidden rounded-md border border-zinc-200">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed text-xs">
-                      <thead className="bg-white text-zinc-600">
+                      <thead className="bg-zinc-100 text-zinc-600">
                         <tr className="border-b border-zinc-200">
                           <th className="w-12 px-2 py-2 text-center font-medium">번호</th>
                           <th className="px-2 py-2 text-left font-medium">제목</th>
@@ -782,7 +771,7 @@ export default function ClientWorkPostsPage() {
                               </td>
                               <td className="px-2 py-2 text-center text-zinc-600">{writerLabel}</td>
                               <td className="px-2 py-2 text-center text-zinc-600">{formatBoardDate(post.created_at)}</td>
-                              <td className="px-2 py-2 text-center text-zinc-500">-</td>
+                              <td className="px-2 py-2 text-center text-zinc-500">{post.view_count ?? 0}</td>
                             </tr>
                           )
                         })}
@@ -798,8 +787,12 @@ export default function ClientWorkPostsPage() {
                 <div>
                   <UiButton
                     size="sm"
-                    variant={editorMode === 'create' && isEditorOpen ? 'primary' : 'secondary'}
-                    onClick={openCreateEditor}
+                    variant="secondary"
+                    onClick={() => {
+                      const q = new URLSearchParams()
+                      if (postType) q.set('post_type', postType)
+                      router.push(`/client/staff/work-posts/new${q.toString() ? `?${q.toString()}` : ''}`)
+                    }}
                   >
                     새 글 작성
                   </UiButton>

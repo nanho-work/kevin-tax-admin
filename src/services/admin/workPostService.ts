@@ -49,6 +49,11 @@ export async function fetchAdminWorkPostDetail(postId: number): Promise<WorkPost
   return res.data
 }
 
+export async function markAdminWorkPostView(postId: number): Promise<WorkPostActionResponse> {
+  const res = await adminHttp.post<WorkPostActionResponse>(`${BASE}/${postId}/view`)
+  return res.data
+}
+
 export async function updateAdminWorkPostReceiptStatus(
   postId: number,
   status: Exclude<WorkPostReceiptStatus, 'unread'>
@@ -68,4 +73,3 @@ export async function setAdminWorkPostHidden(
   })
   return res.data
 }
-

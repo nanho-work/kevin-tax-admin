@@ -23,6 +23,7 @@ function ProtectedClientShell({
   useEffect(() => {
     const saved = window.localStorage.getItem('client_sidebar_collapsed')
     if (saved === '1') setIsSidebarCollapsed(true)
+    if (saved === '0') setIsSidebarCollapsed(false)
   }, [])
 
   useEffect(() => {
@@ -44,7 +45,9 @@ function ProtectedClientShell({
       <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${effectiveCollapsed ? 'w-14' : 'w-[260px]'}`}>
         <ClientSidebar
           collapsed={effectiveCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+          onToggleCollapse={() =>
+            setIsSidebarCollapsed((prev) => (isBoardRoute ? false : !prev))
+          }
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">

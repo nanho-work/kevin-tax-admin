@@ -7,6 +7,7 @@ import UiButton from '@/components/common/UiButton'
 import {
   fetchAdminWorkPostDetail,
   getAdminWorkPostErrorMessage,
+  markAdminWorkPostView,
   setAdminWorkPostHidden,
   updateAdminWorkPostReceiptStatus,
 } from '@/services/admin/workPostService'
@@ -17,6 +18,9 @@ const postTypeLabelMap = {
   notice: '공지사항',
   task: '업무지시',
 } as const
+
+const VIEW_MARK_DEDUPE_MS = 2500
+const recentViewMarkAtByPostId = new Map<number, number>()
 
 export default function AdminWorkPostDetailPage() {
   const params = useParams<{ postId: string }>()
@@ -58,6 +62,15 @@ export default function AdminWorkPostDetailPage() {
     void updateAdminWorkPostReceiptStatus(postId, 'read').catch(() => {})
   }, [post, postId])
 
+  useEffect(() => {
+    if (!Number.isFinite(postId) || postId <= 0) return
+    const now = Date.now()
+    const lastMarkedAt = recentViewMarkAtByPostId.get(postId) || 0
+    if (now - lastMarkedAt < VIEW_MARK_DEDUPE_MS) return
+    recentViewMarkAtByPostId.set(postId, now)
+    void markAdminWorkPostView(postId).catch(() => {})
+  }, [postId])
+
   const handleUpdateStatus = async (
     nextStatus: Exclude<WorkPostReceiptStatus, 'unread'>,
   ) => {
@@ -87,17 +100,7 @@ export default function AdminWorkPostDetailPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-5">
-        <div>
-          <h1 className="text-lg font-semibold text-neutral-900">게시글 상세</h1>
-          <p className="mt-1 text-sm text-neutral-500">수신한 게시글 내용을 확인합니다.</p>
-        </div>
-        <UiButton variant="secondary" onClick={() => router.push(backHref)}>
-          목록으로
-        </UiButton>
-      </div>
-
+    <section className="-m-6 min-h-[calc(100vh-64px)] bg-white p-6 space-y-4">
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
         {loading ? (
           <p className="text-sm text-zinc-500">불러오는 중...</p>
@@ -167,7 +170,12 @@ export default function AdminWorkPostDetailPage() {
           </div>
         )}
       </div>
+
+      <div className="px-1">
+        <UiButton variant="secondary" onClick={() => router.push(backHref)}>
+          목록으로
+        </UiButton>
+      </div>
     </section>
   )
 }
-

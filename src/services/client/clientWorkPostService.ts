@@ -67,6 +67,11 @@ export async function fetchClientWorkPostDetail(postId: number): Promise<WorkPos
   return res.data
 }
 
+export async function markClientWorkPostView(postId: number): Promise<WorkPostActionResponse> {
+  const res = await clientHttp.post<WorkPostActionResponse>(`${BASE}/${postId}/view`)
+  return res.data
+}
+
 export async function updateClientWorkPost(postId: number, payload: WorkPostUpdatePayload): Promise<WorkPostDetail> {
   const res = await clientHttp.patch<WorkPostDetail>(`${BASE}/${postId}`, payload)
   return res.data
