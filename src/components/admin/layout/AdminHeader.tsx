@@ -64,6 +64,7 @@ const Header = () => {
     if (pathname.startsWith('/admin/mail/compose')) return '메일 > 메일작성'
     if (pathname.startsWith('/admin/mail/accounts')) return '메일 > 설정'
     if (pathname.startsWith('/admin/mail')) return '메일'
+    if (pathname.startsWith('/admin/docs')) return '문서함'
     if (pathname.startsWith('/admin/tax-schedule')) return '외부업무 > 고객사 일정'
     if (pathname.startsWith('/admin/staff/my-leave')) return '내부업무 > 휴가/근태관리'
     if (pathname.startsWith('/admin/staff/documents/new')) return '내부업무 > 전자문서'

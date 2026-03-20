@@ -7,6 +7,7 @@ import {
   Briefcase,
   Building2,
   ClipboardList,
+  FolderOpen,
   LayoutDashboard,
   Mail,
   Mails,
@@ -59,6 +60,7 @@ const menuSections: MenuSection[] = [
     label: '게시판',
     children: [{ label: '공지사항', href: '/admin/staff/work-posts?post_type=notice' }],
   },
+  { key: 'docs', label: '문서함', href: '/admin/docs' },
   {
     key: 'mail',
     label: '메일',
@@ -85,6 +87,7 @@ function getActiveSection(pathname: string, searchParams: URLSearchParams): stri
   }
   if (pathname.startsWith('/admin/staff')) return 'leave'
   if (pathname.startsWith('/admin/mail')) return 'mail'
+  if (pathname.startsWith('/admin/docs')) return 'docs'
   if (pathname.startsWith('/admin/companies')) return 'companies'
   if (pathname.startsWith('/admin/company-withholding')) return 'companies'
   if (pathname.startsWith('/admin/tax-schedule')) return 'companies'
@@ -132,6 +135,7 @@ function getSectionIcon(key: string) {
   if (key === 'dashboard') return LayoutDashboard
   if (key === 'leave') return Briefcase
   if (key === 'board') return ClipboardList
+  if (key === 'docs') return FolderOpen
   if (key === 'mail') return Mail
   if (key === 'companies') return Building2
   return Briefcase
@@ -143,7 +147,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const router = useRouter()
   const { session, loading: sessionLoading } = useAdminSessionContext()
 
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'board' | 'mail' | 'companies'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -183,7 +187,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname, searchParams)
     if (!activeKey) return
-    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'board' | 'mail' | 'companies')
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies')
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -335,6 +339,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       active: activeSection === 'board',
     },
     {
+      key: 'docs',
+      label: '문서함',
+      href: '/admin/docs',
+      icon: FolderOpen,
+      active: activeSection === 'docs',
+    },
+    {
       key: 'mail',
       label: '메일',
       href: '/admin/mail/inbox',
@@ -351,7 +362,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'leave' | 'board' | 'mail' | 'companies'
+    const key = sectionKey as 'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'
 
     // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
     if (!collapsed && key === activeRailSection) {
