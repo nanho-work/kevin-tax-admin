@@ -13,6 +13,7 @@ import {
   upsertMySensitiveProfile,
 } from '@/services/admin/adminSensitiveProfileService'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { emitProfileImageUpdated } from '@/utils/profileImageEvents'
 import {
   fetchMyPersonalDocumentPreviewUrl,
   fetchMyPersonalDocumentStatus,
@@ -436,6 +437,10 @@ export default function AdminPersonalDocumentPage() {
       toast.success('프로필 이미지가 저장되었습니다.')
       setProfileImageFile(null)
       await refresh()
+      emitProfileImageUpdated({
+        actorType: 'admin',
+        actorId: Number((session as any)?.account_id ?? (session as any)?.id ?? 0) || undefined,
+      })
     } catch (error: any) {
       const detail = error?.response?.data?.detail
       const message = typeof detail === 'string' ? detail : '프로필 이미지 저장에 실패했습니다.'
@@ -456,6 +461,10 @@ export default function AdminPersonalDocumentPage() {
       toast.success('프로필 이미지가 삭제되었습니다.')
       setProfileImageFile(null)
       await refresh()
+      emitProfileImageUpdated({
+        actorType: 'admin',
+        actorId: Number((session as any)?.account_id ?? (session as any)?.id ?? 0) || undefined,
+      })
     } catch (error: any) {
       const detail = error?.response?.data?.detail
       const message = typeof detail === 'string' ? detail : '프로필 이미지 삭제에 실패했습니다.'

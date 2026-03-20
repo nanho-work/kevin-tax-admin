@@ -38,6 +38,7 @@ import type {
   WorkChatReadCursor,
   WorkChatRoom,
 } from '@/types/workChat'
+import { PROFILE_IMAGE_UPDATED_EVENT } from '@/utils/profileImageEvents'
 
 type PortalType = 'admin' | 'client'
 type LauncherTab = 'employees' | 'companies' | 'rooms'
@@ -2302,6 +2303,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     }, 20_000)
     return () => window.clearInterval(timer)
   }, [open, loadParticipants])
+
+  useEffect(() => {
+    const handleProfileImageUpdated = () => {
+      void loadParticipants({ silent: true })
+      if (open) {
+        void loadRooms({ silent: true })
+      }
+    }
+    window.addEventListener(PROFILE_IMAGE_UPDATED_EVENT, handleProfileImageUpdated)
+    return () => window.removeEventListener(PROFILE_IMAGE_UPDATED_EVENT, handleProfileImageUpdated)
+  }, [loadParticipants, loadRooms, open])
 
   useEffect(() => {
     if (open) {
