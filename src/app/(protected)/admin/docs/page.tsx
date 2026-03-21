@@ -131,7 +131,7 @@ const DOCS_ERROR_CODE_MAP: Record<string, string> = {
   DOCS_ENTRY_DUPLICATE: '동일 이름 파일이 이미 존재합니다.',
   DOCS_FILE_NAME_REQUIRED: '파일명을 확인해 주세요.',
   DOCS_EMPTY_FILE: '빈 파일은 업로드할 수 없습니다.',
-  DOCS_INVALID_FILE: '허용되지 않는 파일 형식입니다.',
+  DOCS_INVALID_FILE: '파일 검증에 실패했습니다. 확장자와 실제 파일 형식을 확인해 주세요.',
   DOCS_STORAGE_KEY_FORBIDDEN: '허용되지 않는 업로드 경로입니다.',
   DOCS_S3_DELETE_FAILED: '저장소 파일 삭제에 실패했습니다.',
   DOCS_BULK_EMPTY: '선택된 파일이 없습니다.',
@@ -538,6 +538,7 @@ function reasonToMessage(reason: string | null | undefined): string {
   if (reason === 'SAME_FOLDER') return '같은 폴더라 건너뜀'
   if (reason === 'NOT_FOUND') return '파일 없음'
   if (reason === 'FORBIDDEN') return '권한 없음'
+  if (reason === 'DUPLICATE') return '대상 폴더에 같은 이름 파일이 있어 건너뜀'
   return reason
 }
 
@@ -611,6 +612,11 @@ export default function AdminDocsPage() {
     [folders, selectedFolderId]
   )
 
+  const sharedProjectRootId = useMemo(
+    () => folders.find((row) => row.system_key === 'shared_project_docs')?.id ?? null,
+    [folders]
+  )
+
   const childrenByParent = useMemo(() => {
     const map: Record<number, DocsFolderItem[]> = {}
     folders.forEach((row) => {
@@ -623,6 +629,20 @@ export default function AdminDocsPage() {
     })
     return map
   }, [folders])
+
+  const projectCollaborativeFolderIds = useMemo(() => {
+    const set = new Set<number>()
+    if (!sharedProjectRootId) return set
+    const queue: number[] = [sharedProjectRootId]
+    while (queue.length > 0) {
+      const current = queue.shift() as number
+      if (set.has(current)) continue
+      set.add(current)
+      const children = childrenByParent[current] || []
+      children.forEach((child) => queue.push(child.id))
+    }
+    return set
+  }, [childrenByParent, sharedProjectRootId])
 
   const folderById = useMemo(() => {
     const map = new Map<number, DocsFolderItem>()
@@ -667,6 +687,8 @@ export default function AdminDocsPage() {
           const candidateIds = new Set((res.items || []).map((row) => row.id))
           if (preferredFolderId && candidateIds.has(preferredFolderId)) return preferredFolderId
           if (prev && candidateIds.has(prev)) return prev
+          const sharedProjectDocs = (res.items || []).find((row) => row.system_key === 'shared_project_docs')
+          if (sharedProjectDocs) return sharedProjectDocs.id
           const personalMyDocs = (res.items || []).find((row) => row.system_key === 'personal_my_docs')
           if (personalMyDocs) return personalMyDocs.id
           const personalRoot = (res.items || []).find((row) => row.system_key === 'personal_root')
@@ -1046,15 +1068,31 @@ export default function AdminDocsPage() {
               file_name: file.name,
               content_type: file.type || 'application/octet-stream',
             })
-            await uploadFileToPresignedUrl(uploadInfo.upload_url, file, file.type || 'application/octet-stream', 30000)
-            await completeAdminDocsEntryUpload({
-              folder_id: targetFolderId,
-              file_name: file.name,
-              storage_key: uploadInfo.storage_key,
-              content_type: file.type || 'application/octet-stream',
-            })
-          } catch {
-            // presigned 업로드 실패 시 multipart 업로드로 자동 폴백
+            try {
+              await uploadFileToPresignedUrl(uploadInfo.upload_url, file, file.type || 'application/octet-stream', 30000)
+              await completeAdminDocsEntryUpload({
+                folder_id: targetFolderId,
+                file_name: file.name,
+                storage_key: uploadInfo.storage_key,
+                content_type: file.type || 'application/octet-stream',
+              })
+            } catch (uploadError) {
+              const code = getAdminDocsErrorCode(uploadError)
+              if (code) {
+                throw uploadError
+              }
+              // presigned 경로 네트워크 실패 시에만 multipart 업로드로 폴백
+              await uploadAdminDocsEntryMultipart({
+                folder_id: targetFolderId,
+                file,
+              })
+            }
+          } catch (presignedError) {
+            const code = getAdminDocsErrorCode(presignedError)
+            if (code) {
+              throw presignedError
+            }
+            // presigned-url 발급 실패가 네트워크성 오류면 multipart 폴백
             await uploadAdminDocsEntryMultipart({
               folder_id: targetFolderId,
               file,
@@ -1317,6 +1355,7 @@ export default function AdminDocsPage() {
     const isExpanded = isRootLevel || !collapsedFolderIds.has(folder.id)
     const isInlineCreateTarget = inlineCreateParentId === folder.id
     const isSystemFolder = Boolean(folder.system_key)
+    const canManageFolder = folder.scope === 'personal' || projectCollaborativeFolderIds.has(folder.id)
     return (
       <div key={folder.id}>
         <div
@@ -1381,7 +1420,7 @@ export default function AdminDocsPage() {
             {isActive ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
             <span className="truncate">{folder.name}</span>
           </button>
-          {folder.scope === 'personal' ? (
+          {canManageFolder ? (
             <div className={`mr-1 inline-flex items-center gap-0.5 transition ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
               <button
                 type="button"
@@ -1489,7 +1528,7 @@ export default function AdminDocsPage() {
               type="button"
               className="rounded px-1 py-0.5 text-zinc-700 hover:bg-zinc-100"
               onClick={() => {
-                const fallback = breadcrumbFolders[0]?.id || rootFolders[0]?.id || null
+                const fallback = sharedProjectRootId || breadcrumbFolders[0]?.id || rootFolders[0]?.id || null
                 setActivePanel('folders')
                 if (fallback) setSelectedFolderId(fallback)
               }}
