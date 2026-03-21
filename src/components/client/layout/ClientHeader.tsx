@@ -1,14 +1,11 @@
 'use client'
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import UiButton from '@/components/common/UiButton'
-import UiSearchInput from '@/components/common/UiSearchInput'
-import { uiHeaderInputClass } from '@/styles/uiClasses'
 import { logoutClient } from '@/services/client/clientAuthService'
-import { listMailAccounts } from '@/services/client/clientMailService'
 import {
   fetchClientNotificationUnreadCount,
   getClientNotificationErrorMessage,
@@ -73,15 +70,10 @@ function currentHeader(pathname: string): HeaderInfo {
 export default function ClientHeader() {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { parent, child } = currentHeader(pathname)
   const title = child ? `${parent} > ${child}` : parent
-  const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string }>>([])
-  const [headerMailAccountId, setHeaderMailAccountId] = useState('')
-  const [headerKeyword, setHeaderKeyword] = useState('')
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
-  const isClientMailInbox = pathname.startsWith('/client/mail/inbox')
   const backPath = (() => {
     if (pathname.startsWith('/client/companies/')) return '/client/companies'
     if (pathname.startsWith('/client/bookkeeping/debits/history/')) return '/client/bookkeeping/debits/history'
@@ -89,39 +81,6 @@ export default function ClientHeader() {
     if (pathname.startsWith('/client/client-management/blog/')) return '/client/client-management/blog/list'
     return null
   })()
-
-  useEffect(() => {
-    if (!isClientMailInbox) return
-    void listMailAccounts(true)
-      .then((res) => {
-        const items = (res.items || []).map((item) => ({ id: item.id, email: item.email }))
-        setMailAccounts(items)
-      })
-      .catch(() => {
-        setMailAccounts([])
-      })
-  }, [isClientMailInbox])
-
-  useEffect(() => {
-    if (!isClientMailInbox) return
-    setHeaderMailAccountId(searchParams.get('account_id') || '')
-    setHeaderKeyword(searchParams.get('q') || '')
-  }, [isClientMailInbox, searchParams])
-
-  const replaceHeaderSearch = (next: { accountId?: string; keyword?: string }) => {
-    const params = new URLSearchParams(searchParams.toString())
-    const accountId = next.accountId ?? headerMailAccountId
-    const keyword = next.keyword ?? headerKeyword
-
-    if (accountId) params.set('account_id', accountId)
-    else params.delete('account_id')
-
-    if (keyword.trim()) params.set('q', keyword.trim())
-    else params.delete('q')
-
-    const query = params.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname)
-  }
 
   const handleLogout = async () => {
     if (loggingOut) return
@@ -166,33 +125,6 @@ export default function ClientHeader() {
             )}
           </div>
           <div className="flex items-center gap-2 pr-7">
-            {isClientMailInbox ? (
-              <>
-                <select
-                  className={`${uiHeaderInputClass} w-56`}
-                  value={headerMailAccountId}
-                  onChange={(e) => {
-                    const nextAccountId = e.target.value
-                    setHeaderMailAccountId(nextAccountId)
-                    replaceHeaderSearch({ accountId: nextAccountId })
-                  }}
-                >
-                  <option value="">전체 계정</option>
-                  {mailAccounts.map((account) => (
-                    <option key={account.id} value={String(account.id)}>
-                      {account.email}
-                    </option>
-                  ))}
-                </select>
-                <UiSearchInput
-                  wrapperClassName={`${uiHeaderInputClass} w-56`}
-                  value={headerKeyword}
-                  onChange={setHeaderKeyword}
-                  placeholder="제목/발신자/본문 검색"
-                  onSubmit={() => replaceHeaderSearch({ keyword: headerKeyword })}
-                />
-              </>
-            ) : null}
             <PortalNotificationBell
               listNotifications={listClientNotifications}
               fetchUnreadCount={fetchClientNotificationUnreadCount}

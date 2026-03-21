@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { CheckCheck, FolderInput, Mail, MailOpen, Paperclip, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
+import UiSearchInput from '@/components/common/UiSearchInput'
 import UiButton from '@/components/common/UiButton'
 import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
@@ -100,6 +101,7 @@ export function MailInboxPage({
   const [size] = useState(20)
   const [mailAccountId, setMailAccountId] = useState<number | ''>('')
   const [keyword, setKeyword] = useState('')
+  const [keywordInput, setKeywordInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null)
@@ -279,6 +281,7 @@ export function MailInboxPage({
     const readParam = searchParams.get('read')
 
     setKeyword(keywordParam ?? '')
+    setKeywordInput(keywordParam ?? '')
     if (readParam === 'read' || readParam === 'unread') setReadFilter(readParam)
     else setReadFilter('')
     if (accountIdParam) {
@@ -879,6 +882,23 @@ export function MailInboxPage({
     router.replace(query ? `${pathname}?${query}` : pathname)
   }
 
+  const applyKeywordSearch = () => {
+    const nextKeyword = keywordInput.trim()
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextKeyword) params.set('q', nextKeyword)
+    else params.delete('q')
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }
+
+  const clearKeywordSearch = () => {
+    setKeywordInput('')
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('q')
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }
+
   const handleManualSync = async () => {
     const targetAccountId = typeof mailAccountId === 'number' ? mailAccountId : null
     if (!targetAccountId) {
@@ -984,6 +1004,17 @@ export function MailInboxPage({
                 <option value="read">읽음</option>
                 <option value="unread">안읽음</option>
               </select>
+            </div>
+            <div className="min-w-[220px] max-w-[320px] flex-1">
+              <UiSearchInput
+                wrapperClassName="h-7"
+                inputClassName="text-xs"
+                value={keywordInput}
+                onChange={setKeywordInput}
+                onSubmit={applyKeywordSearch}
+                onClear={clearKeywordSearch}
+                placeholder="제목/발신자/본문 검색"
+              />
             </div>
             {includeTrash ? (
               <>

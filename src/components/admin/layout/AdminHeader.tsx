@@ -1,17 +1,15 @@
 'use client'
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import UiButton from '@/components/common/UiButton'
-import UiSearchInput from '@/components/common/UiSearchInput'
 import {
   checkInAdmin,
   checkOutAdmin,
   getAttendanceLogs,
 } from '@/services/admin/attendanceLogService'
-import { listMailAccounts } from '@/services/admin/mailService'
 import { logoutAdmin } from '@/services/admin/adminService'
 import {
   fetchAdminNotificationUnreadCount,
@@ -22,17 +20,11 @@ import {
 } from '@/services/admin/notificationService'
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
-import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
-import { uiHeaderInputClass } from '@/styles/uiClasses'
 
 const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { session } = useAdminSessionContext()
-  const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string }>>([])
-  const [headerMailAccountId, setHeaderMailAccountId] = useState('')
-  const [headerKeyword, setHeaderKeyword] = useState('')
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null)
   const [isProfileImageBroken, setIsProfileImageBroken] = useState(false)
@@ -47,7 +39,6 @@ const Header = () => {
   )
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
-  const isAdminMailInbox = pathname.startsWith('/admin/mail/inbox')
   const roleName = (session as any)?.role_name ?? (session as any)?.role?.name ?? ''
   const companyName = (session as any)?.client?.company_name ?? ''
   const profileImageUrl =
@@ -91,25 +82,6 @@ const Header = () => {
     }
     return null
   }, [pathname])
-
-  useEffect(() => {
-    if (!isAdminMailInbox) return
-    void listMailAccounts(true)
-      .then((res) => {
-        const visibleItems = filterAdminVisibleMailAccounts(res.items || [], session?.id)
-        const items = visibleItems.map((item) => ({ id: item.id, email: item.email }))
-        setMailAccounts(items)
-      })
-      .catch(() => {
-        setMailAccounts([])
-      })
-  }, [isAdminMailInbox, session?.id])
-
-  useEffect(() => {
-    if (!isAdminMailInbox) return
-    setHeaderMailAccountId(searchParams.get('account_id') || '')
-    setHeaderKeyword(searchParams.get('q') || '')
-  }, [isAdminMailInbox, searchParams])
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -196,21 +168,6 @@ const Header = () => {
     }
   }
 
-  const replaceHeaderSearch = (next: { accountId?: string; keyword?: string }) => {
-    const params = new URLSearchParams(searchParams.toString())
-    const accountId = next.accountId ?? headerMailAccountId
-    const keyword = next.keyword ?? headerKeyword
-
-    if (accountId) params.set('account_id', accountId)
-    else params.delete('account_id')
-
-    if (keyword.trim()) params.set('q', keyword.trim())
-    else params.delete('q')
-
-    const query = params.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname)
-  }
-
   const handleLogout = async () => {
     if (loggingOut) return
     setLoggingOut(true)
@@ -262,33 +219,6 @@ const Header = () => {
             )}
           </div>
           <div className="flex items-center gap-2 pr-7">
-            {isAdminMailInbox ? (
-              <>
-                <select
-                  className={`${uiHeaderInputClass} w-56`}
-                  value={headerMailAccountId}
-                  onChange={(e) => {
-                    const nextAccountId = e.target.value
-                    setHeaderMailAccountId(nextAccountId)
-                    replaceHeaderSearch({ accountId: nextAccountId })
-                  }}
-                >
-                  <option value="">전체 계정</option>
-                  {mailAccounts.map((account) => (
-                    <option key={account.id} value={String(account.id)}>
-                      {account.email}
-                    </option>
-                  ))}
-                </select>
-                <UiSearchInput
-                  wrapperClassName={`${uiHeaderInputClass} w-56`}
-                  value={headerKeyword}
-                  onChange={setHeaderKeyword}
-                  placeholder="제목/발신자/본문 검색"
-                  onSubmit={() => replaceHeaderSearch({ keyword: headerKeyword })}
-                />
-              </>
-            ) : null}
             <div className="hidden items-center gap-2.5 text-xs lg:flex">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 text-[11px] font-semibold text-neutral-600">
                 {resolvedProfileImageUrl ? (

@@ -560,6 +560,7 @@ export default function AdminDocsPage() {
   const iconGridRef = useRef<HTMLDivElement | null>(null)
   const iconCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
+  const hasInitializedCollapsedTreeRef = useRef(false)
 
   const [folders, setFolders] = useState<DocsFolderItem[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
@@ -682,17 +683,30 @@ export default function AdminDocsPage() {
       setTreeLoading(true)
       try {
         const res = await fetchAdminDocsFolderTree()
+        if (!hasInitializedCollapsedTreeRef.current) {
+          const parentIds = new Set<number>()
+          ;(res.items || []).forEach((row) => {
+            if (
+              row.parent_id !== null &&
+              (res.items || []).some((candidate) => candidate.parent_id === row.id)
+            ) {
+              parentIds.add(row.id)
+            }
+          })
+          setCollapsedFolderIds(parentIds)
+          hasInitializedCollapsedTreeRef.current = true
+        }
         setFolders(res.items || [])
         setSelectedFolderId((prev) => {
           const candidateIds = new Set((res.items || []).map((row) => row.id))
           if (preferredFolderId && candidateIds.has(preferredFolderId)) return preferredFolderId
           if (prev && candidateIds.has(prev)) return prev
-          const sharedProjectDocs = (res.items || []).find((row) => row.system_key === 'shared_project_docs')
-          if (sharedProjectDocs) return sharedProjectDocs.id
-          const personalMyDocs = (res.items || []).find((row) => row.system_key === 'personal_my_docs')
-          if (personalMyDocs) return personalMyDocs.id
           const personalRoot = (res.items || []).find((row) => row.system_key === 'personal_root')
           if (personalRoot) return personalRoot.id
+          const personalMyDocs = (res.items || []).find((row) => row.system_key === 'personal_my_docs')
+          if (personalMyDocs) return personalMyDocs.id
+          const sharedProjectDocs = (res.items || []).find((row) => row.system_key === 'shared_project_docs')
+          if (sharedProjectDocs) return sharedProjectDocs.id
           return (res.items || [])[0]?.id ?? null
         })
       } catch (error) {
@@ -1351,8 +1365,7 @@ export default function AdminDocsPage() {
     const isActive = selectedFolderId === folder.id
     const children = childrenByParent[folder.id] || []
     const hasChildren = children.length > 0
-    const isRootLevel = depth === 0
-    const isExpanded = isRootLevel || !collapsedFolderIds.has(folder.id)
+    const isExpanded = !collapsedFolderIds.has(folder.id)
     const isInlineCreateTarget = inlineCreateParentId === folder.id
     const isSystemFolder = Boolean(folder.system_key)
     const canManageFolder = folder.scope === 'personal' || projectCollaborativeFolderIds.has(folder.id)
@@ -1369,7 +1382,6 @@ export default function AdminDocsPage() {
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                if (isRootLevel) return
                 setCollapsedFolderIds((prev) => {
                   const next = new Set(prev)
                   if (next.has(folder.id)) next.delete(folder.id)
@@ -1377,10 +1389,7 @@ export default function AdminDocsPage() {
                   return next
                 })
               }}
-              disabled={isRootLevel}
-              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 ${
-                isRootLevel ? 'cursor-default opacity-40' : 'hover:bg-zinc-100'
-              }`}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-100"
               aria-label={isExpanded ? '하위 폴더 접기' : '하위 폴더 펼치기'}
             >
               <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
