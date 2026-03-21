@@ -162,7 +162,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const [folderEditLoading, setFolderEditLoading] = useState(false)
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
-  const shouldHideSecondSidebar = activeRailSection === 'board'
+  const shouldHideSecondSidebar = activeRailSection === 'board' || activeRailSection === 'docs'
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -364,8 +364,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
     const key = sectionKey as 'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'
 
-    // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
-    if (!collapsed && key === activeRailSection) {
+    // 같은 아이콘 재클릭:
+    // - 2단 열림 상태면 닫기(페이지 유지)
+    // - 2단 닫힘 상태면 열기(페이지 유지)
+    if (key === activeRailSection) {
       onToggleCollapse?.()
       return
     }

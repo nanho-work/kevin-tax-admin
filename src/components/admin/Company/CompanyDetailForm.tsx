@@ -11,6 +11,7 @@ import {
   getCompanyAccounts as getAdminCompanyAccounts,
   updateCompanyAccountStatus as updateAdminCompanyAccountStatus,
 } from '@/services/admin/companyAccountService'
+import { downloadFileViaBlob } from '@/services/download/browserDownload'
 import type { CompanyCreateRequest, CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
 import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
 import type {
@@ -222,6 +223,15 @@ function toDateTime(value?: string | null): string {
   return value
 }
 
+function formatBytes(value?: number | null): string {
+  const bytes = Number(value || 0)
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0B'
+  if (bytes < 1024) return `${Math.floor(bytes)}B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)}KB`
+  if (bytes < 1024 ** 3) return `${(bytes / (1024 ** 2)).toFixed(1)}MB`
+  return `${(bytes / (1024 ** 3)).toFixed(1)}GB`
+}
+
 function buildPreviewSrc(previewUrl: string, fileName?: string | null): string {
   const isPdf = (fileName ?? '').toLowerCase().endsWith('.pdf')
   if (!isPdf) return previewUrl
@@ -240,23 +250,6 @@ function isImageFile(fileName?: string | null): boolean {
     lower.endsWith('.webp') ||
     lower.endsWith('.bmp')
   )
-}
-
-async function forceBrowserDownload(url: string, fileName: string) {
-  const response = await fetch(url, { credentials: 'omit' })
-  if (!response.ok) {
-    throw new Error(`download failed: ${response.status}`)
-  }
-  const blob = await response.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = fileName
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(objectUrl)
 }
 
 export default function CompanyDetailForm({
@@ -350,13 +343,15 @@ export default function CompanyDetailForm({
 
   const activePreview = documentPreviews[activePreviewDocType] || null
   const supportsDocumentCrud = !isCreateMode && Boolean(uploadDocumentFn || uploadBusinessLicenseFn)
-  const supportsCustomDocumentCrud =
+  const supportsCustomDocumentRead =
     !isCreateMode &&
     Boolean(listCustomDocumentsFn) &&
-    Boolean(uploadCustomDocumentFn) &&
-    Boolean(deleteCustomDocumentFn) &&
     Boolean(getCustomDocumentDownloadUrlFn) &&
     Boolean(getCustomDocumentPreviewUrlFn)
+  const supportsCustomDocumentWrite =
+    !isCreateMode &&
+    Boolean(uploadCustomDocumentFn) &&
+    Boolean(deleteCustomDocumentFn)
   const sortedCustomDocuments = useMemo(
     () =>
       [...customDocuments].sort(
@@ -376,6 +371,16 @@ export default function CompanyDetailForm({
   const extractApiDetail = (error: unknown): string | null => {
     const detail = (error as any)?.response?.data?.detail
     if (typeof detail === 'string' && detail.trim()) return detail
+    if (detail && typeof detail === 'object') {
+      const code = typeof detail.code === 'string' ? detail.code : ''
+      const message = typeof detail.message === 'string' && detail.message.trim() ? detail.message.trim() : ''
+      if (code === 'DOCS_QUOTA_EXCEEDED') {
+        const availableBytes = Number(detail.available_bytes || 0)
+        const incomingBytes = Number(detail.incoming_size_bytes || 0)
+        return `문서함 용량이 부족합니다. 남은 용량 ${formatBytes(availableBytes)} / 업로드 파일 ${formatBytes(incomingBytes)}`
+      }
+      if (message) return message
+    }
     if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') return detail[0].msg
     return null
   }
@@ -790,7 +795,7 @@ export default function CompanyDetailForm({
       setCustomDocTypeInput('')
       setCustomDocFile(null)
       if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
-      toast.success('기타 관련 서류가 등록되었습니다.')
+      toast.success('기타 관련 서류가 등록되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.')
       await loadCustomDocuments()
     } catch (error) {
       toast.error(extractApiDetail(error) || '기타 관련 서류 등록 중 오류가 발생했습니다.')
@@ -820,7 +825,7 @@ export default function CompanyDetailForm({
         const res = await getCustomDocumentDownloadUrlFn!(companyId, documentId)
         const resolvedFileName = fileName || res.file_name
         try {
-          await forceBrowserDownload(res.download_url, resolvedFileName)
+          await downloadFileViaBlob(res.download_url, resolvedFileName)
         } catch {
           const link = document.createElement('a')
           link.href = res.download_url
@@ -846,7 +851,7 @@ export default function CompanyDetailForm({
       toast.error('커스텀 문서 삭제 API가 아직 준비되지 않았습니다.')
       return
     }
-    if (!confirm('등록된 기타 관련 서류를 삭제하시겠습니까?')) return
+    if (!confirm('등록된 기타 관련 서류를 삭제하시겠습니까?\n삭제 시 휴지통으로 이동됩니다.')) return
     try {
       await deleteCustomDocumentFn(companyId, documentId)
       toast.success('문서가 삭제되었습니다.')
@@ -1304,62 +1309,68 @@ export default function CompanyDetailForm({
           {enableCustomDocuments ? (
             <Section title="기타 관련 서류">
               <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_minmax(240px,320px)] md:grid-rows-[auto_auto]">
-                  <div className="md:row-span-2">
+                {supportsCustomDocumentWrite ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_minmax(240px,320px)] md:grid-rows-[auto_auto]">
+                    <div className="md:row-span-2">
+                      <input
+                        ref={customDocFileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => setCustomDocFile(e.target.files?.[0] || null)}
+                      />
+                      <FileDropzone
+                        onFilesDrop={(files) => setCustomDocFile(files[0] || null)}
+                        onClick={() => customDocFileInputRef.current?.click()}
+                        className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                        idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
+                        activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
+                        title={customDocFile?.name || '파일 드래그 또는 클릭 선택'}
+                      >
+                        <span className="max-w-[440px] truncate">
+                          {customDocFile?.name || '파일 드래그 또는 클릭 선택'}
+                        </span>
+                      </FileDropzone>
+                    </div>
+
                     <input
-                      ref={customDocFileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => setCustomDocFile(e.target.files?.[0] || null)}
+                      className={inputClass}
+                      placeholder="문서이름입력 (예: 주주명부)"
+                      value={customDocTypeInput}
+                      onChange={(e) => setCustomDocTypeInput(e.target.value)}
                     />
-                    <FileDropzone
-                      onFilesDrop={(files) => setCustomDocFile(files[0] || null)}
-                      onClick={() => customDocFileInputRef.current?.click()}
-                      className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
-                      idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
-                      activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
-                      title={customDocFile?.name || '파일 드래그 또는 클릭 선택'}
-                    >
-                      <span className="max-w-[440px] truncate">
-                        {customDocFile?.name || '파일 드래그 또는 클릭 선택'}
-                      </span>
-                    </FileDropzone>
+
+                    <div className="flex items-center gap-2">
+                      {customDocFile ? (
+                        <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomDocFile(null)
+                            if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
+                          }}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100"
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomDocument}
+                          disabled={uploadingCustomDoc || !supportsCustomDocumentWrite}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                          {uploadingCustomDoc ? '등록 중...' : '등록'}
+                        </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
+                ) : null}
 
-                  <input
-                    className={inputClass}
-                    placeholder="문서이름입력 (예: 주주명부)"
-                    value={customDocTypeInput}
-                    onChange={(e) => setCustomDocTypeInput(e.target.value)}
-                  />
+                {supportsCustomDocumentRead && !supportsCustomDocumentWrite ? (
+                  <p className="text-xs text-zinc-500">읽기 전용 권한입니다. 미리보기/다운로드만 가능합니다.</p>
+                ) : null}
 
-                  <div className="flex items-center gap-2">
-                    {customDocFile ? (
-                      <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomDocFile(null)
-                          if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
-                        }}
-                        className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100"
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddCustomDocument}
-                        disabled={uploadingCustomDoc || !supportsCustomDocumentCrud}
-                        className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                      >
-                        {uploadingCustomDoc ? '등록 중...' : '등록'}
-                      </button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-
-                {!supportsCustomDocumentCrud ? (
+                {!supportsCustomDocumentRead ? (
                   <p className="text-xs text-zinc-500">커스텀 문서 API 연동 전입니다.</p>
                 ) : null}
 
@@ -1413,7 +1424,7 @@ export default function CompanyDetailForm({
                             <td className="px-3 py-2 text-center text-zinc-700">
                               <div className="flex items-center justify-center gap-2">
                                 <span>{doc.downloadCount}</span>
-                                {supportsCustomDocumentCrud ? (
+                                {supportsCustomDocumentWrite ? (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteCustomDocument(doc.id)}

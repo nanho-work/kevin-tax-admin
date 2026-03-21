@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type React from 'react'
 import axios from 'axios'
 import {
   ChevronDown,
@@ -14,6 +15,7 @@ import {
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Plus,
   Save,
   Search,
@@ -181,6 +183,12 @@ function buildRoomTitle(room: WorkChatRoom, roomMembers: WorkChatParticipant[]):
 function getRoomDisplayName(room: WorkChatRoom): string {
   if (room.display_name && room.display_name.trim()) return room.display_name
   if (room.name && room.name.trim()) return room.name
+  if (Array.isArray(room.members) && room.members.length > 0) {
+    const names = room.members
+      .map((member) => member.name?.trim())
+      .filter((name): name is string => Boolean(name))
+    if (names.length > 0) return names.join(', ')
+  }
   return `대화방 #${room.id}`
 }
 
@@ -260,6 +268,53 @@ function renderHighlightedText(
     ) : (
       <span key={`${part}-${idx}`}>{part}</span>
     )
+  )
+}
+
+function ChatBubble({
+  align,
+  tone,
+  className,
+  children,
+  onContextMenu,
+}: {
+  align: 'left' | 'right'
+  tone: 'mine' | 'other'
+  className?: string
+  children: React.ReactNode
+  onContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void
+}) {
+  const isRight = align === 'right'
+  const isMine = tone === 'mine'
+
+  return (
+    <div
+      onContextMenu={onContextMenu}
+      className={`relative rounded-lg border ${
+        isMine ? 'border-sky-600 bg-sky-600 text-white' : 'border-zinc-200 bg-white text-zinc-800'
+      } ${className || ''}`}
+    >
+      {children}
+      <span
+        className={`pointer-events-none absolute top-3 ${isRight ? '-right-[7px]' : '-left-[7px]'}`}
+        aria-hidden="true"
+      >
+        <svg
+          width="8"
+          height="11"
+          viewBox="0 0 8 11"
+          className={`${isRight ? 'scale-x-[-1]' : ''} scale-y-[-1]`}
+        >
+          <path
+            d="M8 0.7 C4.3 2 2.2 4 0 8.9 L8 7.1 Z"
+            fill={isMine ? '#0284c7' : '#ffffff'}
+            stroke={isMine ? '#0284c7' : '#e4e4e7'}
+            strokeWidth="1"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </div>
   )
 }
 
@@ -484,6 +539,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const [showRoomMembersPanel, setShowRoomMembersPanel] = useState(false)
   const [leavingRoom, setLeavingRoom] = useState(false)
   const [leavingRoomId, setLeavingRoomId] = useState<number | null>(null)
+  const [renamingRoomId, setRenamingRoomId] = useState<number | null>(null)
   const [updatingRoomPreference, setUpdatingRoomPreference] = useState(false)
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [dragOverComposer, setDragOverComposer] = useState(false)
@@ -1378,6 +1434,62 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     }
   }, [api, getErrorMessage, loadRooms, selectedRoom, updatingRoomPreference])
 
+  const getDefaultGroupRoomName = useCallback((members: WorkChatParticipant[]) => {
+    const names = members
+      .map((member) => member.name?.trim())
+      .filter((name): name is string => Boolean(name))
+    if (names.length === 0) return ''
+    const joined = names.join(', ')
+    if (joined.length <= 120) return joined
+    return `${joined.slice(0, 117)}...`
+  }, [])
+
+  const handleRenameRoom = useCallback(
+    async (room: WorkChatRoom, options?: { closeActionMenu?: boolean }) => {
+      if (renamingRoomId) return
+      if (!room || room.room_type !== 'group') return
+
+      const currentName = getRoomDisplayName(room)
+      const inputName = window.prompt('대화방 이름을 입력해 주세요.', currentName || '')
+      if (inputName == null) return
+      const nextName = inputName.trim()
+      if (!nextName) {
+        toast.error('대화방 이름을 입력해 주세요.')
+        return
+      }
+
+      const currentRawName = (room.display_name || room.name || '').trim()
+      if (currentRawName && currentRawName === nextName) return
+
+      try {
+        setRenamingRoomId(room.id)
+        const updatedRoom = await api.renameRoom(room.id, nextName)
+        setRooms((prev) =>
+          prev.map((row) =>
+            row.id === room.id
+              ? {
+                  ...row,
+                  ...updatedRoom,
+                  name: updatedRoom.name || nextName,
+                  display_name: updatedRoom.display_name || updatedRoom.name || nextName,
+                }
+              : row
+          )
+        )
+        toast.success('대화방 이름을 변경했습니다.')
+        void loadRooms({ silent: true })
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      } finally {
+        setRenamingRoomId(null)
+        if (options?.closeActionMenu) {
+          setRoomActionMenuOpen(false)
+        }
+      }
+    },
+    [api, getErrorMessage, loadRooms, renamingRoomId]
+  )
+
   const handleStartChat = useCallback(
     async (target: WorkChatParticipant) => {
       const key = `${target.member_type}:${target.member_id}`
@@ -1641,9 +1753,12 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     }
     try {
       setCreatingGroupRoom(true)
+      const manualName = groupRoomName.trim()
+      const defaultName = getDefaultGroupRoomName(selectedGroupMembers)
+      const roomName = manualName || defaultName || undefined
       const res = await api.createRoom({
         room_type: 'group',
-        name: groupRoomName.trim() || undefined,
+        name: roomName,
         members: selectedGroupMembers.map((member) => ({
           member_type: member.member_type,
           member_id: member.member_id,
@@ -1732,6 +1847,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
     actor.type,
     api,
     creatingGroupRoom,
+    getDefaultGroupRoomName,
     getErrorMessage,
     groupRoomName,
     handleCloseGroupCreateModal,
@@ -2179,7 +2295,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       event.preventDefault()
       event.stopPropagation()
       const menuWidth = 156
-      const menuHeight = 44
+      const menuHeight = 82
       const viewportPadding = 8
       const x = Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding)
       const y = Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding)
@@ -3718,51 +3834,55 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                               }}
                               className="min-w-0 flex-1 text-left"
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0 flex flex-1 items-center gap-1.5">
-                                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
-                                    {room.room_type === 'group' ? (
-                                      <UsersRound className="h-3.5 w-3.5 text-zinc-500" />
-                                    ) : roomAvatarUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={roomAvatarUrl}
-                                        alt={roomAvatarName}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : (
-                                      <span className="text-[10px] font-semibold text-zinc-700">
-                                        {getParticipantInitial(roomAvatarName)}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <p className="truncate text-xs font-medium text-zinc-800">
-                                    {getRoomDisplayName(room)}
-                                  </p>
-                                  {room.is_hidden ? (
-                                    <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
-                                      숨김
+                              <div className="grid grid-cols-[36px_minmax(0,1fr)] grid-rows-[auto_auto] gap-x-2 gap-y-0.5">
+                                <span className="row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                                  {room.room_type === 'group' ? (
+                                    <UsersRound className="h-4 w-4 text-zinc-500" />
+                                  ) : roomAvatarUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={roomAvatarUrl}
+                                      alt={roomAvatarName}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-xs font-semibold text-zinc-700">
+                                      {getParticipantInitial(roomAvatarName)}
                                     </span>
-                                  ) : null}
-                                  {room.is_muted ? (
-                                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                                      알림끔
+                                  )}
+                                </span>
+
+                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                  <div className="min-w-0 flex items-center gap-1.5">
+                                    <p className="truncate text-xs font-medium text-zinc-800">
+                                      {getRoomDisplayName(room)}
+                                    </p>
+                                    {room.is_hidden ? (
+                                      <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
+                                        숨김
+                                      </span>
+                                    ) : null}
+                                    {room.is_muted ? (
+                                      <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                        알림끔
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {room.unread_count > 0 ? (
+                                    <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      {room.unread_count_display}
                                     </span>
                                   ) : null}
                                 </div>
-                                {room.unread_count > 0 ? (
-                                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                                    {room.unread_count_display}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="mt-0.5 flex items-center justify-between gap-2">
-                                <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
-                                  {room.last_message_preview || '메시지 없음'}
-                                </p>
-                                <p className="shrink-0 text-right text-[10px] text-zinc-400">
-                                  {formatRoomListDateTime(room.last_message_at)}
-                                </p>
+
+                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                  <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
+                                    {room.last_message_preview || '메시지 없음'}
+                                  </p>
+                                  <p className="shrink-0 text-right text-[10px] text-zinc-400">
+                                    {formatRoomListDateTime(room.last_message_at)}
+                                  </p>
+                                </div>
                               </div>
                             </button>
                           </div>
@@ -3800,6 +3920,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
               <p className="truncate text-sm font-semibold text-zinc-900">
                 {buildRoomTitle(selectedRoom, roomMembers)}
               </p>
+              {selectedRoom.room_type === 'group' ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRenameRoom(selectedRoom)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="대화방명 변경"
+                  disabled={Boolean(renamingRoomId === selectedRoom.id)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
               <p className="shrink-0 text-[11px] text-zinc-500">
                 {selectedRoomMemberSummary.label} {selectedRoomMemberSummary.count}명
               </p>
@@ -3838,6 +3969,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                     >
                       대화상대보기
                       <PanelRightOpen className="h-3.5 w-3.5 text-zinc-500" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRenameRoom(selectedRoom, { closeActionMenu: true })}
+                      className="w-full rounded px-2 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400"
+                      disabled={selectedRoom?.room_type !== 'group' || Boolean(renamingRoomId === selectedRoom?.id)}
+                    >
+                      {renamingRoomId === selectedRoom?.id ? '처리 중...' : '대화방명 변경'}
                     </button>
                     <button
                       type="button"
@@ -4060,9 +4199,9 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                       ) : (
                         <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                           <div className={`flex w-full flex-col ${mine ? 'items-end' : 'items-start'}`}>
-                            {showSenderLabel ? (
-                              <div className="mb-0.5 flex items-center gap-1.5 px-1">
-                                <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                            {showSenderLabel && !mine ? (
+                              <div className="grid w-full max-w-[calc(68.6667%+36px)] grid-cols-[36px_minmax(0,1fr)] grid-rows-[auto_auto] gap-x-1.5">
+                                <span className="row-span-2 inline-flex h-9 w-9 shrink-0 items-center justify-center self-start overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
                                   {senderAvatarUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
@@ -4071,58 +4210,205 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                       className="h-full w-full object-cover"
                                     />
                                   ) : (
-                                    <span className="text-[9px] font-semibold text-zinc-700">
+                                    <span className="text-xs font-semibold text-zinc-700">
                                       {getParticipantInitial(senderLabel)}
                                     </span>
                                   )}
                                 </span>
-                                <p className="text-[11px] font-medium text-zinc-500">{senderLabel}</p>
-                              </div>
-                            ) : null}
-                            <div className={`flex w-full items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
-                              {mine ? (
-                                <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
-                                  <span className={`${allCounterpartsRead ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                                    {showReadStatus ? readStatusLabel : ''}
+                                <p className="truncate text-xs font-medium text-zinc-500">{senderLabel}</p>
+                                <div className="flex items-end gap-1.5">
+                                  {message.is_deleted ? (
+                                    <p className="max-w-full px-1 py-0.5 text-[11px] text-zinc-500">
+                                      삭제된 메시지입니다.
+                                    </p>
+                                  ) : (
+                                    <ChatBubble
+                                      align="left"
+                                      tone="other"
+                                      className={`w-full px-2 py-1 transition ${
+                                        isJumpHighlight
+                                          ? 'ring-2 ring-amber-400'
+                                          : ''
+                                      } ${
+                                        isSearchHit && !isJumpHighlight
+                                          ? 'ring-1 ring-amber-300'
+                                          : ''
+                                      } ${
+                                        isActiveSearchHit && !isJumpHighlight
+                                          ? 'ring-2 ring-amber-400'
+                                          : ''
+                                      }`}
+                                    >
+                                      {isAttachmentMessage && attachment ? (
+                                        <div className="space-y-2">
+                                          <div className="flex items-start gap-2">
+                                            <File className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                                            <div className="min-w-0">
+                                              <p className="truncate text-sm font-medium">
+                                                {attachment.file_name}
+                                              </p>
+                                              <p className="text-[11px] text-zinc-500">
+                                                {formatFileSize(attachment.file_size)}
+                                                {attachment.expires_at
+                                                  ? ` · 만료 ${formatKoreanDateTime(attachment.expires_at)}`
+                                                  : ''}
+                                              </p>
+                                            </div>
+                                          </div>
+                                          {isImageKind && !isExpiredAttachment ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => void handleOpenImageViewer(attachment.id, attachment.file_name)}
+                                              className="block w-full overflow-hidden rounded border border-zinc-200 bg-zinc-100"
+                                            >
+                                              {inlinePreviewUrl ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                  src={inlinePreviewUrl}
+                                                  alt={attachment.file_name}
+                                                  className="max-h-56 w-full object-contain"
+                                                  onLoad={() => {
+                                                    inlineAttachmentRetryRef.current.delete(attachment.id)
+                                                  }}
+                                                  onError={() => {
+                                                    void handleInlineAttachmentImageError(attachment.id)
+                                                  }}
+                                                />
+                                              ) : (
+                                                <div className="flex h-32 items-center justify-center text-xs text-zinc-500">
+                                                  {isInlineAttachmentLoading
+                                                    ? '이미지 불러오는 중...'
+                                                    : isInlinePreviewExpired
+                                                      ? '미리보기 만료됨 · 클릭하여 다시보기'
+                                                      : '이미지 준비 중...'}
+                                                </div>
+                                              )}
+                                            </button>
+                                          ) : null}
+                                          {isExpiredAttachment ? (
+                                            <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-600">
+                                              만료된 파일입니다.
+                                            </div>
+                                          ) : null}
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <div className="group relative">
+                                              <button
+                                                type="button"
+                                                onClick={() => void handleDownloadAttachment(attachment.id)}
+                                                disabled={isExpiredAttachment}
+                                                aria-label="다운로드"
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                              >
+                                                <Download className="h-3.5 w-3.5" />
+                                              </button>
+                                              <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                                다운로드
+                                              </div>
+                                            </div>
+                                            <div className="group relative">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  isImageKind
+                                                    ? void handleOpenImageViewer(attachment.id, attachment.file_name)
+                                                    : void handlePreviewAttachment(attachment.id)
+                                                }
+                                                disabled={
+                                                  isExpiredAttachment ||
+                                                  (!isImageKind &&
+                                                    !canPreviewAttachment(attachment.content_type, attachment.file_name))
+                                                }
+                                                aria-label={isImageKind ? '확대' : '미리보기'}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                              >
+                                                <Eye className="h-3.5 w-3.5" />
+                                              </button>
+                                              <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                                {isImageKind ? '확대' : '미리보기'}
+                                              </div>
+                                            </div>
+                                            {canSaveToCompany ? (
+                                              <div className="group relative">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleOpenSaveCompanyPanel(
+                                                      attachment.id,
+                                                      attachment.file_name
+                                                    )
+                                                  }
+                                                  disabled={isExpiredAttachment}
+                                                  aria-label="고객사 저장"
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-[11px] text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                  <Save className="h-3.5 w-3.5" />
+                                                </button>
+                                                <div className="pointer-events-none absolute -top-7 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity duration-150 delay-500 group-hover:opacity-100">
+                                                  고객사 저장
+                                                </div>
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p className="whitespace-pre-wrap text-xs">
+                                          {renderHighlightedText(
+                                            message.body || '',
+                                            roomSearchKeyword,
+                                            'rounded bg-amber-200 px-0.5 text-zinc-900'
+                                          )}
+                                        </p>
+                                      )}
+                                    </ChatBubble>
+                                  )}
+                                  <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                                    {formatTimeOnly(message.created_at)}
                                   </span>
-                                  {showReadStatus ? ' · ' : ''}
-                                  {formatTimeOnly(message.created_at)}
-                                </span>
-                              ) : null}
-                              {message.is_deleted ? (
-                                <p className="max-w-[66.6667%] px-1 py-0.5 text-[11px] text-zinc-500">
-                                  삭제된 메시지입니다.
-                                </p>
-                              ) : (
-                                <div
-                                  onContextMenu={(event) => {
-                                    if (!mine || message.message_type === 'system' || message.is_deleted) return
-                                    openMessageContextMenu(event, message.id)
-                                  }}
-                                  className={`w-[66.6667%] rounded-lg border px-3 py-2 transition ${
-                                    mine
-                                      ? 'border-sky-600 bg-sky-600 text-white'
-                                      : 'border-zinc-200 bg-white text-zinc-800'
-                                  } ${
-                                    isJumpHighlight
-                                      ? mine
-                                        ? 'ring-2 ring-amber-300'
-                                        : 'ring-2 ring-amber-400'
-                                      : ''
-                                  } ${
-                                    isSearchHit && !isJumpHighlight
-                                      ? mine
-                                        ? 'ring-1 ring-amber-200/90'
-                                        : 'ring-1 ring-amber-300'
-                                      : ''
-                                  } ${
-                                    isActiveSearchHit && !isJumpHighlight
-                                      ? mine
-                                        ? 'ring-2 ring-amber-200'
-                                        : 'ring-2 ring-amber-400'
-                                      : ''
-                                  }`}
-                                >
+                                </div>
+                              </div>
+                            ) : (
+                              <div className={`flex w-full items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                {mine ? (
+                                  <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
+                                    <span className={`${allCounterpartsRead ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                      {showReadStatus ? readStatusLabel : ''}
+                                    </span>
+                                    {showReadStatus ? ' · ' : ''}
+                                    {formatTimeOnly(message.created_at)}
+                                  </span>
+                                ) : null}
+                                {message.is_deleted ? (
+                                  <p className="max-w-[68.6667%] px-1 py-0.5 text-[11px] text-zinc-500">
+                                    삭제된 메시지입니다.
+                                  </p>
+                                ) : (
+                                  <ChatBubble
+                                    align={mine ? 'right' : 'left'}
+                                    tone={mine ? 'mine' : 'other'}
+                                    onContextMenu={(event) => {
+                                      if (!mine || message.message_type === 'system' || message.is_deleted) return
+                                      openMessageContextMenu(event, message.id)
+                                    }}
+                                    className={`w-[68.6667%] px-2 py-1 transition ${
+                                      isJumpHighlight
+                                        ? mine
+                                          ? 'ring-2 ring-amber-300'
+                                          : 'ring-2 ring-amber-400'
+                                        : ''
+                                    } ${
+                                      isSearchHit && !isJumpHighlight
+                                        ? mine
+                                          ? 'ring-1 ring-amber-200/90'
+                                          : 'ring-1 ring-amber-300'
+                                        : ''
+                                    } ${
+                                      isActiveSearchHit && !isJumpHighlight
+                                        ? mine
+                                          ? 'ring-2 ring-amber-200'
+                                          : 'ring-2 ring-amber-400'
+                                        : ''
+                                    }`}
+                                  >
                                   {isAttachmentMessage && attachment ? (
                                     <div className="space-y-2">
                                       <div className="flex items-start gap-2">
@@ -4251,7 +4537,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                       </div>
                                     </div>
                                   ) : (
-                                    <p className="whitespace-pre-wrap text-sm">
+                                    <p className="whitespace-pre-wrap text-xs">
                                       {renderHighlightedText(
                                         message.body || '',
                                         roomSearchKeyword,
@@ -4261,7 +4547,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                       )}
                                     </p>
                                   )}
-                                </div>
+                                </ChatBubble>
                               )}
                               {!mine ? (
                                 <span className="mb-1 shrink-0 text-[10px] text-zinc-400">
@@ -4269,6 +4555,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                 </span>
                               ) : null}
                             </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -4484,6 +4771,18 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                   >
                     {getRoomDisplayName(room)}
                   </p>
+                  {room.room_type === 'group' ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRenameRoom(room)}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="대화방명 변경"
+                      disabled={Boolean(renamingRoomId === room.id)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                   {room.unread_count > 0 ? (
                     <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                       {room.unread_count_display}
@@ -4593,7 +4892,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                               <div className={`flex w-full flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                                 {showSenderLabel ? (
                                   <div className="mb-0.5 flex items-center gap-1.5 px-1">
-                                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
                                       {senderAvatarUrl ? (
                                         // eslint-disable-next-line @next/next/no-img-element
                                         <img
@@ -4602,24 +4901,22 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                           className="h-full w-full object-cover"
                                         />
                                       ) : (
-                                        <span className="text-[9px] font-semibold text-zinc-700">
+                                        <span className="text-xs font-semibold text-zinc-700">
                                           {getParticipantInitial(senderLabel)}
                                         </span>
                                       )}
                                     </span>
-                                    <p className="text-[11px] font-medium text-zinc-500">{senderLabel}</p>
+                                    <p className="text-xs font-medium text-zinc-500">{senderLabel}</p>
                                   </div>
                                 ) : null}
-                                <div
+                                <ChatBubble
+                                  align={isMine ? 'right' : 'left'}
+                                  tone={isMine ? 'mine' : 'other'}
                                   onContextMenu={(event) => {
                                     if (!isMine || message.message_type === 'system' || message.is_deleted) return
                                     openMessageContextMenu(event, message.id)
                                   }}
-                                  className={`w-[66.6667%] rounded-lg border px-3 py-2 text-xs ${
-                                    isMine
-                                      ? 'border-sky-600 bg-sky-600 text-white'
-                                      : 'border-zinc-200 bg-white text-zinc-800'
-                                  }`}
+                                  className={`w-[68.6667%] px-2 py-1 text-xs ${!isMine && showSenderLabel ? 'ml-[46px]' : ''}`}
                                 >
                                   {isAttachmentMessage && attachment ? (
                                     <div className="space-y-2">
@@ -4730,7 +5027,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                   >
                                     {formatTimeOnly(message.created_at)}
                                   </p>
-                                </div>
+                                </ChatBubble>
                               </div>
                             </div>
                           )}
@@ -4820,6 +5117,22 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             top: roomContextMenu.y,
           }}
         >
+          <button
+            type="button"
+            onClick={() => {
+              const targetRoom = rooms.find((room) => room.id === roomContextMenu.roomId)
+              setRoomContextMenu(null)
+              if (!targetRoom || targetRoom.room_type !== 'group') return
+              void handleRenameRoom(targetRoom)
+            }}
+            disabled={
+              Boolean(renamingRoomId && renamingRoomId === roomContextMenu.roomId) ||
+              rooms.find((room) => room.id === roomContextMenu.roomId)?.room_type !== 'group'
+            }
+            className="w-full px-3 py-1.5 text-left text-[12px] text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {renamingRoomId && renamingRoomId === roomContextMenu.roomId ? '처리 중...' : '대화방명 변경'}
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -4937,7 +5250,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
             <input
               value={groupRoomName}
               onChange={(event) => setGroupRoomName(event.target.value)}
-              placeholder="그룹 이름 (선택)"
+              placeholder="그룹 이름 (비워두면 참여자 이름 자동)"
               className="mb-2 h-9 w-full rounded border border-zinc-300 px-2 text-xs outline-none focus:border-zinc-500"
             />
             <input

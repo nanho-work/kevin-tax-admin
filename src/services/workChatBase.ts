@@ -430,6 +430,10 @@ export function createWorkChatApi(httpClient: AxiosInstance, prefix: '/admin' | 
       const res = await httpClient.patch(`${base}/rooms/${roomId}/preference`, payload)
       return normalizeRoom(res.data)
     },
+    async renameRoom(roomId: number, name: string): Promise<WorkChatRoom> {
+      const res = await httpClient.patch(`${base}/rooms/${roomId}/name`, { name })
+      return normalizeRoom(res.data)
+    },
     async getAttachmentDownloadUrl(attachmentId: number): Promise<WorkChatAttachmentUrlOut> {
       const res = await httpClient.get<WorkChatAttachmentUrlOut>(`${base}/attachments/${attachmentId}/download-url`)
       return res.data

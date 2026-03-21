@@ -63,6 +63,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/blog/')) return { parent: '클라이언트 관리', child: '블로그 상세' }
   if (pathname.startsWith('/client/client-management')) return { parent: '클라이언트 관리' }
   if (pathname.startsWith('/client/setting/account')) return { parent: '내 정보', child: '비밀번호 변경' }
+  if (pathname.startsWith('/client/setting/subscription')) return { parent: '내 정보', child: '요금제/구독' }
   if (pathname.startsWith('/client/setting/security')) return { parent: '내 정보', child: '로그/보안' }
   if (pathname.startsWith('/client/setting')) return { parent: '내 정보' }
   if (pathname.startsWith('/client/schedule')) return { parent: '외부업무(고객사)', child: '고객사 일정' }

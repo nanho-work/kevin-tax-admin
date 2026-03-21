@@ -5,6 +5,10 @@ import { useParams } from 'next/navigation'
 import {
   fetchCompanyBusinessLicensePreview,
   fetchCompanyDetail,
+  getAdminCompanyCustomDocumentDownloadUrl,
+  getAdminCompanyCustomDocumentPreviewUrl,
+  listAdminCompanyCustomDocumentLogs,
+  listAdminCompanyCustomDocuments,
   type CompanyDocumentPreviewResponse,
 } from '@/services/admin/company'
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
@@ -51,5 +55,16 @@ export default function CompanyDetailPage() {
     )
   }
 
-  return <CompanyDetailForm company={company} editable={false} businessLicensePreview={businessLicensePreview} />
+  return (
+    <CompanyDetailForm
+      company={company}
+      editable={false}
+      businessLicensePreview={businessLicensePreview}
+      enableCustomDocuments
+      listCustomDocumentsFn={listAdminCompanyCustomDocuments}
+      getCustomDocumentDownloadUrlFn={getAdminCompanyCustomDocumentDownloadUrl}
+      getCustomDocumentPreviewUrlFn={getAdminCompanyCustomDocumentPreviewUrl}
+      listCustomDocumentLogsFn={listAdminCompanyCustomDocumentLogs}
+    />
+  )
 }

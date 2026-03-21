@@ -14,7 +14,9 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
   const { loading, session } = useAdminSessionContext()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const isBoardRoute = pathname.startsWith('/admin/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task'
-  const effectiveCollapsed = isSidebarCollapsed || isBoardRoute
+  const isDocsRoute = pathname.startsWith('/admin/docs')
+  const isDocsEditorRoute = pathname.startsWith('/admin/docs/editor/')
+  const effectiveCollapsed = isSidebarCollapsed || isBoardRoute || isDocsRoute
 
   useEffect(() => {
     const saved = window.localStorage.getItem('admin_sidebar_collapsed')
@@ -39,13 +41,21 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
     )
   }
 
+  if (isDocsEditorRoute) {
+    return (
+      <div className="h-screen overflow-hidden bg-white">
+        {children}
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${effectiveCollapsed ? 'w-14' : 'w-[260px]'}`}>
         <AdminSidebar
           collapsed={effectiveCollapsed}
           onToggleCollapse={() =>
-            setIsSidebarCollapsed((prev) => (isBoardRoute ? false : !prev))
+            setIsSidebarCollapsed((prev) => ((isBoardRoute || isDocsRoute) ? false : !prev))
           }
         />
       </div>

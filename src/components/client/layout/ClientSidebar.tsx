@@ -81,6 +81,7 @@ const bookkeepingMenus = [
 ]
 
 const settingMenus = [
+  { label: '요금제/구독', href: '/client/setting/subscription' },
   { label: '비밀번호 변경', href: '/client/setting/account' },
   { label: '로그/보안', href: '/client/setting/security' },
 ]
@@ -223,8 +224,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
     const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'board' | 'bookkeeping' | 'setting' | 'client-management'
 
-    // Expanded 상태에서 같은 아이콘을 다시 누르면 2단만 닫고 현재 페이지는 유지
-    if (!collapsed && key === activeRailSection) {
+    // 같은 아이콘 재클릭:
+    // - 2단 열림 상태면 닫기(페이지 유지)
+    // - 2단 닫힘 상태면 열기(페이지 유지)
+    if (key === activeRailSection) {
       onToggleCollapse?.()
       return
     }

@@ -8,7 +8,7 @@ import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import RichTextEditor from '@/components/editor/RichTextEditor'
-import { adminHttp, clientHttp, getAdminAccessToken, getClientAccessToken } from '@/services/http'
+import { fetchApprovalDocumentSourceData } from '@/services/admin/approvalDocumentSourceService'
 import { uiInputClass } from '@/styles/uiClasses'
 import {
   createApprovalDocument,
@@ -60,7 +60,6 @@ type ShareRow = {
 }
 
 const DEFAULT_HIGH_RANK_ORDER = 9_999
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || ''
 
 function createEmptyApproverRow(seed = Date.now() + Math.floor(Math.random() * 10000)): ApproverRow {
   return {
@@ -71,12 +70,6 @@ function createEmptyApproverRow(seed = Date.now() + Math.floor(Math.random() * 1
     approver_id: '',
     rank_order: DEFAULT_HIGH_RANK_ORDER,
   }
-}
-
-function normalizeList<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[]
-  if (raw && typeof raw === 'object' && Array.isArray((raw as any).items)) return (raw as any).items as T[]
-  return []
 }
 
 function getStaffRankOrder(staff: AdminOut): number {
@@ -108,23 +101,6 @@ function sortApprovers(rows: ApproverRow[]): ApproverRow[] {
   return copied
 }
 
-async function getWithFallback(
-  urls: string[],
-  scope: 'admin' | 'client'
-) {
-  const httpClient = scope === 'admin' ? adminHttp : clientHttp
-  let lastError: unknown = null
-  for (const url of urls) {
-    try {
-      const res = await httpClient.get(url, { params: { offset: 0, limit: 100, page: 1 } })
-      return res.data
-    } catch (error) {
-      lastError = error
-    }
-  }
-  throw lastError
-}
-
 export default function AdminDocumentCreatePage() {
   const router = useRouter()
   const { session } = useAdminSessionContext()
@@ -149,106 +125,23 @@ export default function AdminDocumentCreatePage() {
   useEffect(() => {
     let mounted = true
     const loadApproverSources = async () => {
-      const adminToken = getAdminAccessToken()
-      const clientToken = getClientAccessToken()
-      if ((!adminToken && !clientToken) || !API_BASE) return
-
       setLoadingApproverSources(true)
       try {
-        const [staffRes, teamRes, clientAccountRes] = await Promise.allSettled([
-          (async () => {
-            if (adminToken) {
-              return getWithFallback(
-                [
-                  `${API_BASE}/admin/staffs/`,
-                  `${API_BASE}/admin/staffs`,
-                ],
-                'admin'
-              )
-            }
-            return getWithFallback(
-              [
-                `${API_BASE}/client/staffs/`,
-                `${API_BASE}/client/staffs`,
-              ],
-              'client'
-            )
-          })(),
-          (async () => {
-            if (adminToken) {
-              return getWithFallback(
-                [
-                  `${API_BASE}/admin/teams/`,
-                  `${API_BASE}/admin/teams`,
-                ],
-                'admin'
-              )
-            }
-            return getWithFallback(
-              [
-                `${API_BASE}/client/teams/`,
-                `${API_BASE}/client/teams`,
-              ],
-              'client'
-            )
-          })(),
-          (async () => {
-            const attempts: Array<Promise<unknown>> = []
-            if (adminToken) {
-              attempts.push(
-                getWithFallback(
-                  [
-                    `${API_BASE}/admin/client-accounts/`,
-                    `${API_BASE}/admin/client-accounts`,
-                  ],
-                  'admin'
-                )
-              )
-            }
-            if (clientToken) {
-              attempts.push(
-                getWithFallback(
-                  [
-                    `${API_BASE}/client/client-accounts/`,
-                    `${API_BASE}/client/client-accounts`,
-                  ],
-                  'client'
-                )
-              )
-            }
-            if (attempts.length === 0) {
-              throw new Error('No token for client account list')
-            }
-            for (const attempt of attempts) {
-              try {
-                return await attempt
-              } catch {
-                continue
-              }
-            }
-            throw new Error('Failed to load client accounts')
-          })(),
-        ])
-
+        const sourceData = await fetchApprovalDocumentSourceData()
         if (!mounted) return
 
-        if (staffRes.status === 'fulfilled') {
-          const staffRows = normalizeList<AdminOut>(staffRes.value)
-          // 서버 라우트 매칭 실패 시에도 최소 1명(본인)은 선택 가능하도록 보정
-          if (staffRows.length === 0 && session) {
-            setStaffs([session as AdminOut])
-          } else {
-            setStaffs(staffRows)
-          }
-        } else if (session) {
+        if (sourceData.staffs.length === 0 && session) {
           setStaffs([session as AdminOut])
+        } else {
+          setStaffs(sourceData.staffs)
         }
-        if (teamRes.status === 'fulfilled') {
-          setTeams(normalizeList<TeamOut>(teamRes.value))
-        }
-        if (clientAccountRes.status === 'fulfilled') {
-          setClientAccounts(normalizeList<ClientAccountOut>(clientAccountRes.value))
-        }
+        setTeams(sourceData.teams)
+        setClientAccounts(sourceData.clientAccounts)
+      } catch {
+        if (!mounted) return
+        if (session) setStaffs([session as AdminOut])
+        setTeams([])
+        setClientAccounts([])
       } finally {
         if (mounted) setLoadingApproverSources(false)
       }

@@ -16,6 +16,38 @@ export interface CompanyDocumentPreviewResponse {
   preview_url: string
 }
 
+export interface AdminCompanyCustomDocumentOut {
+  id: number
+  title: string
+  file_name: string
+  created_at: string
+  uploaded_at?: string
+}
+
+export interface AdminCompanyCustomDocumentListResponse {
+  total: number
+  items: AdminCompanyCustomDocumentOut[]
+}
+
+export interface AdminCompanyCustomDocumentDownloadUrlOut {
+  document_id: number
+  file_name: string
+  download_url: string
+  expires_in: number
+}
+
+export interface AdminCompanyCustomDocumentPreviewUrlOut {
+  document_id: number
+  file_name: string
+  preview_url: string
+  expires_in: number
+}
+
+export interface AdminCompanyCustomDocumentLogListResponse {
+  total: number
+  items: Array<{ action: string }>
+}
+
 interface FetchCompanyParams {
   page: number;
   limit: number;
@@ -68,6 +100,47 @@ export async function fetchCompanyBusinessLicensePreview(
 ): Promise<CompanyDocumentPreviewResponse> {
   const res = await adminHttp.get<CompanyDocumentPreviewResponse>(
     `${BASE}/${company_id}/documents/${COMPANY_DOC_TYPE_BUSINESS_LICENSE}/preview`
+  )
+  return res.data
+}
+
+export async function listAdminCompanyCustomDocuments(
+  company_id: number,
+  include_deleted = false
+): Promise<AdminCompanyCustomDocumentListResponse> {
+  const res = await adminHttp.get<AdminCompanyCustomDocumentListResponse>(
+    `${BASE}/${company_id}/custom-documents`,
+    { params: { include_deleted } }
+  )
+  return res.data
+}
+
+export async function getAdminCompanyCustomDocumentDownloadUrl(
+  company_id: number,
+  document_id: number
+): Promise<AdminCompanyCustomDocumentDownloadUrlOut> {
+  const res = await adminHttp.get<AdminCompanyCustomDocumentDownloadUrlOut>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/download-url`
+  )
+  return res.data
+}
+
+export async function getAdminCompanyCustomDocumentPreviewUrl(
+  company_id: number,
+  document_id: number
+): Promise<AdminCompanyCustomDocumentPreviewUrlOut> {
+  const res = await adminHttp.get<AdminCompanyCustomDocumentPreviewUrlOut>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/preview-url`
+  )
+  return res.data
+}
+
+export async function listAdminCompanyCustomDocumentLogs(
+  company_id: number,
+  document_id: number
+): Promise<AdminCompanyCustomDocumentLogListResponse> {
+  const res = await adminHttp.get<AdminCompanyCustomDocumentLogListResponse>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/logs`
   )
   return res.data
 }
