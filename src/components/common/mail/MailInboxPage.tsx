@@ -27,6 +27,7 @@ const BULK_UPDATE_CHUNK_SIZE = 30
 type MailInboxApi = Pick<
   typeof import('@/services/client/clientMailService'),
   | 'bulkMoveMailMessagesToFolder'
+  | 'blockSpamDomain'
   | 'createMailFolder'
   | 'createMailRule'
   | 'getMailReplyDraft'
@@ -40,8 +41,11 @@ type MailInboxApi = Pick<
   | 'listMailAccounts'
   | 'listMailFolders'
   | 'listMailMessages'
+  | 'markMailMessageSpam'
+  | 'purgeSpamMessage'
   | 'syncMailAccount'
   | 'reprocessMailMessageRules'
+  | 'removeSpamSender'
   | 'restoreMailMessageFromTrash'
   | 'sendMailReply'
   | 'unlinkMailMessageCompany'
@@ -72,6 +76,7 @@ export function MailInboxPage({
   const pathname = usePathname()
   const {
     bulkMoveMailMessagesToFolder,
+    blockSpamDomain,
     createMailFolder,
     createMailRule,
     getMailReplyDraft,
@@ -85,8 +90,11 @@ export function MailInboxPage({
     listMailAccounts,
     listMailFolders,
     listMailMessages,
+    markMailMessageSpam,
+    purgeSpamMessage,
     syncMailAccount,
     reprocessMailMessageRules,
+    removeSpamSender,
     restoreMailMessageFromTrash,
     sendMailReply,
     unlinkMailMessageCompany,
@@ -213,14 +221,18 @@ export function MailInboxPage({
     targetSize: number,
     forcedRead: boolean | undefined = undefined
   ): MailMessageListParams => {
-    const requestMailboxType = includeTrash ? undefined : activeMailbox === 'inbox' ? 'inbox' : 'all'
+    const requestMailboxType = includeTrash
+      ? undefined
+      : activeMailbox === 'inbox'
+        ? 'inbox'
+        : activeMailbox === 'spam'
+          ? 'spam'
+          : 'all'
     const requestDirection = includeTrash ? undefined : activeMailbox === 'sent' ? 'outbound' : undefined
     const requestFolderName =
-      includeTrash || activeMailbox === 'inbox' || activeMailbox === 'all' || activeMailbox === 'sent'
+      includeTrash || activeMailbox === 'inbox' || activeMailbox === 'all' || activeMailbox === 'sent' || activeMailbox === 'spam'
         ? undefined
-        : activeMailbox === 'spam'
-          ? activeFolderName || '스팸'
-          : activeFolderName.trim() || undefined
+        : activeFolderName.trim() || undefined
     return {
       page: targetPage,
       size: targetSize,
@@ -307,6 +319,11 @@ export function MailInboxPage({
     }
     if (mailbox === 'sent') {
       setActiveMailbox('sent')
+      setActiveFolderName('')
+      return
+    }
+    if (mailbox === 'spam') {
+      setActiveMailbox('spam')
       setActiveFolderName('')
       return
     }
@@ -591,30 +608,36 @@ export function MailInboxPage({
       return
     }
     try {
-      let spamFolder = folders.find((folder) => {
-        const name = folder.name.toLowerCase()
-        return name.includes('스팸') || name.includes('spam')
-      })
-      if (!spamFolder) {
-        spamFolder = await createMailFolder({ name: '스팸' })
+      // 신규 백엔드 API 우선 사용(메일 1건 스팸 등록 + 발신자 룰 upsert + 폴더 이동)
+      if (typeof markMailMessageSpam === 'function') {
+        await markMailMessageSpam(detail.id)
+      } else {
+        // 하위 호환 fallback
+        let spamFolder = folders.find((folder) => {
+          const name = folder.name.toLowerCase()
+          return name.includes('스팸') || name.includes('spam')
+        })
+        if (!spamFolder) {
+          spamFolder = await createMailFolder({ name: '스팸' })
+        }
+        await createMailRule({
+          name: `스팸-${detail.from_email}`,
+          match_field: 'from_email',
+          match_operator: 'equals',
+          match_value: detail.from_email,
+          target_folder_id: spamFolder.id,
+          mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
+          stop_processing: true,
+        })
+        await reprocessMailMessageRules(detail.id)
       }
-      await createMailRule({
-        name: `스팸-${detail.from_email}`,
-        match_field: 'from_email',
-        match_operator: 'equals',
-        match_value: detail.from_email,
-        target_folder_id: spamFolder.id,
-        mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
-        stop_processing: true,
-      })
-      await reprocessMailMessageRules(detail.id)
       await loadFolders()
       await loadMessages(1)
       await loadMessageDetail(detail.id)
       setActiveMailbox('spam')
-      setActiveFolderName(spamFolder.name)
+      setActiveFolderName('스팸')
       setReadFilter('')
-      toast.success('스팸 규칙 등록 및 즉시 재분류가 완료되었습니다.')
+      toast.success('스팸 등록이 완료되었습니다.')
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     }
@@ -622,13 +645,65 @@ export function MailInboxPage({
 
   const handleTrashMessage = async (messageId: number) => {
     try {
-      await moveMailMessageToTrash(messageId, scopedMailAccountId)
-      toast.success('메일을 휴지통으로 이동했습니다.')
+      if (activeMailbox === 'spam') {
+        await purgeSpamMessage(messageId)
+        toast.success('스팸 메일을 즉시 삭제했습니다.')
+      } else {
+        await moveMailMessageToTrash(messageId, scopedMailAccountId)
+        toast.success('메일을 휴지통으로 이동했습니다.')
+      }
       if (selectedMessageId === messageId) {
         setSelectedMessageId(null)
         setDetail(null)
       }
       await loadMessages(page)
+      emitMailCountsRefresh()
+    } catch (error) {
+      toast.error(getClientMailErrorMessage(error))
+    }
+  }
+
+  const handleRemoveSpamSender = async () => {
+    if (!detail?.from_email) {
+      toast.error('발신자 이메일이 없어 스팸 해제를 진행할 수 없습니다.')
+      return
+    }
+    try {
+      await removeSpamSender(detail.from_email)
+      toast.success('발신자 스팸 해제가 완료되었습니다.')
+      if (selectedMessageId === detail.id) {
+        setSelectedMessageId(null)
+        setDetail(null)
+      }
+      await loadMessages(page)
+      emitMailCountsRefresh()
+    } catch (error) {
+      toast.error(getClientMailErrorMessage(error))
+    }
+  }
+
+  const handleBlockSenderDomain = async () => {
+    const sender = (detail?.from_email || '').trim().toLowerCase()
+    const domain = sender.split('@')[1]?.trim()
+    if (!domain) {
+      toast.error('발신자 도메인을 확인할 수 없습니다.')
+      return
+    }
+    const applyToExisting = window.confirm(
+      `도메인 "${domain}"을 스팸으로 등록합니다.\n기존 메일도 스팸함으로 이동할까요?\n(확인=예, 취소=아니오)`
+    )
+    try {
+      await blockSpamDomain({
+        domain,
+        apply_to_existing: applyToExisting,
+        mail_account_id: typeof mailAccountId === 'number' ? mailAccountId : undefined,
+      })
+      toast.success('도메인 스팸 등록이 완료되었습니다.')
+      await loadFolders()
+      await loadMessages(1)
+      setActiveMailbox('spam')
+      setActiveFolderName('')
+      setReadFilter('')
       emitMailCountsRefresh()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
@@ -759,13 +834,15 @@ export function MailInboxPage({
   const handleBulkMoveToTrash = async () => {
     if (selectedMessageIds.length === 0) return
     const targetIds = [...selectedMessageIds]
-    const results = await Promise.allSettled(targetIds.map((id) => moveMailMessageToTrash(id, scopedMailAccountId)))
+    const results = await Promise.allSettled(
+      targetIds.map((id) => (activeMailbox === 'spam' ? purgeSpamMessage(id) : moveMailMessageToTrash(id, scopedMailAccountId)))
+    )
     const successCount = results.filter((result) => result.status === 'fulfilled').length
     if (successCount > 0) {
-      toast.success(`휴지통 이동 완료 (${successCount}건)`)
+      toast.success(activeMailbox === 'spam' ? `스팸 즉시삭제 완료 (${successCount}건)` : `휴지통 이동 완료 (${successCount}건)`)
     }
     if (successCount < targetIds.length) {
-      toast.error(`${targetIds.length - successCount}건 이동 실패`)
+      toast.error(`${targetIds.length - successCount}건 처리 실패`)
     }
     if (selectedMessageId && targetIds.includes(selectedMessageId)) {
       setSelectedMessageId(null)
@@ -929,6 +1006,7 @@ export function MailInboxPage({
     if (includeTrash) params.set('mailbox', 'trash')
     else if (activeMailbox === 'inbox') params.set('mailbox', 'inbox')
     else if (activeMailbox === 'sent') params.set('mailbox', 'sent')
+    else if (activeMailbox === 'spam') params.set('mailbox', 'spam')
     else if (activeMailbox === 'custom') {
       params.set('mailbox', 'custom')
       if (activeFolderName.trim()) params.set('folder', activeFolderName.trim())
@@ -1264,6 +1342,24 @@ export function MailInboxPage({
                     >
                       스팸 등록
                     </button>
+                    {detail.from_email ? (
+                      <button
+                        type="button"
+                        onClick={handleBlockSenderDomain}
+                        className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
+                      >
+                        도메인 차단
+                      </button>
+                    ) : null}
+                    {activeMailbox === 'spam' && detail.from_email ? (
+                      <button
+                        type="button"
+                        onClick={handleRemoveSpamSender}
+                        className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                      >
+                        스팸 해제
+                      </button>
+                    ) : null}
                     {detail.is_deleted ? (
                       <>
                         <button
@@ -1287,7 +1383,7 @@ export function MailInboxPage({
                         onClick={() => void handleTrashMessage(detail.id)}
                         className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
                       >
-                        휴지통 이동
+                        {activeMailbox === 'spam' ? '즉시삭제' : '휴지통 이동'}
                       </button>
                     )}
                     <button

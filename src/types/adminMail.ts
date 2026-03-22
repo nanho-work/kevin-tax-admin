@@ -7,7 +7,7 @@ export type MailRuleFieldType = 'from_email' | 'subject' | 'snippet' | 'to_email
 export type MailRuleOperatorType = 'contains' | 'equals' | 'starts_with' | 'ends_with'
 export type MailLinkStatus = 'linked' | 'unlinked'
 export type MailAttachmentDeliveryMode = 'attachment' | 'secure_link'
-export type MailboxType = 'all' | 'inbox'
+export type MailboxType = 'all' | 'inbox' | 'spam'
 
 export interface MailAccount {
   id: number

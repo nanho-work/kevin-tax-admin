@@ -329,11 +329,16 @@ export async function deleteMailFolder(folderId: number): Promise<{ message: str
   return res.data
 }
 
-export async function listMailRules(params?: { is_active?: boolean; mail_account_id?: number }): Promise<MailRuleListResponse> {
+export async function listMailRules(params?: {
+  is_active?: boolean
+  mail_account_id?: number
+  spam_only?: boolean
+}): Promise<MailRuleListResponse> {
   const res = await clientHttp.get<MailRuleListResponse>(`${BASE}/rules`, {
     params: {
       is_active: params?.is_active ?? true,
       mail_account_id: params?.mail_account_id,
+      spam_only: params?.spam_only,
     },
   })
   return res.data
@@ -424,6 +429,41 @@ export async function getMailMessageCompanyCandidates(
 
 export async function reprocessMailMessageRules(messageId: number): Promise<MailReprocessResponse> {
   const res = await clientHttp.post<MailReprocessResponse>(`${BASE}/messages/${messageId}/reprocess-rules`, {})
+  return res.data
+}
+
+export async function markMailMessageSpam(
+  messageId: number
+): Promise<{ message: string; mail_message_id: number }> {
+  const res = await clientHttp.post<{ message: string; mail_message_id: number }>(
+    `${BASE}/messages/${messageId}/mark-spam`,
+    {}
+  )
+  return res.data
+}
+
+export async function removeSpamSender(senderEmail: string): Promise<{ message: string }> {
+  const res = await clientHttp.post<{ message: string }>(`${BASE}/spam/remove-sender`, {
+    sender_email: senderEmail,
+  })
+  return res.data
+}
+
+export async function blockSpamDomain(payload: {
+  domain: string
+  apply_to_existing?: boolean
+  mail_account_id?: number
+}): Promise<{ message: string }> {
+  const res = await clientHttp.post<{ message: string }>(`${BASE}/spam/block-domain`, payload)
+  return res.data
+}
+
+export async function purgeSpamMessage(
+  messageId: number
+): Promise<{ message: string; mail_message_id: number }> {
+  const res = await clientHttp.delete<{ message: string; mail_message_id: number }>(
+    `${BASE}/messages/${messageId}/spam-purge`
+  )
   return res.data
 }
 

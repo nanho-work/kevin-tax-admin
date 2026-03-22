@@ -238,7 +238,7 @@ export default function AdminMailAccountsPage() {
     try {
       const [folderRes, ruleRes] = await Promise.all([
         listMailFolders(true),
-        listMailRules({ is_active: true }),
+        listMailRules({ is_active: true, spam_only: true }),
       ])
       setFolders(folderRes.items || [])
       setRules(ruleRes.items || [])

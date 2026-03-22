@@ -12,6 +12,7 @@ import {
   updateCompanyAccountStatus as updateAdminCompanyAccountStatus,
 } from '@/services/admin/companyAccountService'
 import { downloadFileViaBlob } from '@/services/download/browserDownload'
+import { validateUploadFile } from '@/utils/fileUploadPolicy'
 import type { CompanyCreateRequest, CompanyDetailResponse, CompanyUpdateRequest } from '@/types/admin_campany'
 import type { CompanyDocumentPreviewResponse } from '@/services/admin/company'
 import type {
@@ -160,49 +161,11 @@ function Field({ label, className, children }: { label: string; className?: stri
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
-const MAX_CUSTOM_DOCUMENT_FILE_SIZE = 20 * 1024 * 1024
-const ALLOWED_CUSTOM_DOCUMENT_EXTENSIONS = new Set([
-  'pdf',
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'bmp',
-  'webp',
-  'xlsx',
-  'xls',
-  'csv',
-  'doc',
-  'docx',
-  'txt',
-  'zip',
-])
-const BLOCKED_CUSTOM_DOCUMENT_EXTENSIONS = new Set([
-  'exe',
-  'dll',
-  'bat',
-  'cmd',
-  'sh',
-  'ps1',
-  'vbs',
-  'js',
-  'jar',
-  'scr',
-  'com',
-])
+const MAX_CUSTOM_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024 * 1024
 
 function validateCustomDocumentFile(file: File): string | null {
-  const extension = (file.name.split('.').pop() || '').trim().toLowerCase()
-  if (extension && BLOCKED_CUSTOM_DOCUMENT_EXTENSIONS.has(extension)) {
-    return `차단 확장자입니다: .${extension}`
-  }
-  if (extension && !ALLOWED_CUSTOM_DOCUMENT_EXTENSIONS.has(extension)) {
-    return `허용되지 않은 확장자입니다: .${extension}`
-  }
-  if (file.size > MAX_CUSTOM_DOCUMENT_FILE_SIZE) {
-    return '파일 크기 제한(20MB)을 초과했습니다.'
-  }
-  return null
+  const result = validateUploadFile(file, { maxBytes: MAX_CUSTOM_DOCUMENT_FILE_SIZE })
+  return result.valid ? null : result.message || '파일 검증에 실패했습니다.'
 }
 
 function toDateOnly(value?: string | null): string {

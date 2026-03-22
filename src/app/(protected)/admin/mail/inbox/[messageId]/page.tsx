@@ -16,6 +16,7 @@ import {
   listMailAttachments,
   getMailMessageDetail,
   getMailReplyDraft,
+  markMailMessageSpam,
   moveMailMessageToFolder,
   moveMailMessageToTrash,
   purgeMailMessage,
@@ -341,6 +342,21 @@ export default function AdminMailMessageDetailPage() {
       emitMailCountsRefresh()
       toast.success('휴지통으로 이동했습니다.')
       router.replace(backHref)
+    } catch (error) {
+      toast.error(getAdminMailErrorMessage(error))
+    }
+  }
+
+  const handleMarkSpam = async () => {
+    if (!detail?.from_email) {
+      toast.error('발신자 이메일이 없어 스팸 등록할 수 없습니다.')
+      return
+    }
+    try {
+      await markMailMessageSpam(detail.id)
+      toast.success('스팸 등록이 완료되었습니다.')
+      emitMailCountsRefresh()
+      router.push('/admin/mail/inbox?mailbox=spam')
     } catch (error) {
       toast.error(getAdminMailErrorMessage(error))
     }
@@ -681,6 +697,15 @@ export default function AdminMailMessageDetailPage() {
             >
               전달
             </button>
+            {!detail.is_deleted ? (
+              <button
+                type="button"
+                onClick={handleMarkSpam}
+                className="rounded border border-rose-300 bg-white px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50"
+              >
+                스팸 등록
+              </button>
+            ) : null}
             {!detail.is_deleted ? (
               <button
                 type="button"

@@ -227,7 +227,7 @@ export default function ClientMailAccountsPage() {
     try {
       const [folderRes, ruleRes, syncLogRes, actionLogRes] = await Promise.all([
         listMailFolders(true),
-        listMailRules({ is_active: true }),
+        listMailRules({ is_active: true, spam_only: true }),
         listMailSyncLogs({ page: 1, size: 10 }),
         listMailActionLogs({ page: 1, size: 10 }),
       ])
