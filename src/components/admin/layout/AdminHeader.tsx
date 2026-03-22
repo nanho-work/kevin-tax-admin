@@ -128,7 +128,12 @@ const Header = () => {
     }).format(new Date())
 
     try {
-      const res = await getAttendanceLogs({ date_to: todayKst, limit: 1, offset: 0 })
+      const res = await getAttendanceLogs({
+        date_from: todayKst,
+        date_to: todayKst,
+        limit: 1,
+        offset: 0,
+      })
       const row = res.items?.[0]
       setCheckInTime(toHm(row?.check_in))
       setCheckOutTime(toHm(row?.check_out))
