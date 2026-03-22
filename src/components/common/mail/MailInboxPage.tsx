@@ -57,6 +57,7 @@ type MailInboxPageProps = {
   getMailErrorMessage: (error: unknown) => string
   filterAccounts?: (accounts: MailAccount[]) => MailAccount[]
   accountsFilterVersion?: string | number | null
+  canManageCompanyMailbox?: boolean
 }
 
 function parseEmails(raw: string): string[] {
@@ -71,6 +72,7 @@ export function MailInboxPage({
   getMailErrorMessage,
   filterAccounts,
   accountsFilterVersion,
+  canManageCompanyMailbox = true,
 }: MailInboxPageProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -149,6 +151,8 @@ export function MailInboxPage({
   const currentAccount =
     typeof mailAccountId === 'number' ? accounts.find((account) => account.id === mailAccountId) || null : null
   const scopedMailAccountId = typeof mailAccountId === 'number' ? mailAccountId : undefined
+  const isCompanyMailboxReadOnly =
+    currentAccount?.account_scope === 'company' && !canManageCompanyMailbox
 
   const mergeDetailAttachments = (
     detailRes: MailMessageDetail,
@@ -370,6 +374,9 @@ export function MailInboxPage({
   const selectedAttachmentCount = renderedMail.selectedVisibleAttachmentIds.length
   const isAllCurrentPageSelected = messages.length > 0 && messages.every((message) => selectedMessageIds.includes(message.id))
   const selectedMessageCount = selectedMessageIds.length
+  const isSpamMailboxContext =
+    activeMailbox === 'spam' ||
+    (!includeTrash && activeMailbox === 'custom' && /(스팸|spam)/i.test((activeFolderName || '').trim()))
   const selectedMessageAccountIds = useMemo(
     () =>
       Array.from(
@@ -432,8 +439,23 @@ export function MailInboxPage({
       const res = await importMailAttachments(detail.id, {
         attachment_ids: renderedMail.selectedVisibleAttachmentIds,
       })
-      const successCount = res.results.filter((item) => item.status === 'downloaded').length
-      toast.success(`첨부 import 완료 (${successCount}건)`)
+      const successItems = res.results.filter((item) => item.status === 'downloaded')
+      const skippedItems = res.results.filter((item) => item.status === 'skipped')
+      const failedItems = res.results.filter((item) => item.status === 'failed')
+      const successCount = successItems.length
+      const skippedCount = skippedItems.length
+      const failedCount = failedItems.length
+
+      if (successCount > 0) {
+        toast.success(`첨부 import 완료 (${successCount}건)`)
+      }
+      if (skippedCount > 0 || failedCount > 0) {
+        const firstError =
+          failedItems.find((item) => item.detail)?.detail ||
+          skippedItems.find((item) => item.detail)?.detail ||
+          '일부 첨부파일을 가져오지 못했습니다.'
+        toast.error(`실패/건너뜀 ${failedCount + skippedCount}건 · ${firstError}`)
+      }
       await loadMessageDetail(detail.id)
       setSelectedAttachmentIds([])
     } catch (error) {
@@ -500,6 +522,10 @@ export function MailInboxPage({
   }
 
   const handleToggleRead = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (!detail) return
     const nextRead = !detail.is_read
     try {
@@ -547,6 +573,10 @@ export function MailInboxPage({
   }
 
   const handleOpenReply = async (mode: 'reply' | 'reply_all') => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (!detail) return
     try {
       setReplyLoading(true)
@@ -569,6 +599,10 @@ export function MailInboxPage({
   }
 
   const handleSendReply = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (!detail || !replyDraft) return
     try {
       setReplySending(true)
@@ -603,6 +637,10 @@ export function MailInboxPage({
   }
 
   const handleRegisterSpam = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (!detail?.from_email) {
       toast.error('발신자 이메일이 없어 스팸 등록할 수 없습니다.')
       return
@@ -644,8 +682,12 @@ export function MailInboxPage({
   }
 
   const handleTrashMessage = async (messageId: number) => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     try {
-      if (activeMailbox === 'spam') {
+      if (isSpamMailboxContext) {
         await purgeSpamMessage(messageId)
         toast.success('스팸 메일을 즉시 삭제했습니다.')
       } else {
@@ -664,12 +706,17 @@ export function MailInboxPage({
   }
 
   const handleRemoveSpamSender = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (!detail?.from_email) {
       toast.error('발신자 이메일이 없어 스팸 해제를 진행할 수 없습니다.')
       return
     }
     try {
       await removeSpamSender(detail.from_email)
+      await bulkMoveMailMessagesToFolder({ message_ids: [detail.id], folder_id: null })
       toast.success('발신자 스팸 해제가 완료되었습니다.')
       if (selectedMessageId === detail.id) {
         setSelectedMessageId(null)
@@ -683,6 +730,10 @@ export function MailInboxPage({
   }
 
   const handleBlockSenderDomain = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     const sender = (detail?.from_email || '').trim().toLowerCase()
     const domain = sender.split('@')[1]?.trim()
     if (!domain) {
@@ -756,6 +807,10 @@ export function MailInboxPage({
   }
 
   const handleBulkUpdateRead = async (isRead: boolean) => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (selectedMessageIds.length === 0) return
     const targetIds = [...selectedMessageIds]
     const results = await Promise.allSettled(
@@ -779,6 +834,10 @@ export function MailInboxPage({
   }
 
   const handleMarkAllUnreadAsRead = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (includeTrash) {
       toast.error('휴지통에서는 사용할 수 없습니다.')
       return
@@ -832,14 +891,18 @@ export function MailInboxPage({
   }
 
   const handleBulkMoveToTrash = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (selectedMessageIds.length === 0) return
     const targetIds = [...selectedMessageIds]
     const results = await Promise.allSettled(
-      targetIds.map((id) => (activeMailbox === 'spam' ? purgeSpamMessage(id) : moveMailMessageToTrash(id, scopedMailAccountId)))
+      targetIds.map((id) => (isSpamMailboxContext ? purgeSpamMessage(id) : moveMailMessageToTrash(id, scopedMailAccountId)))
     )
     const successCount = results.filter((result) => result.status === 'fulfilled').length
     if (successCount > 0) {
-      toast.success(activeMailbox === 'spam' ? `스팸 즉시삭제 완료 (${successCount}건)` : `휴지통 이동 완료 (${successCount}건)`)
+      toast.success(isSpamMailboxContext ? `스팸 즉시삭제 완료 (${successCount}건)` : `휴지통 이동 완료 (${successCount}건)`)
     }
     if (successCount < targetIds.length) {
       toast.error(`${targetIds.length - successCount}건 처리 실패`)
@@ -849,6 +912,76 @@ export function MailInboxPage({
       setDetail(null)
     }
     setSelectedMessageIds([])
+    await loadMessages(page)
+    if (successCount > 0) {
+      emitMailCountsRefresh()
+    }
+  }
+
+  const handleBulkRemoveSpamSenders = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
+    if (selectedMessageIds.length === 0) return
+    const targetIds = [...selectedMessageIds]
+    const senderSet = new Set(
+      messages
+        .filter((message) => targetIds.includes(message.id))
+        .map((message) => (message.from_email || '').trim().toLowerCase())
+        .filter((sender) => sender.length > 0)
+    )
+    const senders = Array.from(senderSet)
+    if (senders.length === 0) {
+      toast.error('선택한 메일에서 해제할 발신자 이메일을 찾을 수 없습니다.')
+      return
+    }
+    const results = await Promise.allSettled(senders.map((sender) => removeSpamSender(sender)))
+    const successSenderSet = new Set(
+      results
+        .map((result, index) => (result.status === 'fulfilled' ? senders[index] : null))
+        .filter((sender): sender is string => typeof sender === 'string' && sender.length > 0)
+    )
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    if (successCount > 0) {
+      toast.success(`스팸 해제 완료 (${successCount}명)`)
+    }
+    if (successCount < senders.length) {
+      toast.error(`${senders.length - successCount}명 해제 실패`)
+    }
+    if (successCount === 0) {
+      return
+    }
+    const moveTargetIds = messages
+      .filter((message) => targetIds.includes(message.id))
+      .filter((message) => successSenderSet.has((message.from_email || '').trim().toLowerCase()))
+      .map((message) => message.id)
+
+    if (moveTargetIds.length === 0) {
+      return
+    }
+
+    try {
+      const moveRes = await bulkMoveMailMessagesToFolder({
+        message_ids: moveTargetIds,
+        folder_id: null,
+      })
+      const movedCount = Number(moveRes.moved_count || 0)
+      if (movedCount > 0) {
+        toast.success(`받은편지함 이동 완료 (${movedCount}건)`)
+      }
+      if (movedCount < moveTargetIds.length) {
+        toast.error(`${moveTargetIds.length - movedCount}건 이동 실패`)
+      }
+    } catch (error) {
+      toast.error(getClientMailErrorMessage(error))
+    }
+
+    setSelectedMessageIds([])
+    if (selectedMessageId && targetIds.includes(selectedMessageId)) {
+      setSelectedMessageId(null)
+      setDetail(null)
+    }
     await loadMessages(page)
     if (successCount > 0) {
       emitMailCountsRefresh()
@@ -903,6 +1036,10 @@ export function MailInboxPage({
   }
 
   const handleBulkMoveToFolder = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     if (selectedMessageIds.length === 0) return
     if (isMultiAccountSelection) {
       toast.error('서로 다른 계정 메일은 한 번에 이동할 수 없습니다.')
@@ -977,6 +1114,10 @@ export function MailInboxPage({
   }
 
   const handleManualSync = async () => {
+    if (isCompanyMailboxReadOnly) {
+      toast.error('권한이 없어 읽기만 가능합니다.')
+      return
+    }
     const targetAccountId = typeof mailAccountId === 'number' ? mailAccountId : null
     if (!targetAccountId) {
       toast.error('동기화할 메일 계정을 선택해 주세요.')
@@ -1060,6 +1201,9 @@ export function MailInboxPage({
                 </span>
               ) : null}
             </p>
+            {isCompanyMailboxReadOnly ? (
+              <p className="mt-1 text-xs text-amber-700">공용 메일은 읽기 전용 권한입니다.</p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2">
             <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
@@ -1119,7 +1263,7 @@ export function MailInboxPage({
                   <select
                     value={bulkMoveFolderId}
                     onChange={(e) => setBulkMoveFolderId(e.target.value)}
-                    disabled={selectedMessageCount === 0 || isMultiAccountSelection || !bulkMoveTargetAccountId}
+                    disabled={isCompanyMailboxReadOnly || selectedMessageCount === 0 || isMultiAccountSelection || !bulkMoveTargetAccountId}
                     className="h-7 rounded border border-zinc-300 bg-white px-2 text-xs text-zinc-700 disabled:opacity-50"
                   >
                     {isMultiAccountSelection ? (
@@ -1138,7 +1282,7 @@ export function MailInboxPage({
                   </select>
                   <button
                     type="button"
-                    disabled={selectedMessageCount === 0 || !bulkMoveFolderId.trim() || isMultiAccountSelection || !bulkMoveTargetAccountId}
+                    disabled={isCompanyMailboxReadOnly || selectedMessageCount === 0 || !bulkMoveFolderId.trim() || isMultiAccountSelection || !bulkMoveTargetAccountId}
                     onClick={() => void handleBulkMoveToFolder()}
                     className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                   >
@@ -1150,7 +1294,7 @@ export function MailInboxPage({
                 </div>
                 <button
                   type="button"
-                  disabled={selectedMessageCount === 0}
+                  disabled={isCompanyMailboxReadOnly || selectedMessageCount === 0}
                   onClick={() => void handleBulkMoveToTrash()}
                   className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                 >
@@ -1159,12 +1303,23 @@ export function MailInboxPage({
                     삭제
                   </span>
                 </button>
+                {isSpamMailboxContext ? (
+                  <button
+                    type="button"
+                    disabled={selectedMessageCount === 0}
+                    onClick={() => void handleBulkRemoveSpamSenders()}
+                    className="rounded border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    스팸 해제
+                  </button>
+                ) : null}
                 {selectedMessageCount > 0 ? (
                   <>
                     <button
                       type="button"
+                      disabled={isCompanyMailboxReadOnly}
                       onClick={() => void handleBulkUpdateRead(true)}
-                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       <span className="inline-flex items-center gap-1">
                         <MailOpen className="h-3.5 w-3.5" />
@@ -1173,8 +1328,9 @@ export function MailInboxPage({
                     </button>
                     <button
                       type="button"
+                      disabled={isCompanyMailboxReadOnly}
                       onClick={() => void handleBulkUpdateRead(false)}
-                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                      className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       <span className="inline-flex items-center gap-1">
                         <Mail className="h-3.5 w-3.5" />
@@ -1185,7 +1341,7 @@ export function MailInboxPage({
                 ) : null}
                 <button
                   type="button"
-                  disabled={bulkReadAllLoading || readFilter === 'read'}
+                  disabled={isCompanyMailboxReadOnly || bulkReadAllLoading || readFilter === 'read'}
                   onClick={() => void handleMarkAllUnreadAsRead()}
                   className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-50 disabled:opacity-50"
                 >
@@ -1197,7 +1353,7 @@ export function MailInboxPage({
                 <button
                   type="button"
                   onClick={() => void handleManualSync()}
-                  disabled={manualSyncLoading || typeof mailAccountId !== 'number'}
+                  disabled={isCompanyMailboxReadOnly || manualSyncLoading || typeof mailAccountId !== 'number'}
                   title={typeof mailAccountId === 'number' ? '현재 계정 메일 동기화' : '계정을 선택해 주세요'}
                   className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                 >
@@ -1314,7 +1470,7 @@ export function MailInboxPage({
                     <button
                       type="button"
                       onClick={handleToggleRead}
-                      disabled={readUpdating}
+                      disabled={isCompanyMailboxReadOnly || readUpdating}
                       className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       {readUpdating ? '처리 중...' : detail.is_read ? '안읽음 처리' : '읽음 처리'}
@@ -1322,7 +1478,7 @@ export function MailInboxPage({
                     <button
                       type="button"
                       onClick={() => void handleOpenReply('reply')}
-                      disabled={replyLoading}
+                      disabled={isCompanyMailboxReadOnly || replyLoading}
                       className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       {replyLoading && replyMode === 'reply' ? '준비 중...' : '답장'}
@@ -1330,31 +1486,36 @@ export function MailInboxPage({
                     <button
                       type="button"
                       onClick={() => void handleOpenReply('reply_all')}
-                      disabled={replyLoading}
+                      disabled={isCompanyMailboxReadOnly || replyLoading}
                       className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       {replyLoading && replyMode === 'reply_all' ? '준비 중...' : '전체답장'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleRegisterSpam}
-                      className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
-                    >
-                      스팸 등록
-                    </button>
+                    {!isSpamMailboxContext ? (
+                      <button
+                        type="button"
+                        onClick={handleRegisterSpam}
+                        disabled={isCompanyMailboxReadOnly}
+                        className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
+                      >
+                        스팸 등록
+                      </button>
+                    ) : null}
                     {detail.from_email ? (
                       <button
                         type="button"
                         onClick={handleBlockSenderDomain}
+                        disabled={isCompanyMailboxReadOnly}
                         className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
                       >
                         도메인 차단
                       </button>
                     ) : null}
-                    {activeMailbox === 'spam' && detail.from_email ? (
+                    {isSpamMailboxContext && detail.from_email ? (
                       <button
                         type="button"
                         onClick={handleRemoveSpamSender}
+                        disabled={isCompanyMailboxReadOnly}
                         className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
                       >
                         스팸 해제
@@ -1381,15 +1542,16 @@ export function MailInboxPage({
                       <button
                         type="button"
                         onClick={() => void handleTrashMessage(detail.id)}
+                        disabled={isCompanyMailboxReadOnly}
                         className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
                       >
-                        {activeMailbox === 'spam' ? '즉시삭제' : '휴지통 이동'}
+                        {isSpamMailboxContext ? '즉시삭제' : '휴지통 이동'}
                       </button>
                     )}
                     <button
                       type="button"
                       onClick={handleReprocess}
-                      disabled={reprocessing}
+                      disabled={isCompanyMailboxReadOnly || reprocessing}
                       className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       {reprocessing ? '재처리 중...' : '규칙 재처리'}

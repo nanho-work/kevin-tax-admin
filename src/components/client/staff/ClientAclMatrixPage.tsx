@@ -1235,7 +1235,7 @@ export default function ClientAclMatrixPage() {
       ) : (
         <div className="space-y-3">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            내휴가관리/출퇴근관리는 기본 권한으로 제공되어 목록에서 제외됩니다.
+            내휴가관리/출퇴근관리는 기본 권한으로 제공되어 목록에서 제외됩니다. 메일은 기본 기능 권한(mail.read)과 삭제 권한(mail.delete)을 분리해서 운영합니다.
           </div>
           <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
             <table className="min-w-[1100px] w-full border-collapse text-xs">

@@ -518,10 +518,6 @@ export default function AdminMailMessageDetailPage() {
       setMovePanelOpen(false)
       router.replace(backHref)
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        toast.error('서버에 메일 폴더 이동 API가 아직 배포되지 않았습니다.')
-        return
-      }
       toast.error(getAdminMailErrorMessage(error))
     } finally {
       setMoveLoading(false)

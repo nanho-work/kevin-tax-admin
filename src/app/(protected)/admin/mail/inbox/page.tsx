@@ -21,6 +21,7 @@ export default function AdminMailInboxPage() {
       getMailErrorMessage={adminMailService.getAdminMailErrorMessage}
       filterAccounts={filterAccounts}
       accountsFilterVersion={session?.id ?? null}
+      canManageCompanyMailbox={true}
     />
   )
 }
