@@ -659,7 +659,7 @@ export default function CompanyDetailForm({
       toast.error('문서이름을 먼저 선택해 주세요.')
       return
     }
-    if (!supportsDocumentCrud) return
+    if (!supportsDocumentUpload) return
     if (!selectedDocumentFile) {
       toast.error('업로드할 파일을 먼저 선택해 주세요.')
       return
