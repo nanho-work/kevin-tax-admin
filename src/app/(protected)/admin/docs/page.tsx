@@ -1422,7 +1422,7 @@ export default function AdminDocsPage() {
               }
               void handleDropToFolder(folder.id)
             }}
-            className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition ${
+            className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition ${
               isActive && activePanel === 'folders' ? 'text-sky-800' : 'text-zinc-700 hover:bg-zinc-100'
             } ${dragOverFolderId === folder.id ? 'ring-1 ring-sky-300 bg-sky-50 text-sky-800' : ''}`}
           >
@@ -1641,13 +1641,13 @@ export default function AdminDocsPage() {
           {treeLoading ? (
             <div className="px-2 py-4 text-xs text-zinc-500">폴더를 불러오는 중입니다...</div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {rootFolders.map((folder) => renderFolderTree(folder))}
               <div className="mt-2 border-t border-zinc-200 pt-2">
                 <button
                   type="button"
                   onClick={() => setActivePanel('trash')}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition ${
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition ${
                     activePanel === 'trash' ? 'bg-sky-100 text-sky-800' : 'text-zinc-700 hover:bg-zinc-100'
                   }`}
                 >

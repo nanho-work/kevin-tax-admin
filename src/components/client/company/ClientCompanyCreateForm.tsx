@@ -45,6 +45,16 @@ const inputClass =
 const selectClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
+function formatBusinessRegistrationNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10)
+  const p1 = digits.slice(0, 3)
+  const p2 = digits.slice(3, 5)
+  const p3 = digits.slice(5, 10)
+  if (digits.length <= 3) return p1
+  if (digits.length <= 5) return `${p1}-${p2}`
+  return `${p1}-${p2}-${p3}`
+}
+
 export default function ClientCompanyCreateForm() {
   const router = useRouter()
   const [form, setForm] = useState<CompanyCreateRequest>({
@@ -63,7 +73,10 @@ export default function ClientCompanyCreateForm() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm((prev) => ({
+      ...prev,
+      [name]: name === 'registration_number' ? formatBusinessRegistrationNumber(value) : value,
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,6 +123,9 @@ export default function ClientCompanyCreateForm() {
                 onChange={handleChange}
                 className={inputClass}
                 required
+                inputMode="numeric"
+                maxLength={12}
+                placeholder="000-00-00000"
               />
             </Field>
             <Field label="구분">

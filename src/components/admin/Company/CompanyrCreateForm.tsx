@@ -47,6 +47,16 @@ const textareaClass =
 const selectClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
+function formatBusinessRegistrationNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10)
+  const p1 = digits.slice(0, 3)
+  const p2 = digits.slice(3, 5)
+  const p3 = digits.slice(5, 10)
+  if (digits.length <= 3) return p1
+  if (digits.length <= 5) return `${p1}-${p2}`
+  return `${p1}-${p2}-${p3}`
+}
+
 export default function CompanyCreateForm() {
   const router = useRouter()
   const [form, setForm] = useState<CompanyCreateRequest>({
@@ -73,6 +83,8 @@ export default function CompanyCreateForm() {
           ? target.checked
           : name === 'is_active'
             ? value === 'true'
+            : name === 'registration_number'
+              ? formatBusinessRegistrationNumber(value)
             : value,
     }))
   }
@@ -135,7 +147,16 @@ export default function CompanyCreateForm() {
               <input name="owner_name" value={form.owner_name} onChange={handleChange} className={inputClass} required />
             </Field>
             <Field label="사업자등록번호" required>
-              <input name="registration_number" value={form.registration_number} onChange={handleChange} className={inputClass} required />
+              <input
+                name="registration_number"
+                value={form.registration_number}
+                onChange={handleChange}
+                className={inputClass}
+                required
+                inputMode="numeric"
+                maxLength={12}
+                placeholder="000-00-00000"
+              />
             </Field>
             <Field label="구분">
               <select name="category" value={form.category} onChange={handleChange} className={selectClass}>
