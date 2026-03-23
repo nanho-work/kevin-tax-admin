@@ -2,6 +2,7 @@
 
 import { AdminOut } from '@/types/admin'
 import { useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
 import {
   patchClientStaffTeam,
   updateClientStaff,
@@ -39,6 +40,7 @@ import type {
 import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
+import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 
 type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
 
@@ -137,6 +139,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
     emergency_contact_phone: '',
     reason: '',
   })
+  const [addressSearchOpen, setAddressSearchOpen] = useState(false)
 
   const [form, setForm] = useState({
     name: staff.name || '',
@@ -695,6 +698,17 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
                 />
               </div>
               <div>
+                <label className="mb-1 block text-xs text-zinc-600">우편번호검색</label>
+                <button
+                  type="button"
+                  onClick={() => setAddressSearchOpen(true)}
+                  className="inline-flex h-10 items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  <Search size={14} />
+                  검색
+                </button>
+              </div>
+              <div>
                 <label className="mb-1 block text-xs text-zinc-600">기본주소</label>
                 <input
                   type="text"
@@ -935,6 +949,18 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
+      <KakaoAddressSearchModal
+        open={addressSearchOpen}
+        onClose={() => setAddressSearchOpen(false)}
+        onSelect={(item) =>
+          setSensitiveForm((prev) => ({
+            ...prev,
+            zip_code: item.postal_code || prev.zip_code,
+            address1: item.address1 || prev.address1,
+            address2: item.address2 || prev.address2,
+          }))
+        }
+      />
     </div>
   )
 }

@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import type React from 'react'
 import { useRouter } from 'next/navigation'
+import { Search } from 'lucide-react'
 import { createCompany } from '@/services/admin/company'
+import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 import type { CompanyCreateRequest } from '@/types/admin_campany'
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -72,6 +74,7 @@ export default function CompanyCreateForm() {
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [addressSearchOpen, setAddressSearchOpen] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -177,10 +180,21 @@ export default function CompanyCreateForm() {
         </Section>
 
         <Section title="주소 정보">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_auto_minmax(0,1fr)_minmax(0,1fr)]">
             <Field label="우편번호">
               <input name="postal_code" value={form.postal_code} onChange={handleChange} className={inputClass} />
             </Field>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-zinc-700">우편번호검색</label>
+              <button
+                type="button"
+                onClick={() => setAddressSearchOpen(true)}
+                className="inline-flex h-10 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                <Search size={14} />
+                검색
+              </button>
+            </div>
             <Field label="주소1">
               <input name="address1" value={form.address1} onChange={handleChange} className={inputClass} />
             </Field>
@@ -189,6 +203,18 @@ export default function CompanyCreateForm() {
             </Field>
           </div>
         </Section>
+        <KakaoAddressSearchModal
+          open={addressSearchOpen}
+          onClose={() => setAddressSearchOpen(false)}
+          onSelect={(item) =>
+            setForm((prev) => ({
+              ...prev,
+              postal_code: item.postal_code || prev.postal_code,
+              address1: item.address1 || prev.address1,
+              address2: item.address2 || prev.address2,
+            }))
+          }
+        />
 
       </form>
     </div>

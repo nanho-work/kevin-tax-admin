@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { Search } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
+import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
   createCompanyAccount as createAdminCompanyAccount,
@@ -124,6 +126,11 @@ type LocalCustomDocument = {
   fileName: string
   uploadedAt: string
   downloadCount: number
+}
+
+type LocalCustomUploadDraft = {
+  file: File
+  title: string
 }
 
 type LocalHometaxCredential = {
@@ -299,16 +306,16 @@ export default function CompanyDetailForm({
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(isCreateMode)
   const [addressExpanded, setAddressExpanded] = useState(false)
+  const [addressSearchOpen, setAddressSearchOpen] = useState(false)
   const [hometaxExpanded, setHometaxExpanded] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
   const [deletingDocumentCode, setDeletingDocumentCode] = useState<string | null>(null)
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null)
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<string>(resolvedDocumentTypes[0].code)
   const [documentsExpanded, setDocumentsExpanded] = useState(true)
-  const [customDocTypeInput, setCustomDocTypeInput] = useState('')
   const [customDocFile, setCustomDocFile] = useState<File | null>(null)
   const [customDocFiles, setCustomDocFiles] = useState<File[]>([])
-  const [isCustomDocTitleAutoFilled, setIsCustomDocTitleAutoFilled] = useState(false)
+  const [customDocDrafts, setCustomDocDrafts] = useState<LocalCustomUploadDraft[]>([])
   const [customDocuments, setCustomDocuments] = useState<LocalCustomDocument[]>([])
   const [loadingCustomDocs, setLoadingCustomDocs] = useState(false)
   const [uploadingCustomDoc, setUploadingCustomDoc] = useState(false)
@@ -811,6 +818,12 @@ export default function CompanyDetailForm({
       toast.error('업로드할 파일을 선택해 주세요.')
       return
     }
+
+    const drafts =
+      customDocDrafts.length === selectedFiles.length
+        ? customDocDrafts
+        : selectedFiles.map((file) => ({ file, title: toSuggestedDocumentTitle(file.name) }))
+
     for (const file of selectedFiles) {
       const filePolicyError = validateCustomDocumentFile(file)
       if (filePolicyError) {
@@ -822,10 +835,7 @@ export default function CompanyDetailForm({
     try {
       setUploadingCustomDoc(true)
       if (selectedFiles.length > 1 && uploadCustomDocumentsBulkFn) {
-        const titles = selectedFiles.map((file, index) => {
-          if (index === 0 && customDocTypeInput.trim()) return customDocTypeInput.trim()
-          return toSuggestedDocumentTitle(file.name)
-        })
+        const titles = drafts.map((item) => item.title.trim())
         const result = await uploadCustomDocumentsBulkFn(companyId, {
           files: selectedFiles,
           titles,
@@ -837,13 +847,13 @@ export default function CompanyDetailForm({
         }
       } else {
         const singleFile = selectedFiles[0]
-        const title = customDocTypeInput.trim() || toSuggestedDocumentTitle(singleFile.name)
+        const title = drafts[0]?.title?.trim() || toSuggestedDocumentTitle(singleFile.name)
         await uploadCustomDocumentFn(companyId, { title, file: singleFile })
         toast.success('기타 관련 서류가 등록되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.')
       }
-      setCustomDocTypeInput('')
       setCustomDocFile(null)
       setCustomDocFiles([])
+      setCustomDocDrafts([])
       if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
       await loadCustomDocuments()
     } catch (error) {
@@ -858,18 +868,9 @@ export default function CompanyDetailForm({
     const first = nextFiles[0] || null
     setCustomDocFiles(nextFiles)
     setCustomDocFile(first)
+    setCustomDocDrafts(nextFiles.map((file) => ({ file, title: toSuggestedDocumentTitle(file.name) })))
     if (!first) {
-      if (isCustomDocTitleAutoFilled) {
-        setCustomDocTypeInput('')
-      }
-      setIsCustomDocTitleAutoFilled(false)
       return
-    }
-    const nextTitle = toSuggestedDocumentTitle(first.name)
-    const currentTitle = customDocTypeInput.trim()
-    if (!currentTitle || isCustomDocTitleAutoFilled) {
-      setCustomDocTypeInput(nextTitle)
-      setIsCustomDocTitleAutoFilled(true)
     }
   }
 
@@ -1125,10 +1126,22 @@ export default function CompanyDetailForm({
             }
           >
             {addressExpanded ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_auto_minmax(0,1fr)_minmax(0,1fr)]">
                 <Field label="우편번호">
                   <input className={editableInputClass} value={form.postal_code || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
                 </Field>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-zinc-700">우편번호검색</label>
+                  <button
+                    type="button"
+                    disabled={!canEditFields}
+                    onClick={() => setAddressSearchOpen(true)}
+                    className="inline-flex h-10 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                  >
+                    <Search size={14} />
+                    검색
+                  </button>
+                </div>
                 <Field label="주소1">
                   <input className={editableInputClass} value={form.address1 || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
                 </Field>
@@ -1138,6 +1151,22 @@ export default function CompanyDetailForm({
               </div>
             ) : null}
           </Section>
+          <KakaoAddressSearchModal
+            open={addressSearchOpen}
+            onClose={() => setAddressSearchOpen(false)}
+            onSelect={(item) =>
+              setForm((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      postal_code: item.postal_code || prev.postal_code,
+                      address1: item.address1 || prev.address1,
+                      address2: item.address2 || prev.address2,
+                    }
+                  : prev
+              )
+            }
+          />
 
           {showSystemInfo ? (
             <Section title="시스템 정보">
@@ -1443,15 +1472,33 @@ export default function CompanyDetailForm({
                       </FileDropzone>
                     </div>
 
-                    <input
-                      className={`${inputClass} ${isCustomDocTitleAutoFilled ? 'text-zinc-400' : ''}`}
-                      placeholder="문서이름입력 (예: 주주명부)"
-                      value={customDocTypeInput}
-                      onChange={(e) => {
-                        setCustomDocTypeInput(e.target.value)
-                        setIsCustomDocTitleAutoFilled(false)
-                      }}
-                    />
+                    <div className="max-h-[140px] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                      {customDocDrafts.length === 0 ? (
+                        <p className="px-1 py-2 text-xs text-zinc-500">파일을 선택하면 목록과 문서이름 입력칸이 표시됩니다.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {customDocDrafts.map((draft, index) => (
+                            <div key={`${draft.file.name}-${index}`} className="grid grid-cols-[minmax(0,1fr)_minmax(160px,220px)] items-center gap-2">
+                              <div className="truncate text-xs text-zinc-700" title={draft.file.name}>
+                                {draft.file.name}
+                              </div>
+                              <input
+                                className={`${inputClass} h-8 text-xs`}
+                                placeholder="문서이름"
+                                value={draft.title}
+                                onChange={(e) =>
+                                  setCustomDocDrafts((prev) =>
+                                    prev.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, title: e.target.value } : item
+                                    )
+                                  )
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-2">
                       {customDocFile ? (
