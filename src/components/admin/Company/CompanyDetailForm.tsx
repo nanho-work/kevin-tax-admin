@@ -410,15 +410,34 @@ export default function CompanyDetailForm({
 
   useEffect(() => {
     if (!hasValidCompanyId || isCreateMode) return
-    const initialMap: Record<string, CompanyDocumentPreviewResponse | null> = {}
-    const checked = new Set<string>()
-    if (businessLicensePreview) {
-      initialMap.business_license = businessLicensePreview
-      checked.add('business_license')
+    let cancelled = false
+    const loadAllDocumentPreviews = async () => {
+      const nextMap: Record<string, CompanyDocumentPreviewResponse | null> = {}
+      const checked = new Set<string>()
+
+      await Promise.all(
+        resolvedDocumentTypes.map(async (doc) => {
+          if (doc.code === 'business_license' && businessLicensePreview) {
+            nextMap[doc.code] = businessLicensePreview
+            checked.add(doc.code)
+            return
+          }
+          const preview = await fetchPreviewByDocType(doc.code)
+          nextMap[doc.code] = preview
+          checked.add(doc.code)
+        })
+      )
+
+      if (cancelled) return
+      setDocumentPreviews(nextMap)
+      setPreviewCheckedDocCodes(checked)
     }
-    setDocumentPreviews(initialMap)
-    setPreviewCheckedDocCodes(checked)
-  }, [companyId, businessLicensePreview, hasValidCompanyId, isCreateMode])
+
+    void loadAllDocumentPreviews()
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, businessLicensePreview, hasValidCompanyId, isCreateMode, resolvedDocumentTypes])
 
   const loadCustomDocuments = async () => {
     if (!enableCustomDocuments || !listCustomDocumentsFn) return
@@ -1451,28 +1470,7 @@ export default function CompanyDetailForm({
                 </p>
 
                 {supportsDocumentUpload ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                      <select
-                        className={`${inputClass} h-10`}
-                        value={selectedUploadDocType}
-                        onChange={(e) => setSelectedUploadDocType(e.target.value)}
-                      >
-                        {resolvedDocumentTypes.map((item) => (
-                          <option key={item.code} value={item.code}>
-                            {item.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={uploadingDocument || !selectedDocumentFile}
-                        onClick={handleUploadBusinessLicense}
-                        className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                      >
-                        {uploadingDocument ? '등록 중...' : '등록'}
-                      </button>
-                    </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)] md:grid-rows-[auto_auto]">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1480,15 +1478,42 @@ export default function CompanyDetailForm({
                       className="hidden"
                       onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
                     />
-                    <FileDropzone
-                      onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
-                      idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
-                      activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
+                    <div className="md:row-span-2">
+                      <FileDropzone
+                        onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex h-full min-h-[88px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                        idleClassName={
+                          selectedDocumentFile
+                            ? 'border-emerald-300 bg-emerald-50 text-zinc-600 animate-[pulse_1.8s_ease-in-out_infinite]'
+                            : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                        }
+                        activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
+                      >
+                        <span className={selectedDocumentFile ? 'font-semibold' : undefined}>
+                          {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
+                        </span>
+                      </FileDropzone>
+                    </div>
+                    <select
+                      className={`${inputClass} h-10`}
+                      value={selectedUploadDocType}
+                      onChange={(e) => setSelectedUploadDocType(e.target.value)}
                     >
-                      {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
-                    </FileDropzone>
+                      {resolvedDocumentTypes.map((item) => (
+                        <option key={item.code} value={item.code}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={uploadingDocument || !selectedDocumentFile}
+                      onClick={handleUploadBusinessLicense}
+                      className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    >
+                      {uploadingDocument ? '등록 중...' : '등록'}
+                    </button>
                   </div>
                 ) : null}
                 {isCreateMode ? (

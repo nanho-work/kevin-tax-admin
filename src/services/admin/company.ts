@@ -58,6 +58,14 @@ const uploadAdminCompanyDocumentAdapter = createMultipartUploadAdapter<
   url: ({ company_id, doc_type_code }) => `${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}`,
 })
 
+const uploadAdminCompanyCustomDocumentAdapter = createMultipartUploadAdapter<
+  AdminCompanyCustomDocumentOut,
+  { file: File; company_id: number; title: string }
+>({
+  url: ({ company_id }) => `${BASE}/${company_id}/custom-documents`,
+  buildFields: ({ title }) => ({ title }),
+})
+
 interface FetchCompanyParams {
   page: number;
   limit: number;
@@ -199,6 +207,47 @@ export async function listAdminCompanyCustomDocumentLogs(
 ): Promise<AdminCompanyCustomDocumentLogListResponse> {
   const res = await adminHttp.get<AdminCompanyCustomDocumentLogListResponse>(
     `${BASE}/${company_id}/custom-documents/${document_id}/logs`
+  )
+  return res.data
+}
+
+export async function uploadAdminCompanyCustomDocument(
+  company_id: number,
+  params: { title: string; file: File }
+): Promise<AdminCompanyCustomDocumentOut> {
+  return uploadViaAdapter(adminHttp, uploadAdminCompanyCustomDocumentAdapter, {
+    company_id,
+    title: params.title,
+    file: params.file,
+  })
+}
+
+export async function deleteAdminCompanyCustomDocument(
+  company_id: number,
+  document_id: number
+): Promise<{ message: string }> {
+  const res = await adminHttp.delete<{ message: string }>(
+    `${BASE}/${company_id}/custom-documents/${document_id}`
+  )
+  return res.data
+}
+
+export async function restoreAdminCompanyCustomDocument(
+  company_id: number,
+  document_id: number
+): Promise<{ message: string }> {
+  const res = await adminHttp.post<{ message: string }>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/restore`
+  )
+  return res.data
+}
+
+export async function purgeAdminCompanyCustomDocument(
+  company_id: number,
+  document_id: number
+): Promise<{ message: string }> {
+  const res = await adminHttp.delete<{ message: string }>(
+    `${BASE}/${company_id}/custom-documents/${document_id}/purge`
   )
   return res.data
 }

@@ -11,6 +11,8 @@ import {
   fetchCompanyBusinessLicensePreview,
   fetchCompanyDocumentPreview,
   fetchCompanyDetail,
+  uploadAdminCompanyCustomDocument,
+  deleteAdminCompanyCustomDocument,
   getAdminCompanyCustomDocumentDownloadUrl,
   getAdminCompanyCustomDocumentPreviewUrl,
   listAdminCompanyCustomDocumentLogs,
@@ -87,6 +89,8 @@ export default function CompanyDetailPage() {
       deleteDocumentFn={canDeleteRequiredDocuments ? deleteCompanyDocument : undefined}
       enableCustomDocuments
       listCustomDocumentsFn={listAdminCompanyCustomDocuments}
+      uploadCustomDocumentFn={uploadAdminCompanyCustomDocument}
+      deleteCustomDocumentFn={deleteAdminCompanyCustomDocument}
       getCustomDocumentDownloadUrlFn={getAdminCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getAdminCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listAdminCompanyCustomDocumentLogs}
