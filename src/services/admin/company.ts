@@ -1,4 +1,5 @@
 import { adminHttp, getAdminAccessToken } from '@/services/http'
+import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
@@ -9,7 +10,9 @@ import type {
 } from '@/types/admin_campany';
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/companies`
-const COMPANY_DOC_TYPE_BUSINESS_LICENSE = 'business_license'
+export const COMPANY_DOC_TYPE_BUSINESS_LICENSE = 'business_license'
+export const COMPANY_DOC_TYPE_OWNER_ID = 'id_card'
+export const COMPANY_DOC_TYPE_BANKBOOK = 'bank_account'
 
 export interface CompanyDocumentPreviewResponse {
   file_name: string
@@ -47,6 +50,13 @@ export interface AdminCompanyCustomDocumentLogListResponse {
   total: number
   items: Array<{ action: string }>
 }
+
+const uploadAdminCompanyDocumentAdapter = createMultipartUploadAdapter<
+  unknown,
+  { file: File; company_id: number; doc_type_code: string }
+>({
+  url: ({ company_id, doc_type_code }) => `${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}`,
+})
 
 interface FetchCompanyParams {
   page: number;
@@ -95,11 +105,59 @@ export async function createCompany(
   return res.data;
 }
 
+export async function updateCompany(
+  company_id: number,
+  payload: CompanyUpdateRequest
+): Promise<{ message: string }> {
+  const res = await adminHttp.patch<{ message: string }>(`${BASE}/update/${company_id}`, payload)
+  return res.data
+}
+
 export async function fetchCompanyBusinessLicensePreview(
   company_id: number
 ): Promise<CompanyDocumentPreviewResponse> {
+  return fetchCompanyDocumentPreview(company_id, COMPANY_DOC_TYPE_BUSINESS_LICENSE)
+}
+
+export async function fetchCompanyDocumentPreview(
+  company_id: number,
+  doc_type_code: string
+): Promise<CompanyDocumentPreviewResponse> {
   const res = await adminHttp.get<CompanyDocumentPreviewResponse>(
-    `${BASE}/${company_id}/documents/${COMPANY_DOC_TYPE_BUSINESS_LICENSE}/preview`
+    `${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}/preview`
+  )
+  return res.data
+}
+
+export async function uploadCompanyBusinessLicense(
+  company_id: number,
+  file: File
+): Promise<unknown> {
+  return uploadCompanyDocument(company_id, COMPANY_DOC_TYPE_BUSINESS_LICENSE, file)
+}
+
+export async function uploadCompanyDocument(
+  company_id: number,
+  doc_type_code: string,
+  file: File
+): Promise<unknown> {
+  return uploadViaAdapter(adminHttp, uploadAdminCompanyDocumentAdapter, {
+    company_id,
+    doc_type_code,
+    file,
+  })
+}
+
+export async function deleteCompanyBusinessLicense(company_id: number): Promise<{ message: string }> {
+  return deleteCompanyDocument(company_id, COMPANY_DOC_TYPE_BUSINESS_LICENSE)
+}
+
+export async function deleteCompanyDocument(
+  company_id: number,
+  doc_type_code: string
+): Promise<{ message: string }> {
+  const res = await adminHttp.delete<{ message: string }>(
+    `${BASE}/${company_id}/documents/${encodeURIComponent(doc_type_code)}`
   )
   return res.data
 }

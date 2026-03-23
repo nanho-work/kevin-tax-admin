@@ -3,20 +3,33 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import {
+  COMPANY_DOC_TYPE_BANKBOOK,
+  COMPANY_DOC_TYPE_BUSINESS_LICENSE,
+  COMPANY_DOC_TYPE_OWNER_ID,
+  deleteCompanyBusinessLicense,
+  deleteCompanyDocument,
   fetchCompanyBusinessLicensePreview,
+  fetchCompanyDocumentPreview,
   fetchCompanyDetail,
   getAdminCompanyCustomDocumentDownloadUrl,
   getAdminCompanyCustomDocumentPreviewUrl,
   listAdminCompanyCustomDocumentLogs,
   listAdminCompanyCustomDocuments,
+  updateCompany,
+  uploadCompanyBusinessLicense,
+  uploadCompanyDocument,
   type CompanyDocumentPreviewResponse,
 } from '@/services/admin/company'
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
+import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { getAdminRoleRank } from '@/utils/roleRank'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 
 export default function CompanyDetailPage() {
   const params = useParams<{ id: string }>()
+  const { session } = useAdminSessionContext()
   const companyId = Number(params.id)
+  const canDeleteRequiredDocuments = getAdminRoleRank(session) === 0
   const [company, setCompany] = useState<CompanyDetailResponse | null>(null)
   const [businessLicensePreview, setBusinessLicensePreview] = useState<CompanyDocumentPreviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -59,7 +72,19 @@ export default function CompanyDetailPage() {
     <CompanyDetailForm
       company={company}
       editable={false}
+      updateFn={updateCompany}
       businessLicensePreview={businessLicensePreview}
+      documentTypes={[
+        { code: COMPANY_DOC_TYPE_BUSINESS_LICENSE, label: '사업자등록증' },
+        { code: COMPANY_DOC_TYPE_OWNER_ID, label: '대표자 신분증' },
+        { code: COMPANY_DOC_TYPE_BANKBOOK, label: '통장사본' },
+      ]}
+      fetchBusinessLicensePreviewFn={fetchCompanyBusinessLicensePreview}
+      uploadBusinessLicenseFn={uploadCompanyBusinessLicense}
+      deleteBusinessLicenseFn={canDeleteRequiredDocuments ? deleteCompanyBusinessLicense : undefined}
+      fetchDocumentPreviewFn={fetchCompanyDocumentPreview}
+      uploadDocumentFn={uploadCompanyDocument}
+      deleteDocumentFn={canDeleteRequiredDocuments ? deleteCompanyDocument : undefined}
       enableCustomDocuments
       listCustomDocumentsFn={listAdminCompanyCustomDocuments}
       getCustomDocumentDownloadUrlFn={getAdminCompanyCustomDocumentDownloadUrl}

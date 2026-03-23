@@ -315,7 +315,8 @@ export default function CompanyDetailForm({
   const customDocFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activePreview = documentPreviews[activePreviewDocType] || null
-  const supportsDocumentCrud = !isCreateMode && Boolean(uploadDocumentFn || uploadBusinessLicenseFn)
+  const supportsDocumentUpload = !isCreateMode && Boolean(uploadDocumentFn || uploadBusinessLicenseFn)
+  const supportsDocumentDelete = !isCreateMode && Boolean(deleteDocumentFn || deleteBusinessLicenseFn)
   const supportsCustomDocumentRead =
     !isCreateMode &&
     Boolean(listCustomDocumentsFn) &&
@@ -1449,7 +1450,7 @@ export default function CompanyDetailForm({
                   3개 필수 문서 외 다른 문서는 스크롤을 내려서 등록해 주세요.
                 </p>
 
-                {editable && supportsDocumentCrud ? (
+                {supportsDocumentUpload ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
                       <select
@@ -1535,7 +1536,7 @@ export default function CompanyDetailForm({
                                   >
                                     미리보기
                                   </button>
-                                  {editable && supportsDocumentCrud ? (
+                                  {supportsDocumentDelete ? (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteDocument(item.code)}

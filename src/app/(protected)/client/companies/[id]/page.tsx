@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import CompanyDetailForm from '@/components/admin/Company/CompanyDetailForm'
+import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { getClientRoleRank } from '@/utils/roleRank'
 import {
   COMPANY_DOC_TYPE_BANKBOOK,
   deleteClientCompanyBusinessLicense,
@@ -37,7 +39,9 @@ import type { CompanyDetailResponse } from '@/types/admin_campany'
 
 export default function ClientCompanyDetailPage() {
   const params = useParams<{ id: string }>()
+  const { session } = useClientSessionContext()
   const companyId = Number(params.id)
+  const canDeleteRequiredDocuments = getClientRoleRank(session) === 0
   const [company, setCompany] = useState<CompanyDetailResponse | null>(null)
   const [businessLicensePreview, setBusinessLicensePreview] = useState<ClientCompanyDocumentPreviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,10 +98,10 @@ export default function ClientCompanyDetailPage() {
       updateFn={updateClientCompany}
       fetchBusinessLicensePreviewFn={fetchClientCompanyBusinessLicensePreview}
       uploadBusinessLicenseFn={uploadClientCompanyBusinessLicense}
-      deleteBusinessLicenseFn={deleteClientCompanyBusinessLicense}
+      deleteBusinessLicenseFn={canDeleteRequiredDocuments ? deleteClientCompanyBusinessLicense : undefined}
       fetchDocumentPreviewFn={fetchClientCompanyDocumentPreview}
       uploadDocumentFn={uploadClientCompanyDocument}
-      deleteDocumentFn={deleteClientCompanyDocument}
+      deleteDocumentFn={canDeleteRequiredDocuments ? deleteClientCompanyDocument : undefined}
       listCustomDocumentsFn={listClientCompanyCustomDocuments}
       uploadCustomDocumentFn={uploadClientCompanyCustomDocument}
       deleteCustomDocumentFn={deleteClientCompanyCustomDocument}
