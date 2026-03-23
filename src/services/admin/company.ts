@@ -290,11 +290,7 @@ export async function uploadAdminCompanyCustomDocumentsBulk(
   const form = new FormData()
   params.files.forEach((file) => form.append('files', file))
   ;(params.titles || []).forEach((title) => form.append('titles', title))
-  const res = await adminHttp.post<AdminCompanyCustomDocumentBulkUploadResponse>(
-    `${BASE}/${company_id}/custom-documents/bulk`,
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
-  )
+  const res = await adminHttp.post<AdminCompanyCustomDocumentBulkUploadResponse>(`${BASE}/${company_id}/custom-documents/bulk`, form)
   return res.data
 }
 

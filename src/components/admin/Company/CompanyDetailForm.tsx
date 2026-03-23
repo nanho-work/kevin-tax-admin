@@ -294,9 +294,13 @@ export default function CompanyDetailForm({
   const isCreateMode = mode === 'create'
   const hasValidCompanyId = Number.isFinite(companyId) && companyId > 0
   const [form, setForm] = useState<CompanyDetailResponse | null>(null)
-  const resolvedDocumentTypes = documentTypes?.length
-    ? documentTypes
-    : [{ code: 'business_license', label: '사업자등록증' }]
+  const resolvedDocumentTypes = useMemo(
+    () =>
+      documentTypes?.length
+        ? documentTypes
+        : [{ code: 'business_license', label: '사업자등록증' }],
+    [documentTypes]
+  )
   const [documentPreviews, setDocumentPreviews] = useState<Record<string, CompanyDocumentPreviewResponse | null>>(
     {}
   )
@@ -447,34 +451,36 @@ export default function CompanyDetailForm({
 
   useEffect(() => {
     if (!hasValidCompanyId || isCreateMode) return
+    if (!businessLicensePreview) return
+    setDocumentPreviews((prev) => ({ ...prev, business_license: businessLicensePreview }))
+    setPreviewCheckedDocCodes((prev) => {
+      if (prev.has('business_license')) return prev
+      const next = new Set(prev)
+      next.add('business_license')
+      return next
+    })
+  }, [businessLicensePreview, hasValidCompanyId, isCreateMode])
+
+  useEffect(() => {
+    if (!hasValidCompanyId || isCreateMode) return
+    if (previewCheckedDocCodes.has(activePreviewDocType)) return
     let cancelled = false
-    const loadAllDocumentPreviews = async () => {
-      const nextMap: Record<string, CompanyDocumentPreviewResponse | null> = {}
-      const checked = new Set<string>()
-
-      await Promise.all(
-        resolvedDocumentTypes.map(async (doc) => {
-          if (doc.code === 'business_license' && businessLicensePreview) {
-            nextMap[doc.code] = businessLicensePreview
-            checked.add(doc.code)
-            return
-          }
-          const preview = await fetchPreviewByDocType(doc.code)
-          nextMap[doc.code] = preview
-          checked.add(doc.code)
-        })
-      )
-
+    const loadActivePreview = async () => {
+      const preview = await fetchPreviewByDocType(activePreviewDocType)
       if (cancelled) return
-      setDocumentPreviews(nextMap)
-      setPreviewCheckedDocCodes(checked)
+      setDocumentPreviews((prev) => ({ ...prev, [activePreviewDocType]: preview }))
+      setPreviewCheckedDocCodes((prev) => {
+        if (prev.has(activePreviewDocType)) return prev
+        const next = new Set(prev)
+        next.add(activePreviewDocType)
+        return next
+      })
     }
-
-    void loadAllDocumentPreviews()
+    void loadActivePreview()
     return () => {
       cancelled = true
     }
-  }, [companyId, businessLicensePreview, hasValidCompanyId, isCreateMode, resolvedDocumentTypes])
+  }, [activePreviewDocType, hasValidCompanyId, isCreateMode, previewCheckedDocCodes])
 
   const loadCustomDocuments = async () => {
     if (!enableCustomDocuments || !listCustomDocumentsFn) return

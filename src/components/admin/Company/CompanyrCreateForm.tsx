@@ -98,7 +98,11 @@ export default function CompanyCreateForm() {
     try {
       await createCompany(form)
       setSuccess('등록 완료되었습니다.')
-      router.push('/admin/companies')
+      if (typeof window !== 'undefined' && window.history.length > 1) {
+        router.back()
+      } else {
+        router.push('/admin/companies')
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail
       setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || '등록 실패')

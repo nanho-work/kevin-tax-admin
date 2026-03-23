@@ -89,7 +89,11 @@ export default function ClientCompanyCreateForm() {
     try {
       await createClientPortalCompany(form)
       setSuccess('등록 완료되었습니다.')
-      router.push('/client/companies')
+      if (typeof window !== 'undefined' && window.history.length > 1) {
+        router.back()
+      } else {
+        router.push('/client/companies')
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail
       setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || '등록 실패')
