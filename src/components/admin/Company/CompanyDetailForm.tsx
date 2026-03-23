@@ -305,7 +305,6 @@ export default function CompanyDetailForm({
   const [loading, setLoading] = useState(!isCreateMode)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(isCreateMode)
-  const [addressExpanded, setAddressExpanded] = useState(false)
   const [addressSearchOpen, setAddressSearchOpen] = useState(false)
   const [hometaxExpanded, setHometaxExpanded] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
@@ -841,7 +840,14 @@ export default function CompanyDetailForm({
           titles,
         })
         if (result.failed_count > 0) {
+          const failedPreview = (result.failed_items || [])
+            .slice(0, 3)
+            .map((item) => `${item.file_name}: ${item.error}`)
+            .join(' / ')
           toast.success(`총 ${result.total}건 중 ${result.success_count}건 업로드, ${result.failed_count}건 실패`)
+          if (failedPreview) {
+            toast.error(`실패 항목: ${failedPreview}`)
+          }
         } else {
           toast.success(`${result.success_count}건 업로드되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.`)
         }
@@ -985,8 +991,19 @@ export default function CompanyDetailForm({
           <Section
             title="기본 정보"
             action={
-              isCreateMode && createFn ? (
-                <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                {supportsHometax ? (
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
+                      hasHometaxRegistered
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-zinc-300 bg-zinc-100 text-zinc-600'
+                    }`}
+                  >
+                    홈택스 {hasHometaxRegistered ? '등록됨' : '미등록'}
+                  </span>
+                ) : null}
+                {isCreateMode && createFn ? (
                   <button
                     onClick={async () => {
                       try {
@@ -1016,58 +1033,65 @@ export default function CompanyDetailForm({
                   >
                     {saving ? '등록 중...' : '등록완료'}
                   </button>
-                </div>
-              ) : editable && updateFn ? (
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-zinc-700">수정</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={editMode}
-                    onClick={() => setEditMode((prev) => !prev)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                      editMode ? 'bg-blue-500' : 'bg-zinc-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-                        editMode ? 'translate-x-5' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                  {editMode ? (
+                ) : editable && updateFn ? (
+                  <>
+                    <span className="text-sm font-medium text-zinc-700">수정</span>
                     <button
-                      onClick={async () => {
-                        try {
-                          setSaving(true)
-                          const { id: _id, created_at, updated_at, ...payload } = form
-                          const res = await updateFn(companyId, payload)
-                          toast.success(res.message || '수정이 완료되었습니다.')
-                          const refreshed = await fetchDetailFn(companyId)
-                          setForm(refreshed)
-                          setEditMode(false)
-                        } catch (err: any) {
-                          toast.error(err.response?.data?.detail || '수정 실패')
-                        } finally {
-                          setSaving(false)
-                        }
-                      }}
-                      disabled={saving}
-                      className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                      type="button"
+                      role="switch"
+                      aria-checked={editMode}
+                      onClick={() => setEditMode((prev) => !prev)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        editMode ? 'bg-blue-500' : 'bg-zinc-300'
+                      }`}
                     >
-                      {saving ? '저장 중...' : '수정완료'}
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                          editMode ? 'translate-x-5' : 'translate-x-1'
+                        }`}
+                      />
                     </button>
-                  ) : null}
+                    {editMode ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            setSaving(true)
+                            const { id: _id, created_at, updated_at, ...payload } = form
+                            const res = await updateFn(companyId, payload)
+                            toast.success(res.message || '수정이 완료되었습니다.')
+                            const refreshed = await fetchDetailFn(companyId)
+                            setForm(refreshed)
+                            setEditMode(false)
+                          } catch (err: any) {
+                            toast.error(err.response?.data?.detail || '수정 실패')
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}
+                        disabled={saving}
+                        className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                      >
+                        {saving ? '저장 중...' : '수정완료'}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
                 </div>
-              ) : null
             }
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field label="회사명">
                 <input className={editableInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
               </Field>
               <Field label="대표자">
                 <input className={editableInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
+              </Field>
+              <Field label="구분">
+                <select className={editableInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  <option value="">선택</option>
+                  <option value="법인">법인</option>
+                  <option value="개인">개인</option>
+                </select>
               </Field>
               <Field label="사업자등록번호">
                 <input
@@ -1085,71 +1109,53 @@ export default function CompanyDetailForm({
                   placeholder="000-00-00000"
                 />
               </Field>
-              <Field label="구분">
-                <select className={editableInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option value="">선택</option>
-                  <option value="법인">법인</option>
-                  <option value="개인">개인</option>
-                </select>
-              </Field>
               <Field label="업태">
                 <input className={editableInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
               </Field>
               <Field label="종목">
                 <input className={editableInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
               </Field>
-              {supportsHometax ? (
-                <Field label="홈택스 정보 등록 여부">
-                  <input
-                    className={`${inputClass} bg-zinc-100`}
-                    value={hometaxCredential?.password_set ? '등록됨' : '미등록'}
-                    readOnly
-                  />
-                </Field>
-              ) : null}
-            </div>
-          </Section>
-
-          <Section
-            title="주소 정보"
-            action={
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-500">{addressExpanded ? '펼침' : '접힘'}</span>
-                <button
-                  type="button"
-                  onClick={() => setAddressExpanded((prev) => !prev)}
-                  className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                >
-                  {addressExpanded ? '접기 ▴' : '펼치기 ▾'}
-                </button>
-              </div>
-            }
-          >
-            {addressExpanded ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_auto_minmax(0,1fr)_minmax(0,1fr)]">
-                <Field label="우편번호">
-                  <input className={editableInputClass} value={form.postal_code || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
-                </Field>
-                <div className="space-y-1.5">
-                  <label className="block text-sm font-medium text-zinc-700">우편번호검색</label>
-                  <button
-                    type="button"
-                    disabled={!canEditFields}
-                    onClick={() => setAddressSearchOpen(true)}
-                    className="inline-flex h-10 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                  >
-                    <Search size={14} />
-                    검색
-                  </button>
+              <div className="xl:col-span-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_auto_minmax(0,1fr)_minmax(0,1fr)]">
+                  <Field label="우편번호">
+                    <input
+                      className={editableInputClass}
+                      value={form.postal_code || ''}
+                      readOnly={!canEditFields}
+                      onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
+                    />
+                  </Field>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-zinc-700">우편번호검색</label>
+                    <button
+                      type="button"
+                      disabled={!canEditFields}
+                      onClick={() => setAddressSearchOpen(true)}
+                      className="inline-flex h-10 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    >
+                      <Search size={14} />
+                      검색
+                    </button>
+                  </div>
+                  <Field label="주소1">
+                    <input
+                      className={editableInputClass}
+                      value={form.address1 || ''}
+                      readOnly={!canEditFields}
+                      onChange={(e) => setForm({ ...form, address1: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="주소2">
+                    <input
+                      className={editableInputClass}
+                      value={form.address2 || ''}
+                      readOnly={!canEditFields}
+                      onChange={(e) => setForm({ ...form, address2: e.target.value })}
+                    />
+                  </Field>
                 </div>
-                <Field label="주소1">
-                  <input className={editableInputClass} value={form.address1 || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
-                </Field>
-                <Field label="주소2">
-                  <input className={editableInputClass} value={form.address2 || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
-                </Field>
               </div>
-            ) : null}
+            </div>
           </Section>
           <KakaoAddressSearchModal
             open={addressSearchOpen}

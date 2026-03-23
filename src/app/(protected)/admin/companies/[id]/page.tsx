@@ -79,7 +79,7 @@ export default function CompanyDetailPage() {
   return (
     <CompanyDetailForm
       company={company}
-      editable={false}
+      editable
       updateFn={updateCompany}
       businessLicensePreview={businessLicensePreview}
       documentTypes={[
