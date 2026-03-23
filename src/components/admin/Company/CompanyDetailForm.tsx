@@ -52,6 +52,16 @@ interface Props {
     company_id: number,
     params: { title: string; file: File }
   ) => Promise<unknown>
+  uploadCustomDocumentsBulkFn?: (
+    company_id: number,
+    params: { files: File[]; titles?: string[] }
+  ) => Promise<{
+    total: number
+    success_count: number
+    failed_count: number
+    items: Array<{ id: number; title: string; file_name: string }>
+    failed_items: Array<{ index: number; file_name: string; title?: string | null; error: string }>
+  }>
   deleteCustomDocumentFn?: (company_id: number, document_id: number) => Promise<{ message: string }>
   getCustomDocumentDownloadUrlFn?: (
     company_id: number,
@@ -131,6 +141,12 @@ function formatBusinessRegistrationNumber(value: string) {
   if (digits.length <= 3) return p1
   if (digits.length <= 5) return `${p1}-${p2}`
   return `${p1}-${p2}-${p3}`
+}
+
+function toSuggestedDocumentTitle(fileName: string) {
+  const trimmed = fileName.trim()
+  if (!trimmed) return ''
+  return trimmed.replace(/\.[^.]+$/, '').trim() || trimmed
 }
 
 function Section({
@@ -225,6 +241,12 @@ function isImageFile(fileName?: string | null): boolean {
   )
 }
 
+function isPreviewableCustomDocument(fileName?: string | null): boolean {
+  if (!fileName) return false
+  if (isImageFile(fileName)) return true
+  return fileName.toLowerCase().endsWith('.pdf')
+}
+
 export default function CompanyDetailForm({
   company,
   mode = 'edit',
@@ -245,6 +267,7 @@ export default function CompanyDetailForm({
   deleteDocumentFn,
   listCustomDocumentsFn,
   uploadCustomDocumentFn,
+  uploadCustomDocumentsBulkFn,
   deleteCustomDocumentFn,
   getCustomDocumentDownloadUrlFn,
   getCustomDocumentPreviewUrlFn,
@@ -284,6 +307,8 @@ export default function CompanyDetailForm({
   const [documentsExpanded, setDocumentsExpanded] = useState(true)
   const [customDocTypeInput, setCustomDocTypeInput] = useState('')
   const [customDocFile, setCustomDocFile] = useState<File | null>(null)
+  const [customDocFiles, setCustomDocFiles] = useState<File[]>([])
+  const [isCustomDocTitleAutoFilled, setIsCustomDocTitleAutoFilled] = useState(false)
   const [customDocuments, setCustomDocuments] = useState<LocalCustomDocument[]>([])
   const [loadingCustomDocs, setLoadingCustomDocs] = useState(false)
   const [uploadingCustomDoc, setUploadingCustomDoc] = useState(false)
@@ -326,6 +351,7 @@ export default function CompanyDetailForm({
     !isCreateMode &&
     Boolean(uploadCustomDocumentFn) &&
     Boolean(deleteCustomDocumentFn)
+  const supportsCustomDocumentBulkWrite = !isCreateMode && Boolean(uploadCustomDocumentsBulkFn)
   const sortedCustomDocuments = useMemo(
     () =>
       [...customDocuments].sort(
@@ -333,7 +359,12 @@ export default function CompanyDetailForm({
       ),
     [customDocuments]
   )
-  const supportsHometax = !isCreateMode && Boolean(getHometaxCredentialFn)
+  const supportsHometaxRead = !isCreateMode && Boolean(getHometaxCredentialFn)
+  const supportsHometaxWrite = !isCreateMode && Boolean(upsertHometaxCredentialFn)
+  const supportsHometaxActivePatch = !isCreateMode && Boolean(patchHometaxCredentialActiveFn)
+  const supportsHometaxReveal = !isCreateMode && Boolean(revealHometaxCredentialPasswordFn)
+  const supportsHometaxLogs = !isCreateMode && Boolean(listHometaxCredentialLogsFn)
+  const supportsHometax = supportsHometaxRead
   const supportsCompanyAccount =
     !isCreateMode &&
     hasValidCompanyId &&
@@ -523,7 +554,7 @@ export default function CompanyDetailForm({
   }, [companyId])
 
   useEffect(() => {
-    if (!supportsHometax || !hasValidCompanyId || !getHometaxCredentialFn) return
+    if (!supportsHometaxRead || !hasValidCompanyId || !getHometaxCredentialFn) return
     if (!hometaxExpanded || hometaxFetched) return
     const loadHometax = async () => {
       try {
@@ -556,13 +587,13 @@ export default function CompanyDetailForm({
     companyId,
     getHometaxCredentialFn,
     hasValidCompanyId,
-    supportsHometax,
+    supportsHometaxRead,
     hometaxExpanded,
     hometaxFetched,
   ])
 
   useEffect(() => {
-    if (!supportsHometax || !hasValidCompanyId || !listHometaxCredentialLogsFn) return
+    if (!supportsHometaxRead || !supportsHometaxLogs || !hasValidCompanyId || !listHometaxCredentialLogsFn) return
     if (!hometaxExpanded || hometaxLogsFetched) return
     const loadHometaxLogs = async () => {
       try {
@@ -581,11 +612,19 @@ export default function CompanyDetailForm({
       }
     }
     void loadHometaxLogs()
-  }, [companyId, hasValidCompanyId, listHometaxCredentialLogsFn, supportsHometax, hometaxExpanded, hometaxLogsFetched])
+  }, [
+    companyId,
+    hasValidCompanyId,
+    listHometaxCredentialLogsFn,
+    supportsHometaxRead,
+    supportsHometaxLogs,
+    hometaxExpanded,
+    hometaxLogsFetched,
+  ])
 
   const handleUpsertHometax = async () => {
-    if (!upsertHometaxCredentialFn) {
-      toast.error('홈택스 등록 API가 아직 준비되지 않았습니다.')
+    if (!upsertHometaxCredentialFn || !supportsHometaxWrite) {
+      toast.error('홈택스 정보 저장 권한이 없습니다.')
       return
     }
     if (!hometaxForm.hometax_login_id.trim()) {
@@ -627,7 +666,7 @@ export default function CompanyDetailForm({
   }
 
   const handlePatchHometaxActive = async (nextActive: boolean) => {
-    if (!patchHometaxCredentialActiveFn) {
+    if (!patchHometaxCredentialActiveFn || !supportsHometaxActivePatch) {
       setHometaxForm((prev) => ({ ...prev, is_active: nextActive }))
       return
     }
@@ -642,8 +681,8 @@ export default function CompanyDetailForm({
   }
 
   const handleRevealHometax = async () => {
-    if (!revealHometaxCredentialPasswordFn) {
-      toast.error('정보 확인 API가 아직 준비되지 않았습니다.')
+    if (!revealHometaxCredentialPasswordFn || !supportsHometaxReveal) {
+      toast.error('홈택스 정보 확인 권한이 없습니다.')
       return
     }
     if (!revealAccountPassword.trim()) {
@@ -767,33 +806,70 @@ export default function CompanyDetailForm({
       toast.error('커스텀 문서 업로드 API가 아직 준비되지 않았습니다.')
       return
     }
-    const title = customDocTypeInput.trim()
-    if (!title) {
-      toast.error('문서이름을 입력해 주세요.')
-      return
-    }
-    if (!customDocFile) {
+    const selectedFiles = customDocFiles.length > 0 ? customDocFiles : customDocFile ? [customDocFile] : []
+    if (selectedFiles.length === 0) {
       toast.error('업로드할 파일을 선택해 주세요.')
       return
     }
-    const filePolicyError = validateCustomDocumentFile(customDocFile)
-    if (filePolicyError) {
-      toast.error(filePolicyError)
-      return
+    for (const file of selectedFiles) {
+      const filePolicyError = validateCustomDocumentFile(file)
+      if (filePolicyError) {
+        toast.error(`${file.name}: ${filePolicyError}`)
+        return
+      }
     }
 
     try {
       setUploadingCustomDoc(true)
-      await uploadCustomDocumentFn(companyId, { title, file: customDocFile })
+      if (selectedFiles.length > 1 && uploadCustomDocumentsBulkFn) {
+        const titles = selectedFiles.map((file, index) => {
+          if (index === 0 && customDocTypeInput.trim()) return customDocTypeInput.trim()
+          return toSuggestedDocumentTitle(file.name)
+        })
+        const result = await uploadCustomDocumentsBulkFn(companyId, {
+          files: selectedFiles,
+          titles,
+        })
+        if (result.failed_count > 0) {
+          toast.success(`총 ${result.total}건 중 ${result.success_count}건 업로드, ${result.failed_count}건 실패`)
+        } else {
+          toast.success(`${result.success_count}건 업로드되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.`)
+        }
+      } else {
+        const singleFile = selectedFiles[0]
+        const title = customDocTypeInput.trim() || toSuggestedDocumentTitle(singleFile.name)
+        await uploadCustomDocumentFn(companyId, { title, file: singleFile })
+        toast.success('기타 관련 서류가 등록되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.')
+      }
       setCustomDocTypeInput('')
       setCustomDocFile(null)
+      setCustomDocFiles([])
       if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
-      toast.success('기타 관련 서류가 등록되었습니다. 문서함(공용문서 > 고객사 자료)에도 반영됩니다.')
       await loadCustomDocuments()
     } catch (error) {
       toast.error(extractApiDetail(error) || '기타 관련 서류 등록 중 오류가 발생했습니다.')
     } finally {
       setUploadingCustomDoc(false)
+    }
+  }
+
+  const applyCustomDocumentFiles = (files: File[]) => {
+    const nextFiles = files.filter(Boolean)
+    const first = nextFiles[0] || null
+    setCustomDocFiles(nextFiles)
+    setCustomDocFile(first)
+    if (!first) {
+      if (isCustomDocTitleAutoFilled) {
+        setCustomDocTypeInput('')
+      }
+      setIsCustomDocTitleAutoFilled(false)
+      return
+    }
+    const nextTitle = toSuggestedDocumentTitle(first.name)
+    const currentTitle = customDocTypeInput.trim()
+    if (!currentTitle || isCustomDocTitleAutoFilled) {
+      setCustomDocTypeInput(nextTitle)
+      setIsCustomDocTitleAutoFilled(true)
     }
   }
 
@@ -1190,7 +1266,7 @@ export default function CompanyDetailForm({
                       홈택스 정보를 불러오는 중...
                     </div>
                   ) : null}
-                  {hasHometaxRegistered ? null : (
+                  {!hasHometaxRegistered && supportsHometaxWrite ? (
                     <>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                         <Field label="홈택스 아이디">
@@ -1212,6 +1288,7 @@ export default function CompanyDetailForm({
                           <select
                             className={inputClass}
                             value={hometaxForm.is_active ? 'active' : 'inactive'}
+                            disabled={!supportsHometaxActivePatch}
                             onChange={(e) => handlePatchHometaxActive(e.target.value === 'active')}
                           >
                             <option value="active">활성</option>
@@ -1230,86 +1307,107 @@ export default function CompanyDetailForm({
                         </button>
                       </div>
                     </>
+                  ) : null}
+                  {!hasHometaxRegistered && !supportsHometaxWrite ? (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                      홈택스 등록/수정 권한이 없습니다.
+                    </div>
+                  ) : null}
+
+                  {supportsHometaxReveal ? (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                      <p className="text-xs text-zinc-600">정보 확인 시 본인 계정 비밀번호 재입력이 필요합니다.</p>
+                      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                        <input
+                          type="password"
+                          className={inputClass}
+                          placeholder="본인 계정 비밀번호 입력"
+                          value={revealAccountPassword}
+                          onChange={(e) => setRevealAccountPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRevealHometax}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          정보 확인
+                        </button>
+                      </div>
+                      {revealedHometaxPassword !== null ? (
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <input
+                            className={`${inputClass} bg-white`}
+                            value={`아이디: ${hometaxCredential?.hometax_login_id || hometaxForm.hometax_login_id}`}
+                            readOnly
+                          />
+                          <input
+                            className={`${inputClass} bg-white`}
+                            value={`비밀번호: ${revealedHometaxPassword}`}
+                            readOnly
+                          />
+                        </div>
+                      ) : null}
+                      {revealedCount !== null ? (
+                        <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
+                      ) : null}
+                      {hometaxCredential?.enc_key_version ? (
+                        <p className="mt-1 text-xs text-zinc-400">암호화 키 버전: {hometaxCredential.enc_key_version}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                      홈택스 평문 확인 권한이 없습니다.
+                    </div>
                   )}
 
-                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                    <p className="text-xs text-zinc-600">정보 확인 시 본인 계정 비밀번호 재입력이 필요합니다.</p>
-                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
-                      <input
-                        type="password"
-                        className={inputClass}
-                        placeholder="본인 계정 비밀번호 입력"
-                        value={revealAccountPassword}
-                        onChange={(e) => setRevealAccountPassword(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRevealHometax}
-                        className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-                      >
-                        정보 확인
-                      </button>
-                    </div>
-                    {revealedHometaxPassword !== null ? (
-                      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                        <input
-                          className={`${inputClass} bg-white`}
-                          value={`아이디: ${hometaxCredential?.hometax_login_id || hometaxForm.hometax_login_id}`}
-                          readOnly
-                        />
-                        <input className={`${inputClass} bg-white`} value={`비밀번호: ${revealedHometaxPassword}`} readOnly />
+                  {supportsHometaxLogs ? (
+                    <div className="overflow-hidden rounded-lg border border-zinc-200">
+                      <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
+                        조회 이력
                       </div>
-                    ) : null}
-                    {revealedCount !== null ? (
-                      <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
-                    ) : null}
-                  {hometaxCredential?.enc_key_version ? (
-                    <p className="mt-1 text-xs text-zinc-400">암호화 키 버전: {hometaxCredential.enc_key_version}</p>
-                  ) : null}
-                </div>
-
-                <div className="overflow-hidden rounded-lg border border-zinc-200">
-                  <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
-                    조회 이력
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-white text-zinc-500">
-                      <tr>
-                        <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
-                        <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
-                        <th className="border-b border-zinc-200 px-3 py-2 text-center">주체</th>
-                        <th className="border-b border-zinc-200 px-3 py-2 text-left">IP</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-200">
-                      {loadingHometaxLogs ? (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
-                            로그를 불러오는 중...
-                          </td>
-                        </tr>
-                      ) : hometaxLogs.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
-                            로그가 없습니다.
-                          </td>
-                        </tr>
-                      ) : (
-                        hometaxLogs.map((log) => (
-                          <tr key={log.id}>
-                            <td className="px-3 py-2 text-zinc-700">{toDateTime(log.created_at)}</td>
-                            <td className="px-3 py-2 text-center text-zinc-700">{log.action}</td>
-                            <td className="px-3 py-2 text-center text-zinc-700">{log.actor_type}</td>
-                            <td className="px-3 py-2 text-zinc-500">{log.ip || '-'}</td>
+                      <table className="w-full text-xs">
+                        <thead className="bg-white text-zinc-500">
+                          <tr>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-center">주체</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-left">IP</th>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {loadingHometaxLogs ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                                로그를 불러오는 중...
+                              </td>
+                            </tr>
+                          ) : hometaxLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                                로그가 없습니다.
+                              </td>
+                            </tr>
+                          ) : (
+                            hometaxLogs.map((log) => (
+                              <tr key={log.id}>
+                                <td className="px-3 py-2 text-zinc-700">{toDateTime(log.created_at)}</td>
+                                <td className="px-3 py-2 text-center text-zinc-700">{log.action}</td>
+                                <td className="px-3 py-2 text-center text-zinc-700">{log.actor_type}</td>
+                                <td className="px-3 py-2 text-zinc-500">{log.ip || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                      홈택스 조회 이력 확인 권한이 없습니다.
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : null}
-          </Section>
+              ) : null}
+            </Section>
           ) : null}
 
           {enableCustomDocuments ? (
@@ -1321,28 +1419,38 @@ export default function CompanyDetailForm({
                       <input
                         ref={customDocFileInputRef}
                         type="file"
+                        multiple
                         className="hidden"
-                        onChange={(e) => setCustomDocFile(e.target.files?.[0] || null)}
+                        onChange={(e) => applyCustomDocumentFiles(Array.from(e.target.files || []))}
                       />
                       <FileDropzone
-                        onFilesDrop={(files) => setCustomDocFile(files[0] || null)}
+                        onFilesDrop={(files) => applyCustomDocumentFiles(Array.from(files))}
                         onClick={() => customDocFileInputRef.current?.click()}
                         className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
                         idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
                         activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
-                        title={customDocFile?.name || '파일 드래그 또는 클릭 선택'}
+                        title={
+                          customDocFiles.length > 1
+                            ? `${customDocFiles.length}개 파일 선택됨`
+                            : customDocFile?.name || '파일 드래그 또는 클릭 선택'
+                        }
                       >
                         <span className="max-w-[440px] truncate">
-                          {customDocFile?.name || '파일 드래그 또는 클릭 선택'}
+                          {customDocFiles.length > 1
+                            ? `${customDocFiles.length}개 파일 선택됨`
+                            : customDocFile?.name || '파일 드래그 또는 클릭 선택'}
                         </span>
                       </FileDropzone>
                     </div>
 
                     <input
-                      className={inputClass}
+                      className={`${inputClass} ${isCustomDocTitleAutoFilled ? 'text-zinc-400' : ''}`}
                       placeholder="문서이름입력 (예: 주주명부)"
                       value={customDocTypeInput}
-                      onChange={(e) => setCustomDocTypeInput(e.target.value)}
+                      onChange={(e) => {
+                        setCustomDocTypeInput(e.target.value)
+                        setIsCustomDocTitleAutoFilled(false)
+                      }}
                     />
 
                     <div className="flex items-center gap-2">
@@ -1351,7 +1459,7 @@ export default function CompanyDetailForm({
                         <button
                           type="button"
                           onClick={() => {
-                            setCustomDocFile(null)
+                            applyCustomDocumentFiles([])
                             if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
                           }}
                           className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100"
@@ -1364,12 +1472,15 @@ export default function CompanyDetailForm({
                           disabled={uploadingCustomDoc || !supportsCustomDocumentWrite}
                           className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                         >
-                          {uploadingCustomDoc ? '등록 중...' : '등록'}
+                          {uploadingCustomDoc ? '등록 중...' : customDocFiles.length > 1 ? '일괄등록' : '등록'}
                         </button>
                         </>
                       ) : null}
                     </div>
                   </div>
+                ) : null}
+                {supportsCustomDocumentWrite && customDocFiles.length > 1 && !supportsCustomDocumentBulkWrite ? (
+                  <p className="text-xs text-amber-600">현재 환경은 다건 API 미연동 상태입니다. 첫 파일만 등록됩니다.</p>
                 ) : null}
 
                 {supportsCustomDocumentRead && !supportsCustomDocumentWrite ? (
@@ -1410,13 +1521,17 @@ export default function CompanyDetailForm({
                             <td className="px-3 py-2 text-zinc-900">{doc.title}</td>
                             <td className="px-3 py-2 text-center text-zinc-700">{toDateTime(doc.uploadedAt)}</td>
                             <td className="px-3 py-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => issueCustomDocumentAction(doc.id, 'preview', doc.fileName)}
-                                className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
-                              >
-                                새창에서보기
-                              </button>
+                              {isPreviewableCustomDocument(doc.fileName) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => issueCustomDocumentAction(doc.id, 'preview', doc.fileName)}
+                                  className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
+                                >
+                                  새창에서보기
+                                </button>
+                              ) : (
+                                <span className="text-xs text-zinc-400">-</span>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-center">
                               <button

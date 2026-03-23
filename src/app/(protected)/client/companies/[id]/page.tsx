@@ -20,6 +20,7 @@ import {
   listClientCompanyCustomDocuments,
   updateClientCompany,
   uploadClientCompanyCustomDocument,
+  uploadClientCompanyCustomDocumentsBulk,
   uploadClientCompanyDocument,
   uploadClientCompanyBusinessLicense,
   COMPANY_DOC_TYPE_OWNER_ID,
@@ -41,7 +42,9 @@ export default function ClientCompanyDetailPage() {
   const params = useParams<{ id: string }>()
   const { session } = useClientSessionContext()
   const companyId = Number(params.id)
-  const canDeleteRequiredDocuments = getClientRoleRank(session) === 0
+  const roleRank = getClientRoleRank(session)
+  const canDeleteRequiredDocuments = roleRank === 0
+  const canManageHometax = roleRank <= 10
   const [company, setCompany] = useState<CompanyDetailResponse | null>(null)
   const [businessLicensePreview, setBusinessLicensePreview] = useState<ClientCompanyDocumentPreviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -104,15 +107,16 @@ export default function ClientCompanyDetailPage() {
       deleteDocumentFn={canDeleteRequiredDocuments ? deleteClientCompanyDocument : undefined}
       listCustomDocumentsFn={listClientCompanyCustomDocuments}
       uploadCustomDocumentFn={uploadClientCompanyCustomDocument}
+      uploadCustomDocumentsBulkFn={uploadClientCompanyCustomDocumentsBulk}
       deleteCustomDocumentFn={deleteClientCompanyCustomDocument}
       getCustomDocumentDownloadUrlFn={getClientCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getClientCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listClientCompanyCustomDocumentLogs}
-      getHometaxCredentialFn={getClientHometaxCredential}
-      upsertHometaxCredentialFn={upsertClientHometaxCredential}
-      patchHometaxCredentialActiveFn={patchClientHometaxCredentialActive}
-      revealHometaxCredentialPasswordFn={revealClientHometaxCredentialPassword}
-      listHometaxCredentialLogsFn={listClientHometaxCredentialLogs}
+      getHometaxCredentialFn={canManageHometax ? getClientHometaxCredential : undefined}
+      upsertHometaxCredentialFn={canManageHometax ? upsertClientHometaxCredential : undefined}
+      patchHometaxCredentialActiveFn={canManageHometax ? patchClientHometaxCredentialActive : undefined}
+      revealHometaxCredentialPasswordFn={canManageHometax ? revealClientHometaxCredentialPassword : undefined}
+      listHometaxCredentialLogsFn={canManageHometax ? listClientHometaxCredentialLogs : undefined}
       createCompanyAccountFn={createClientCompanyAccount}
       listCompanyAccountsFn={getClientCompanyAccounts}
       updateCompanyAccountStatusFn={updateClientCompanyAccountStatus}

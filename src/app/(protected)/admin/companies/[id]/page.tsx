@@ -12,11 +12,17 @@ import {
   fetchCompanyDocumentPreview,
   fetchCompanyDetail,
   uploadAdminCompanyCustomDocument,
+  uploadAdminCompanyCustomDocumentsBulk,
   deleteAdminCompanyCustomDocument,
   getAdminCompanyCustomDocumentDownloadUrl,
   getAdminCompanyCustomDocumentPreviewUrl,
+  getAdminHometaxCredential,
   listAdminCompanyCustomDocumentLogs,
   listAdminCompanyCustomDocuments,
+  listAdminHometaxCredentialLogs,
+  patchAdminHometaxCredentialActive,
+  revealAdminHometaxCredentialPassword,
+  upsertAdminHometaxCredential,
   updateCompany,
   uploadCompanyBusinessLicense,
   uploadCompanyDocument,
@@ -90,10 +96,16 @@ export default function CompanyDetailPage() {
       enableCustomDocuments
       listCustomDocumentsFn={listAdminCompanyCustomDocuments}
       uploadCustomDocumentFn={uploadAdminCompanyCustomDocument}
+      uploadCustomDocumentsBulkFn={uploadAdminCompanyCustomDocumentsBulk}
       deleteCustomDocumentFn={deleteAdminCompanyCustomDocument}
       getCustomDocumentDownloadUrlFn={getAdminCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getAdminCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listAdminCompanyCustomDocumentLogs}
+      getHometaxCredentialFn={getAdminHometaxCredential}
+      upsertHometaxCredentialFn={upsertAdminHometaxCredential}
+      patchHometaxCredentialActiveFn={patchAdminHometaxCredentialActive}
+      revealHometaxCredentialPasswordFn={revealAdminHometaxCredentialPassword}
+      listHometaxCredentialLogsFn={listAdminHometaxCredentialLogs}
     />
   )
 }

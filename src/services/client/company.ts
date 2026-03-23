@@ -94,6 +94,14 @@ export interface ClientCompanyCustomDocumentLogListResponse {
   items: ClientCompanyCustomDocumentLogOut[]
 }
 
+export interface ClientCompanyCustomDocumentBulkUploadResponse {
+  total: number
+  success_count: number
+  failed_count: number
+  items: Array<{ id: number; title: string; file_name: string }>
+  failed_items: Array<{ index: number; file_name: string; title?: string | null; error: string }>
+}
+
 export interface ClientHometaxCredentialOut {
   id: number
   client_id: number
@@ -251,6 +259,21 @@ export async function uploadClientCompanyCustomDocument(
     title: params.title,
     file: params.file,
   })
+}
+
+export async function uploadClientCompanyCustomDocumentsBulk(
+  company_id: number,
+  params: { files: File[]; titles?: string[] }
+): Promise<ClientCompanyCustomDocumentBulkUploadResponse> {
+  const form = new FormData()
+  params.files.forEach((file) => form.append('files', file))
+  ;(params.titles || []).forEach((title) => form.append('titles', title))
+  const res = await clientHttp.post<ClientCompanyCustomDocumentBulkUploadResponse>(
+    `${BASE}/${company_id}/custom-documents/bulk`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+  return res.data
 }
 
 export async function listClientCompanyCustomDocuments(

@@ -51,6 +51,67 @@ export interface AdminCompanyCustomDocumentLogListResponse {
   items: Array<{ action: string }>
 }
 
+export interface AdminCompanyCustomDocumentBulkUploadResponse {
+  total: number
+  success_count: number
+  failed_count: number
+  items: Array<{ id: number; title: string; file_name: string }>
+  failed_items: Array<{ index: number; file_name: string; title?: string | null; error: string }>
+}
+
+export interface AdminHometaxCredentialOut {
+  id: number
+  client_id: number
+  company_id: number
+  hometax_login_id: string
+  password_set: boolean
+  enc_key_version: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminHometaxCredentialUpsertRequest {
+  hometax_login_id: string
+  hometax_password: string
+  is_active: boolean
+}
+
+export interface AdminHometaxCredentialActivePatchRequest {
+  is_active: boolean
+}
+
+export interface AdminHometaxCredentialRevealRequest {
+  account_password: string
+}
+
+export interface AdminHometaxCredentialRevealOut {
+  company_id: number
+  hometax_login_id: string
+  hometax_password: string
+  reveal_count: number
+}
+
+export interface AdminHometaxCredentialLogOut {
+  id: number
+  credential_id: number
+  client_id: number
+  company_id: number
+  action: string
+  changed_fields?: string[] | null
+  actor_type: string
+  actor_client_account_id?: number | null
+  actor_admin_id?: number | null
+  ip?: string | null
+  user_agent?: string | null
+  created_at: string
+}
+
+export interface AdminHometaxCredentialLogListResponse {
+  total: number
+  items: AdminHometaxCredentialLogOut[]
+}
+
 const uploadAdminCompanyDocumentAdapter = createMultipartUploadAdapter<
   unknown,
   { file: File; company_id: number; doc_type_code: string }
@@ -222,6 +283,21 @@ export async function uploadAdminCompanyCustomDocument(
   })
 }
 
+export async function uploadAdminCompanyCustomDocumentsBulk(
+  company_id: number,
+  params: { files: File[]; titles?: string[] }
+): Promise<AdminCompanyCustomDocumentBulkUploadResponse> {
+  const form = new FormData()
+  params.files.forEach((file) => form.append('files', file))
+  ;(params.titles || []).forEach((title) => form.append('titles', title))
+  const res = await adminHttp.post<AdminCompanyCustomDocumentBulkUploadResponse>(
+    `${BASE}/${company_id}/custom-documents/bulk`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+  return res.data
+}
+
 export async function deleteAdminCompanyCustomDocument(
   company_id: number,
   document_id: number
@@ -248,6 +324,49 @@ export async function purgeAdminCompanyCustomDocument(
 ): Promise<{ message: string }> {
   const res = await adminHttp.delete<{ message: string }>(
     `${BASE}/${company_id}/custom-documents/${document_id}/purge`
+  )
+  return res.data
+}
+
+export async function getAdminHometaxCredential(company_id: number): Promise<AdminHometaxCredentialOut> {
+  const res = await adminHttp.get<AdminHometaxCredentialOut>(`${BASE}/${company_id}/hometax-credential`)
+  return res.data
+}
+
+export async function upsertAdminHometaxCredential(
+  company_id: number,
+  payload: AdminHometaxCredentialUpsertRequest
+): Promise<AdminHometaxCredentialOut> {
+  const res = await adminHttp.put<AdminHometaxCredentialOut>(`${BASE}/${company_id}/hometax-credential`, payload)
+  return res.data
+}
+
+export async function patchAdminHometaxCredentialActive(
+  company_id: number,
+  payload: AdminHometaxCredentialActivePatchRequest
+): Promise<{ message: string }> {
+  const res = await adminHttp.patch<{ message: string }>(`${BASE}/${company_id}/hometax-credential/active`, payload)
+  return res.data
+}
+
+export async function listAdminHometaxCredentialLogs(
+  company_id: number,
+  limit = 50
+): Promise<AdminHometaxCredentialLogListResponse> {
+  const res = await adminHttp.get<AdminHometaxCredentialLogListResponse>(
+    `${BASE}/${company_id}/hometax-credential/logs`,
+    { params: { limit } }
+  )
+  return res.data
+}
+
+export async function revealAdminHometaxCredentialPassword(
+  company_id: number,
+  payload: AdminHometaxCredentialRevealRequest
+): Promise<AdminHometaxCredentialRevealOut> {
+  const res = await adminHttp.post<AdminHometaxCredentialRevealOut>(
+    `${BASE}/${company_id}/hometax-credential/reveal`,
+    payload
   )
   return res.data
 }
