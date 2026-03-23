@@ -876,14 +876,36 @@ export default function CompanyDetailForm({
   }
 
   const applyCustomDocumentFiles = (files: File[]) => {
-    const nextFiles = files.filter(Boolean)
-    const first = nextFiles[0] || null
-    setCustomDocFiles(nextFiles)
-    setCustomDocFile(first)
-    setCustomDocDrafts(nextFiles.map((file) => ({ file, title: toSuggestedDocumentTitle(file.name) })))
-    if (!first) {
+    const incomingFiles = files.filter(Boolean)
+    if (incomingFiles.length === 0) {
+      setCustomDocFiles([])
+      setCustomDocFile(null)
+      setCustomDocDrafts([])
       return
     }
+
+    const toKey = (file: File) => `${file.name}::${file.size}::${file.lastModified}`
+
+    setCustomDocFiles((prev) => {
+      const merged = [...prev]
+      const seen = new Set(prev.map(toKey))
+      for (const file of incomingFiles) {
+        const key = toKey(file)
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push(file)
+      }
+
+      setCustomDocFile(merged[0] || null)
+      setCustomDocDrafts((prevDrafts) => {
+        const titleMap = new Map(prevDrafts.map((draft) => [toKey(draft.file), draft.title]))
+        return merged.map((file) => ({
+          file,
+          title: titleMap.get(toKey(file)) ?? toSuggestedDocumentTitle(file.name),
+        }))
+      })
+      return merged
+    })
   }
 
   const issueCustomDocumentAction = async (

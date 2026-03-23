@@ -16,9 +16,14 @@ function ProtectedClientShell({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { loading, session } = useClientSessionContext()
+  const [mounted, setMounted] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const isBoardRoute = pathname.startsWith('/client/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task'
   const effectiveCollapsed = isSidebarCollapsed || isBoardRoute
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     const saved = window.localStorage.getItem('client_sidebar_collapsed')
@@ -36,7 +41,7 @@ function ProtectedClientShell({
     }
   }, [loading, session, router])
 
-  if (loading || !session) {
+  if (!mounted || loading || !session) {
     return <p className="mt-20 text-center text-gray-500">클라이언트 인증 확인 중...</p>
   }
 
