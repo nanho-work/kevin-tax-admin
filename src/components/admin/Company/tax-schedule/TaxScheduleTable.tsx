@@ -6,6 +6,7 @@ import UiSearchInput from '@/components/common/UiSearchInput'
 import { fetchTaxSchedules, updateTaxScheduleStatus } from '@/services/admin/taxSchedulService'
 import { TaxSchedule } from '@/types/taxSchedule'
 import { toast } from 'react-hot-toast'
+import { formatKSTDate } from '@/utils/dateTime'
 
 type TaxColumnKey = 'VAT' | 'WITHHOLDING' | 'INCOME_TAX'
 
@@ -22,10 +23,7 @@ type CompanyScheduleRow = {
 }
 
 function toDate(value?: string) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function mapScheduleType(type?: string): TaxColumnKey | null {

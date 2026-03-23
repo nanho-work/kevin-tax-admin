@@ -10,13 +10,11 @@ import {
   updateCompanyAccountStatus,
 } from '@/services/admin/companyAccountService'
 import { uiInputClass } from '@/styles/uiClasses'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import type { CompanyAccountOut, CompanyAccountStatus } from '@/types/companyAccount'
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function statusLabel(status: CompanyAccountStatus) {

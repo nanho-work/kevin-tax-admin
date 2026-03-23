@@ -16,6 +16,13 @@ export function formatKSTDateTime(value?: string | null, fallback = '-'): string
   return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
 }
 
+export function formatKSTDate(value?: string | null, fallback = '-'): string {
+  if (!value) return fallback
+  const date = parseDate(value, true)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })
+}
+
 export function formatKSTDateTimeAssumeUTC(value?: string | null, fallback = '-'): string {
   if (!value) return fallback
   const date = parseDate(value, true)
@@ -25,7 +32,7 @@ export function formatKSTDateTimeAssumeUTC(value?: string | null, fallback = '-'
 
 export function formatKSTDateTimeMinute(value?: string | null, fallback = '-'): string {
   if (!value) return fallback
-  const date = new Date(value)
+  const date = parseDate(value, true)
   if (Number.isNaN(date.getTime())) return value
   const parts = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -42,7 +49,7 @@ export function formatKSTDateTimeMinute(value?: string | null, fallback = '-'): 
 
 export function formatKSTDateTimeKorean(value?: string | null, fallback = '-'): string {
   if (!value) return fallback
-  const date = new Date(value)
+  const date = parseDate(value, true)
   if (Number.isNaN(date.getTime())) return value
   const dateFmt = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',

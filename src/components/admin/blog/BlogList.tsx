@@ -8,6 +8,7 @@ import type { BlogPostResponse } from '@/types/blog';
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 export default function BlogList() {
   const [rows, setRows] = useState<BlogPostResponse[]>([]);
@@ -162,7 +163,7 @@ export default function BlogList() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {r.published_at ? new Date(r.published_at).toLocaleString() : '-'}
+                    {r.published_at ? formatKSTDateTimeAssumeUTC(r.published_at) : '-'}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{r.author_name || '-'}</td>
                   <td className="px-4 py-3">

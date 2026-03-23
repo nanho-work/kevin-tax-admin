@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
   createCompanyAccount as createAdminCompanyAccount,
@@ -211,12 +212,7 @@ function toDateOnly(value?: string | null): string {
 }
 
 function toDateTime(value?: string | null): string {
-  if (!value) return '-'
-  const parsed = new Date(value)
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toLocaleString('ko-KR')
-  }
-  return value
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function formatBytes(value?: number | null): string {
@@ -463,24 +459,39 @@ export default function CompanyDetailForm({
 
   useEffect(() => {
     if (!hasValidCompanyId || isCreateMode) return
-    if (previewCheckedDocCodes.has(activePreviewDocType)) return
+    const uncheckedDocCodes = resolvedDocumentTypes
+      .map((item) => item.code)
+      .filter((code) => !previewCheckedDocCodes.has(code))
+    if (uncheckedDocCodes.length === 0) return
+
     let cancelled = false
-    const loadActivePreview = async () => {
-      const preview = await fetchPreviewByDocType(activePreviewDocType)
+    const loadPreviewStatuses = async () => {
+      const entries = await Promise.all(
+        uncheckedDocCodes.map(async (code) => [code, await fetchPreviewByDocType(code)] as const)
+      )
       if (cancelled) return
-      setDocumentPreviews((prev) => ({ ...prev, [activePreviewDocType]: preview }))
+
+      setDocumentPreviews((prev) => {
+        const next = { ...prev }
+        for (const [code, preview] of entries) {
+          next[code] = preview
+        }
+        return next
+      })
       setPreviewCheckedDocCodes((prev) => {
-        if (prev.has(activePreviewDocType)) return prev
         const next = new Set(prev)
-        next.add(activePreviewDocType)
+        for (const [code] of entries) {
+          next.add(code)
+        }
         return next
       })
     }
-    void loadActivePreview()
+
+    void loadPreviewStatuses()
     return () => {
       cancelled = true
     }
-  }, [activePreviewDocType, hasValidCompanyId, isCreateMode, previewCheckedDocCodes])
+  }, [hasValidCompanyId, isCreateMode, previewCheckedDocCodes, resolvedDocumentTypes])
 
   const loadCustomDocuments = async () => {
     if (!enableCustomDocuments || !listCustomDocumentsFn) return

@@ -12,14 +12,12 @@ import type { SupervisorTemplateCodeOut } from '@/types/clientTemplate'
 import TemplateDownloadButton from '@/components/client/templates/TemplateDownloadButton'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 export default function ClientTemplateManagementSection() {

@@ -41,6 +41,7 @@ import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
 
@@ -65,10 +66,7 @@ function isNotFoundError(error: any) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function getSensitiveActionLabel(action: string) {

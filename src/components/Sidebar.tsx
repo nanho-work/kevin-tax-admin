@@ -32,7 +32,7 @@ export default function Sidebar() {
     const [loading, setLoading] = useState(true)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [currentTime, setCurrentTime] = useState<string>(() =>
-        new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit' })
     )
 
     useEffect(() => {
@@ -54,6 +54,7 @@ export default function Sidebar() {
                     role: admin.role, // ✅ RoleOut 전체 전달
                     checkIn: todayCheckIn
                         ? new Date(todayCheckIn).toLocaleTimeString('ko-KR', {
+                            timeZone: 'Asia/Seoul',
                             hour: '2-digit',
                             minute: '2-digit',
                         })
@@ -70,7 +71,7 @@ export default function Sidebar() {
 
         const timeInterval = setInterval(() => {
             setCurrentTime(
-                new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit' })
             )
         }, 1000)
 

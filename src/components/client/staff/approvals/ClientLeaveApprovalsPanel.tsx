@@ -13,22 +13,17 @@ import {
 import type { AdminOut } from '@/types/admin'
 import type { AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
 import { getClientRoleRank } from '@/utils/roleRank'
+import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
 function formatDate(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function getStatusMeta(status: AnnualLeaveRequestStatus) {

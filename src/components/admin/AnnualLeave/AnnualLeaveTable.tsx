@@ -4,15 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import type { AnnualLeave } from '@/types/annualLeave'
 import Pagination from '@/components/common/Pagination'
+import { formatKSTDate } from '@/utils/dateTime'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 
 function formatDate(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function formatNumber(value?: number | null) {

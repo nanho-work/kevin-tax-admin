@@ -7,12 +7,10 @@ import UiSearchInput from '@/components/common/UiSearchInput'
 import { listClients } from '@/services/client/clientService'
 import type { ClientOut, ClientStatus } from '@/types/Client'
 import { inputClass, statusMessage } from './constants'
+import { formatKSTDate } from '@/utils/dateTime'
 
 function formatDate(value?: string) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function formatBusinessType(value: 'individual' | 'corporate') {

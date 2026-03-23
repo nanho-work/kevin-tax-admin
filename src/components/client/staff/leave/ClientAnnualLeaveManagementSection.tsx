@@ -16,6 +16,7 @@ import type { AnnualLeave } from '@/types/annualLeave'
 import { getClientRoleRank } from '@/utils/roleRank'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { formatKSTDate } from '@/utils/dateTime'
 
 type ActionMode = 'use' | 'adjust'
 
@@ -46,10 +47,7 @@ function formatNumber(value?: number | null) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function formatPeriod(start?: string | null, end?: string | null) {

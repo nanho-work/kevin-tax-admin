@@ -14,6 +14,7 @@ import {
 } from '@/services/client/clientBookkeepingService'
 import { uiInputClass } from '@/styles/uiClasses'
 import type { ClientDebitUploadBatchOut } from '@/types/clientBookkeeping'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type Props = {
   mode?: 'upload' | 'history'
@@ -40,10 +41,7 @@ function formatAppliedMonth(value?: string | null) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function extractApiDetail(error: unknown): string | null {

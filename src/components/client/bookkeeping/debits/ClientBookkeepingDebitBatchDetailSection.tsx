@@ -20,6 +20,7 @@ import type {
   ClientDebitUploadItemOut,
 } from '@/types/clientBookkeeping'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type Props = {
   batchId: number
@@ -36,10 +37,7 @@ function extractApiDetail(error: unknown): string | null {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function formatCompactDate(value?: string | null) {

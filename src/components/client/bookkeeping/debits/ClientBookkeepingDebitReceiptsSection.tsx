@@ -15,6 +15,7 @@ import type {
   ClientDebitReceiptOut,
   ClientDebitUploadBatchOut,
 } from '@/types/clientBookkeeping'
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type ReceiptTab = 'all' | 'matched' | 'unmatched'
 
@@ -36,10 +37,7 @@ function formatDate(value?: string | null) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function getCurrentYearMonth() {

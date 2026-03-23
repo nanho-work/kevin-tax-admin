@@ -31,6 +31,7 @@ import type {
   AdminSensitiveConsentTerm,
   AdminSensitiveProfile,
 } from '@/types/adminSensitiveProfile'
+import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 const DOC_TYPES: Array<{ code: PersonalDocumentDocType; label: string }> = [
   { code: 'id_card', label: '신분증' },
@@ -114,17 +115,11 @@ async function fileToDataUrl(file: File): Promise<string> {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('ko-KR')
+  return formatKSTDateTimeAssumeUTC(value)
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ko-KR')
+  return formatKSTDate(value)
 }
 
 function docTypeLabel(code: string) {

@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNotificationData } from '@/hooks/useNotificationData';
+import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime';
 
 
 export default function NotificationBell() {
@@ -59,7 +60,7 @@ export default function NotificationBell() {
                 >
                   <div className="font-medium text-gray-800">{n.client_name}</div>
                   <div className="text-xs text-gray-500">{n.message}</div>
-                  <div className="text-[10px] text-gray-400 mt-1">{new Date(n.due_date).toLocaleString()}</div>
+                  <div className="text-[10px] text-gray-400 mt-1">{formatKSTDateTimeAssumeUTC(n.due_date)}</div>
                 </li>
               ))
             )}

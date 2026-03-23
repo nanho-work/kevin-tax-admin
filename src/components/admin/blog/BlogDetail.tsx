@@ -8,6 +8,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import type { BlogPostResponse } from '@/types/blog';
 import Image from 'next/image';
 import Link from 'next/link';
+import { formatKSTDate } from '@/utils/dateTime';
 
 interface BlogDetailProps {
   post: BlogPostResponse;
@@ -44,8 +45,8 @@ export default function BlogDetail({ post }: BlogDetailProps) {
       <div className="text-sm text-gray-500 mb-6">
         {post.author_name} ·{' '}
         {post.published_at
-          ? new Date(post.published_at).toLocaleDateString()
-          : new Date(post.created_at).toLocaleDateString()}
+          ? formatKSTDate(post.published_at)
+          : formatKSTDate(post.created_at)}
       </div>
 
       {/* 썸네일 */}
