@@ -123,6 +123,16 @@ type LocalHometaxCredential = {
   enc_key_version: string
 }
 
+function formatBusinessRegistrationNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10)
+  const p1 = digits.slice(0, 3)
+  const p2 = digits.slice(3, 5)
+  const p3 = digits.slice(5, 10)
+  if (digits.length <= 3) return p1
+  if (digits.length <= 5) return `${p1}-${p2}`
+  return `${p1}-${p2}-${p3}`
+}
+
 function Section({
   title,
   description,
@@ -963,7 +973,20 @@ export default function CompanyDetailForm({
                 <input className={editableInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
               </Field>
               <Field label="사업자등록번호">
-                <input className={editableInputClass} value={form.registration_number || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, registration_number: e.target.value })} />
+                <input
+                  className={editableInputClass}
+                  value={form.registration_number || ''}
+                  readOnly={!canEditFields}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      registration_number: formatBusinessRegistrationNumber(e.target.value),
+                    })
+                  }
+                  inputMode="numeric"
+                  maxLength={12}
+                  placeholder="000-00-00000"
+                />
               </Field>
               <Field label="구분">
                 <select className={editableInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
