@@ -35,6 +35,7 @@ type StaffPermissionRow = {
 type DrawerType = 'department' | 'team' | 'role' | null
 
 const ACL_EXCLUDED_CODES = new Set(['annual_leave.read', 'attendance.read'])
+const HOMETAX_PERMISSION_CODES = ['hometax.read', 'hometax.write', 'hometax.audit.read', 'hometax.reveal'] as const
 
 function buildCodeMap(codes: PermissionCodeOut[], source?: { code: string; is_allowed: boolean }[]) {
   const map: Record<string, boolean> = {}
@@ -119,7 +120,23 @@ export default function ClientAclMatrixPage() {
       prev.push(code)
       grouped.set(code.group_name, prev)
     })
-    return [...grouped.entries()]
+    const entries = [...grouped.entries()]
+    entries.sort((a, b) => {
+      const aHasHometax = a[1].some((code) => code.code.startsWith('hometax.'))
+      const bHasHometax = b[1].some((code) => code.code.startsWith('hometax.'))
+      if (aHasHometax && !bHasHometax) return -1
+      if (!aHasHometax && bHasHometax) return 1
+      return a[0].localeCompare(b[0], 'ko')
+    })
+    return entries
+  }, [codes])
+
+  const hometaxCodePresence = useMemo(() => {
+    const existing = new Set(codes.map((code) => code.code))
+    return HOMETAX_PERMISSION_CODES.map((code) => ({
+      code,
+      exists: existing.has(code),
+    }))
   }, [codes])
 
   const roleRankById = useMemo(() => {
@@ -1236,6 +1253,32 @@ export default function ClientAclMatrixPage() {
         <div className="space-y-3">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             내휴가관리/출퇴근관리는 기본 권한으로 제공되어 목록에서 제외됩니다. 메일은 기본 기능 권한(mail.read)과 삭제 권한(mail.delete)을 분리해서 운영합니다.
+          </div>
+          <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
+            <p className="text-sm font-semibold text-zinc-900">홈택스 권한 코드 상태</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {hometaxCodePresence.map((item) => (
+                <span
+                  key={item.code}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    item.exists
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}
+                >
+                  {item.code} · {item.exists ? '표시됨' : '미등록'}
+                </span>
+              ))}
+            </div>
+            {hometaxCodePresence.some((item) => !item.exists) ? (
+              <p className="mt-2 text-xs text-rose-600">
+                일부 홈택스 권한 코드가 코드목록에 없습니다. 백엔드 permission_codes/매핑 데이터를 확인해 주세요.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-zinc-500">
+                홈택스 권한 코드는 현재 ACL 표에서 체크/저장으로 직원에게 부여할 수 있습니다.
+              </p>
+            )}
           </div>
           <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
             <table className="min-w-[1100px] w-full border-collapse text-xs">
