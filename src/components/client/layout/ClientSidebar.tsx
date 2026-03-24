@@ -57,6 +57,7 @@ const staffManagementMenus = [
 
 const boardMenus = [
   { label: '공지사항', href: '/client/staff/work-posts?post_type=notice' },
+  { label: '업무보드', href: '/client/workflow/board' },
 ]
 
 const clientManagementMenus = [
@@ -130,7 +131,8 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const hasCompanyManagementPath = pathname.startsWith('/client/companies') || pathname.startsWith('/client/schedule')
   const isWorkPostPath = pathname.startsWith('/client/staff/work-posts')
   const workPostType = (searchParams.get('post_type') || '').toLowerCase()
-  const hasBoardPath = isWorkPostPath && workPostType !== 'task'
+  const hasWorkflowBoardPath = pathname.startsWith('/client/workflow/board')
+  const hasBoardPath = hasWorkflowBoardPath || (isWorkPostPath && workPostType !== 'task')
   const hasStaffManagementPath = pathname.startsWith('/client/staff') && (!isWorkPostPath || workPostType === 'task')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
@@ -190,7 +192,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     {
       key: 'board',
       label: '게시판',
-      href: '/client/staff/work-posts?post_type=notice',
+      href: '/client/workflow/board',
       icon: ClipboardList,
       active: hasBoardPath,
     },

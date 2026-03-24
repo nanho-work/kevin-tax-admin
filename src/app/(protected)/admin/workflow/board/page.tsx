@@ -1,832 +1,593 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import {
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  Mail,
-  Paperclip,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Mail, Paperclip, Plus } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
 
-type BoardView = 'overview' | 'detail'
-type BoardTab = 'monthly' | 'yearly'
-type CompletionFilter = 'incomplete' | 'all'
-type TaskTypeFilter = 'all' | 'tax' | 'insurance' | 'payroll' | 'report'
-type WorkStatus = 'pending' | 'drafting' | 'done' | 'sent'
+type CompanyKind = '법인' | '개인'
+type WorkStatus = 'not_started' | 'in_progress' | 'done' | 'excluded' | 'na'
+type AddTab = 'template' | 'custom'
 
-type Company = {
-  id: number
+type TaskItem = {
+  id: string
   name: string
-  kind: '법인' | '개인'
-  isLaborFirm: boolean
-  filingCycle: '매월' | '반기'
-  assignee: string
-  taskFlags: {
-    labor: boolean
-    retirement: boolean
-    business: boolean
-    etc: boolean
-    daily: boolean
-    interestDividend: boolean
-  }
-}
-
-type TaskColumn = {
-  code: string
-  label: string
-  group: TaskTypeFilter
-}
-
-type CellState = {
   status: WorkStatus
-  completedAt: string | null
-  sentAt: string | null
   attachmentCount: number
+  completedAt: string | null
+  note: string
+  delayedDays: number
 }
 
-type CellSelection = {
-  companyId: number
-  yearMonth: string
-  taskCode: string
+type CompanyBoard = {
+  id: number
+  kind: CompanyKind
+  name: string
+  assignee: string
+  excluded: boolean
+  note: string
+  tasks: TaskItem[]
 }
 
-const WORK_STATUS_LABEL: Record<WorkStatus, string> = {
-  pending: '대기',
-  drafting: '작성중',
+type FileItem = {
+  id: string
+  fileName: string
+  uploader: string
+  uploadedAt: string
+}
+
+const STATUS_LABEL: Record<WorkStatus, string> = {
+  not_started: '미시작',
+  in_progress: '진행중',
   done: '완료',
-  sent: '발송',
+  excluded: '제외',
+  na: '해당없음',
 }
 
-const WORK_STATUS_CLASS: Record<WorkStatus, string> = {
-  pending: 'border-zinc-300 bg-zinc-100 text-zinc-700',
-  drafting: 'border-amber-300 bg-amber-50 text-amber-700',
+const STATUS_CLASS: Record<WorkStatus, string> = {
+  not_started: 'border-zinc-300 bg-zinc-100 text-zinc-700',
+  in_progress: 'border-sky-300 bg-sky-50 text-sky-700',
   done: 'border-emerald-300 bg-emerald-50 text-emerald-700',
-  sent: 'border-sky-300 bg-sky-50 text-sky-700',
+  excluded: 'border-zinc-200 bg-zinc-100 text-zinc-500',
+  na: 'border-zinc-200 bg-zinc-100 text-zinc-500',
 }
 
-const FIXED_LEFT_COLUMNS = [
-  { key: 'seq', label: '순서', width: 56 },
-  { key: 'kind', label: '구분', width: 68 },
-  { key: 'laborFirm', label: '노무사여부', width: 96 },
-  { key: 'name', label: '상호', width: 180 },
-  { key: 'filingCycle', label: '신고주기', width: 86 },
-  { key: 'labor', label: '근로', width: 62 },
-  { key: 'retirement', label: '퇴직', width: 62 },
-  { key: 'business', label: '사업', width: 62 },
-  { key: 'etc', label: '기타', width: 62 },
-  { key: 'daily', label: '일용', width: 62 },
-  { key: 'interestDividend', label: '이자배당', width: 82 },
-] as const
-
-const MONTHLY_TASK_COLUMNS: TaskColumn[] = [
-  { code: 'payroll_ledger', label: '급여대장 작성', group: 'payroll' },
-  { code: 'send_and_confirm', label: '송부 및 확인', group: 'report' },
-  { code: 'other_income', label: '타소득 여부', group: 'tax' },
-  { code: 'withholding_tax', label: '원천세 신고', group: 'tax' },
-  { code: 'tax_bill_notice', label: '납부서 전달', group: 'tax' },
-  { code: 'four_insurance', label: '4대보험 신고', group: 'insurance' },
-  { code: 'work_confirmation', label: '근로내용확인서 제출', group: 'report' },
-  { code: 'daily_report', label: '일용직 지급명세서', group: 'report' },
-  { code: 'etc_income_report', label: '기타소득 간이지급명세서', group: 'report' },
-  { code: 'business_income_report', label: '사업소득 간이지급명세서', group: 'report' },
-  { code: 'memo', label: '비고', group: 'all' },
+const TASK_TEMPLATES = [
+  '급여대장 작성',
+  '송부 및 확인',
+  '원천세 신고',
+  '4대보험 신고',
+  '근로내용확인서 제출',
+  '사업소득 간이지급명세서',
 ]
 
-const YEARLY_TASK_COLUMNS: TaskColumn[] = [
-  { code: 'year_end_settlement', label: '연말정산 검토', group: 'tax' },
-  { code: 'withholding_closure', label: '원천세 연간 정산', group: 'tax' },
-  { code: 'insurance_closure', label: '4대보험 연정산', group: 'insurance' },
-  { code: 'retirement_report', label: '퇴직소득 지급명세서', group: 'report' },
-  { code: 'business_report', label: '사업소득 지급명세서', group: 'report' },
-  { code: 'etc_report', label: '기타소득 지급명세서', group: 'report' },
-  { code: 'proof_bundle', label: '업무산출물 정리', group: 'payroll' },
-  { code: 'mail_dispatch', label: '발송 확인', group: 'report' },
-  { code: 'annual_memo', label: '비고', group: 'all' },
-]
-
-const MOCK_COMPANIES: Company[] = [
-  {
-    id: 101,
-    name: '가온테크',
-    kind: '법인',
-    isLaborFirm: true,
-    filingCycle: '매월',
-    assignee: '김세무',
-    taskFlags: { labor: true, retirement: true, business: true, etc: true, daily: true, interestDividend: false },
-  },
-  {
-    id: 102,
-    name: '나무파트너스',
-    kind: '개인',
-    isLaborFirm: false,
-    filingCycle: '반기',
-    assignee: '박노무',
-    taskFlags: { labor: true, retirement: false, business: true, etc: true, daily: false, interestDividend: true },
-  },
-  {
-    id: 103,
-    name: '다원유통',
-    kind: '법인',
-    isLaborFirm: true,
-    filingCycle: '매월',
-    assignee: '최담당',
-    taskFlags: { labor: true, retirement: true, business: true, etc: true, daily: true, interestDividend: true },
-  },
-  {
-    id: 104,
-    name: '라임솔루션',
-    kind: '법인',
-    isLaborFirm: false,
-    filingCycle: '매월',
-    assignee: '김세무',
-    taskFlags: { labor: true, retirement: true, business: false, etc: true, daily: false, interestDividend: false },
-  },
-  {
-    id: 105,
-    name: '마루건설',
-    kind: '법인',
-    isLaborFirm: true,
-    filingCycle: '반기',
-    assignee: '정회계',
-    taskFlags: { labor: true, retirement: true, business: true, etc: false, daily: true, interestDividend: false },
-  },
-  {
-    id: 106,
-    name: '바른의원',
-    kind: '개인',
-    isLaborFirm: false,
-    filingCycle: '매월',
-    assignee: '박노무',
-    taskFlags: { labor: true, retirement: false, business: true, etc: true, daily: false, interestDividend: true },
-  },
-]
-
-function toYearMonth(year: number, month: number): string {
-  return `${year}-${String(month).padStart(2, '0')}`
-}
-
-function parseYearMonth(yearMonth: string): { year: number; month: number } {
-  const [year, month] = yearMonth.split('-').map((value) => Number(value))
-  return { year, month }
-}
-
-function shiftYearMonth(yearMonth: string, delta: number): string {
-  const { year, month } = parseYearMonth(yearMonth)
+function monthShift(value: string, delta: number): string {
+  const [yearRaw, monthRaw] = value.split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
   const date = new Date(year, month - 1 + delta, 1)
-  return toYearMonth(date.getFullYear(), date.getMonth() + 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-function buildMonthWindow(centerYearMonth: string, count: number): string[] {
-  return Array.from({ length: count }, (_, index) =>
-    shiftYearMonth(centerYearMonth, -(count - 1) + index)
-  )
+function newTaskId() {
+  return `task-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function formatYearMonthLabel(yearMonth: string): string {
-  const { year, month } = parseYearMonth(yearMonth)
-  return `${year}년 ${month}월`
+function seedCompanies(): CompanyBoard[] {
+  return [
+    {
+      id: 1,
+      kind: '법인',
+      name: '가온테크',
+      assignee: '김세무',
+      excluded: false,
+      note: '급여자료 빠름',
+      tasks: [
+        { id: 't-1-1', name: '급여대장 작성', status: 'in_progress', attachmentCount: 1, completedAt: null, note: '', delayedDays: 2 },
+        { id: 't-1-2', name: '송부 및 확인', status: 'not_started', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+        { id: 't-1-3', name: '원천세 신고', status: 'done', attachmentCount: 2, completedAt: '2026.03.20', note: '', delayedDays: 0 },
+        { id: 't-1-4', name: '4대보험 신고', status: 'na', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+      ],
+    },
+    {
+      id: 2,
+      kind: '개인',
+      name: '나무파트너스',
+      assignee: '박노무',
+      excluded: false,
+      note: '사업소득 비중 큼',
+      tasks: [
+        { id: 't-2-1', name: '급여대장 작성', status: 'not_started', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+        { id: 't-2-2', name: '송부 및 확인', status: 'not_started', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+        { id: 't-2-3', name: '원천세 신고', status: 'in_progress', attachmentCount: 1, completedAt: null, note: '확인 대기', delayedDays: 1 },
+      ],
+    },
+    {
+      id: 3,
+      kind: '법인',
+      name: '다원유통',
+      assignee: '정회계',
+      excluded: true,
+      note: '이번 달 보드 제외',
+      tasks: [
+        { id: 't-3-1', name: '급여대장 작성', status: 'excluded', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+      ],
+    },
+    {
+      id: 4,
+      kind: '법인',
+      name: '라임솔루션',
+      assignee: '김세무',
+      excluded: false,
+      note: '',
+      tasks: [
+        { id: 't-4-1', name: '급여대장 작성', status: 'done', attachmentCount: 1, completedAt: '2026.03.18', note: '', delayedDays: 0 },
+        { id: 't-4-2', name: '송부 및 확인', status: 'done', attachmentCount: 1, completedAt: '2026.03.19', note: '', delayedDays: 0 },
+        { id: 't-4-3', name: '원천세 신고', status: 'done', attachmentCount: 2, completedAt: '2026.03.21', note: '', delayedDays: 0 },
+      ],
+    },
+  ]
 }
 
-function formatDateLabel(raw: string | null): string {
-  if (!raw) return '-'
-  return raw
-}
-
-function statusSeed(key: string): number {
-  return key.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-}
-
-function isTaskEnabled(company: Company, taskCode: string): boolean {
-  if (taskCode.includes('retirement')) return company.taskFlags.retirement
-  if (taskCode.includes('business')) return company.taskFlags.business
-  if (taskCode.includes('etc')) return company.taskFlags.etc
-  if (taskCode.includes('daily')) return company.taskFlags.daily
-  if (taskCode.includes('interest')) return company.taskFlags.interestDividend
-  return true
-}
-
-function cellKey(companyId: number, yearMonth: string, taskCode: string): string {
-  return `${companyId}:${yearMonth}:${taskCode}`
-}
-
-function generateInitialState(): Record<string, CellState> {
-  const yearMonths = buildMonthWindow('2026-03', 12)
-  const allTasks = [...MONTHLY_TASK_COLUMNS, ...YEARLY_TASK_COLUMNS]
-  const map: Record<string, CellState> = {}
-
-  for (const company of MOCK_COMPANIES) {
-    for (const ym of yearMonths) {
-      for (const task of allTasks) {
-        const key = cellKey(company.id, ym, task.code)
-        const seed = statusSeed(key)
-        const statusPool: WorkStatus[] = ['pending', 'drafting', 'done', 'sent']
-        const status = statusPool[seed % statusPool.length]
-        const completedAt = status === 'done' || status === 'sent' ? `${ym.replace('-', '.')} ${String((seed % 27) + 1).padStart(2, '0')}` : null
-        const sentAt = status === 'sent' ? `${ym.replace('-', '.')} ${String((seed % 27) + 1).padStart(2, '0')}` : null
-        map[key] = {
-          status,
-          completedAt,
-          sentAt,
-          attachmentCount: seed % 3,
-        }
-      }
-    }
-  }
-
-  return map
-}
-
-function nowStamp(): string {
-  return new Date().toLocaleString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).replace(/\. /g, '.').replace(/\.$/, '')
-}
-
-function isValidYearMonth(value: string): boolean {
-  const matched = /^(\d{4})-(0[1-9]|1[0-2])$/.test(value)
-  if (!matched) return false
-  const { year } = parseYearMonth(value)
-  return year >= 2000 && year <= 2100
+function seedFiles(companyId: number, taskId: string): FileItem[] {
+  return [
+    { id: `${companyId}-${taskId}-1`, fileName: '급여대장_202603.xlsx', uploader: '김세무', uploadedAt: '2026.03.21 10:10' },
+    { id: `${companyId}-${taskId}-2`, fileName: '원천세신고_증빙.pdf', uploader: '박노무', uploadedAt: '2026.03.21 14:35' },
+  ]
 }
 
 export default function WorkflowBoardPage() {
-  const [currentYearMonth, setCurrentYearMonth] = useState<string>('2026-03')
-  const [activeTab, setActiveTab] = useState<BoardTab>('monthly')
-  const [activeView, setActiveView] = useState<BoardView>('overview')
-  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>('incomplete')
-  const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
-  const [taskTypeFilter, setTaskTypeFilter] = useState<TaskTypeFilter>('all')
-  const [isYearMonthPickerOpen, setIsYearMonthPickerOpen] = useState(false)
-  const [yearMonthInput, setYearMonthInput] = useState<string>('2026-03')
-  const [companyKeyword, setCompanyKeyword] = useState('')
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number>(MOCK_COMPANIES[0]?.id ?? 0)
-  const [selectedCell, setSelectedCell] = useState<CellSelection | null>(null)
-  const [detailCenterYearMonth, setDetailCenterYearMonth] = useState<string>('2026-03')
-  const [cellStates, setCellStates] = useState<Record<string, CellState>>(() => generateInitialState())
+  const [attributionMonth, setAttributionMonth] = useState('2026-02')
+  const [reportMonth, setReportMonth] = useState('2026-03')
+  const [incompleteOnly, setIncompleteOnly] = useState(true)
+  const [kindFilter, setKindFilter] = useState<'all' | CompanyKind>('all')
+  const [assigneeFilter, setAssigneeFilter] = useState('all')
+  const [keyword, setKeyword] = useState('')
+  const [companies, setCompanies] = useState<CompanyBoard[]>(() => seedCompanies())
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [addTab, setAddTab] = useState<AddTab>('template')
+  const [templateTaskName, setTemplateTaskName] = useState(TASK_TEMPLATES[0])
+  const [customTaskName, setCustomTaskName] = useState('')
+  const [fileModalTaskId, setFileModalTaskId] = useState<string | null>(null)
 
-  const taskColumns = activeTab === 'monthly' ? MONTHLY_TASK_COLUMNS : YEARLY_TASK_COLUMNS
-  const filteredTaskColumns = taskColumns.filter((column) => taskTypeFilter === 'all' || column.group === 'all' || column.group === taskTypeFilter)
-  const assigneeOptions = useMemo(() => ['all', ...Array.from(new Set(MOCK_COMPANIES.map((company) => company.assignee)))], [])
-  const currentYearMonthShortLabel = useMemo(() => {
-    const { year, month } = parseYearMonth(currentYearMonth)
-    return `${String(year).slice(2)}년 ${month}월`
-  }, [currentYearMonth])
-
-  const sortedCompanies = useMemo(
-    () => [...MOCK_COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'ko')),
-    []
+  const assignees = useMemo(
+    () => ['all', ...Array.from(new Set(companies.map((item) => item.assignee)))],
+    [companies]
   )
 
-  const visibleCompanies = useMemo(() => {
-    const keyword = companyKeyword.trim()
-    return sortedCompanies.filter((company) => {
-      if (keyword && !company.name.includes(keyword)) return false
-      if (assigneeFilter !== 'all' && company.assignee !== assigneeFilter) return false
+  const selectedCompany = useMemo(
+    () => companies.find((item) => item.id === selectedCompanyId) ?? null,
+    [companies, selectedCompanyId]
+  )
 
-      if (completionFilter === 'all') return true
-      return filteredTaskColumns.some((task) => {
-        if (!isTaskEnabled(company, task.code)) return false
-        const state = cellStates[cellKey(company.id, currentYearMonth, task.code)]
-        return state && (state.status === 'pending' || state.status === 'drafting')
+  const listRows = useMemo(() => {
+    const q = keyword.trim().toLowerCase()
+    return companies.filter((company) => {
+      if (q && !company.name.toLowerCase().includes(q)) return false
+      if (kindFilter !== 'all' && company.kind !== kindFilter) return false
+      if (assigneeFilter !== 'all' && company.assignee !== assigneeFilter) return false
+      if (!incompleteOnly) return true
+      return company.tasks.some((task) => task.status === 'not_started' || task.status === 'in_progress')
+    })
+  }, [assigneeFilter, companies, incompleteOnly, keyword, kindFilter])
+
+  const fileModalTask = useMemo(() => {
+    if (!selectedCompany || !fileModalTaskId) return null
+    return selectedCompany.tasks.find((task) => task.id === fileModalTaskId) ?? null
+  }, [fileModalTaskId, selectedCompany])
+
+  const fileModalItems = useMemo(() => {
+    if (!selectedCompany || !fileModalTask) return []
+    return seedFiles(selectedCompany.id, fileModalTask.id)
+  }, [fileModalTask, selectedCompany])
+
+  const statsByCompany = useMemo(() => {
+    const map = new Map<number, { done: number; total: number; incomplete: number; chips: string[] }>()
+    companies.forEach((company) => {
+      const activeTasks = company.tasks.filter((task) => task.status !== 'na' && task.status !== 'excluded')
+      const done = activeTasks.filter((task) => task.status === 'done').length
+      const incompleteTasks = activeTasks.filter((task) => task.status === 'not_started' || task.status === 'in_progress')
+      map.set(company.id, {
+        done,
+        total: activeTasks.length,
+        incomplete: incompleteTasks.length,
+        chips: incompleteTasks.slice(0, 3).map((task) => task.name),
       })
     })
-  }, [assigneeFilter, cellStates, companyKeyword, completionFilter, currentYearMonth, filteredTaskColumns, sortedCompanies])
+    return map
+  }, [companies])
 
-  const selectedCompany = visibleCompanies.find((company) => company.id === selectedCompanyId)
-    ?? sortedCompanies.find((company) => company.id === selectedCompanyId)
-    ?? null
-
-  const detailMonths = useMemo(() => buildMonthWindow(detailCenterYearMonth, 6), [detailCenterYearMonth])
-  const fixedLeftOffsets = useMemo(() => {
-    let accum = 0
-    return FIXED_LEFT_COLUMNS.map((column) => {
-      const left = accum
-      accum += column.width
-      return left
-    })
-  }, [])
-
-  const selectedCellState = useMemo(() => {
-    if (!selectedCell) return null
-    return cellStates[cellKey(selectedCell.companyId, selectedCell.yearMonth, selectedCell.taskCode)] ?? null
-  }, [cellStates, selectedCell])
-
-  const selectedCellTaskLabel = useMemo(() => {
-    if (!selectedCell) return '-'
-    const all = [...MONTHLY_TASK_COLUMNS, ...YEARLY_TASK_COLUMNS]
-    return all.find((task) => task.code === selectedCell.taskCode)?.label ?? selectedCell.taskCode
-  }, [selectedCell])
-
-  const selectedCellCompany = useMemo(() => {
-    if (!selectedCell) return null
-    return sortedCompanies.find((company) => company.id === selectedCell.companyId) ?? null
-  }, [selectedCell, sortedCompanies])
-
-  const updateCellState = (companyId: number, yearMonth: string, taskCode: string, updater: (prev: CellState) => CellState) => {
-    const key = cellKey(companyId, yearMonth, taskCode)
-    setCellStates((prev) => {
-      const base = prev[key] ?? { status: 'pending', completedAt: null, sentAt: null, attachmentCount: 0 }
-      return { ...prev, [key]: updater(base) }
-    })
+  const updateCompany = (companyId: number, updater: (prev: CompanyBoard) => CompanyBoard) => {
+    setCompanies((prev) => prev.map((company) => (company.id === companyId ? updater(company) : company)))
   }
 
-  const openCellPanel = (companyId: number, yearMonth: string, taskCode: string) => {
-    setSelectedCell({ companyId, yearMonth, taskCode })
+  const handleToggleExclude = (companyId: number) => {
+    updateCompany(companyId, (prev) => ({ ...prev, excluded: !prev.excluded }))
+    toast.success('대상 제외 상태를 변경했습니다.')
   }
 
-  const handleAttachmentRegister = () => {
-    if (!selectedCell) return
-    updateCellState(selectedCell.companyId, selectedCell.yearMonth, selectedCell.taskCode, (prev) => ({
+  const handleOpenDetail = (companyId: number) => {
+    setSelectedCompanyId(companyId)
+  }
+
+  const handleTaskStatus = (taskId: string, status: WorkStatus) => {
+    if (!selectedCompany) return
+    updateCompany(selectedCompany.id, (prev) => ({
       ...prev,
-      status: prev.status === 'pending' ? 'drafting' : prev.status,
-      attachmentCount: prev.attachmentCount + 1,
+      tasks: prev.tasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              status,
+              completedAt: status === 'done' ? '2026.03.24' : task.completedAt,
+            }
+          : task
+      ),
     }))
-    toast.success('업무산출물(전용) 등록 상태로 반영했습니다.')
   }
 
-  const handleDone = () => {
-    if (!selectedCell) return
-    updateCellState(selectedCell.companyId, selectedCell.yearMonth, selectedCell.taskCode, (prev) => ({
+  const handleAttach = (taskId: string) => {
+    if (!selectedCompany) return
+    updateCompany(selectedCompany.id, (prev) => ({
       ...prev,
-      status: 'done',
-      completedAt: nowStamp(),
+      tasks: prev.tasks.map((task) =>
+        task.id === taskId
+          ? { ...task, status: task.status === 'not_started' ? 'in_progress' : task.status, attachmentCount: task.attachmentCount + 1 }
+          : task
+      ),
     }))
-    toast.success('완료 처리되었습니다.')
+    toast.success('증빙 첨부(목업) 처리되었습니다.')
   }
 
-  const handleSent = () => {
-    if (!selectedCell) return
-    updateCellState(selectedCell.companyId, selectedCell.yearMonth, selectedCell.taskCode, (prev) => ({
-      ...prev,
-      status: 'sent',
-      completedAt: prev.completedAt ?? nowStamp(),
-      sentAt: nowStamp(),
-    }))
-    toast.success('메일 발송 처리되었습니다.')
-  }
-
-  const handleQuickSend = (companyId: number, yearMonth: string, taskCode: string) => {
-    updateCellState(companyId, yearMonth, taskCode, (prev) => ({
-      ...prev,
-      status: 'sent',
-      completedAt: prev.completedAt ?? nowStamp(),
-      sentAt: nowStamp(),
-    }))
-    toast.success('셀에서 바로 발송 처리했습니다.')
-  }
-
-  const moveCurrentMonth = (delta: number) => {
-    setCurrentYearMonth((prev) => {
-      const next = shiftYearMonth(prev, delta)
-      setYearMonthInput(next)
-      return next
-    })
-  }
-
-  const applyYearMonthInput = () => {
-    const normalized = yearMonthInput.trim()
-    if (!isValidYearMonth(normalized)) {
-      toast.error('년월 형식은 YYYY-MM 입니다.')
+  const addTaskToSelectedCompany = () => {
+    if (!selectedCompany) return
+    const nextName = addTab === 'template' ? templateTaskName : customTaskName.trim()
+    if (!nextName) {
+      toast.error('업무명을 입력해 주세요.')
       return
     }
-    setCurrentYearMonth(normalized)
-    setIsYearMonthPickerOpen(false)
-  }
-
-  const renderStateCard = (company: Company, yearMonth: string, task: TaskColumn) => {
-    if (!isTaskEnabled(company, task.code)) {
-      return (
-        <button
-          type="button"
-          disabled
-          className="w-full cursor-not-allowed rounded-md border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-left text-[11px] text-zinc-400"
-        >
-          해당 없음
-        </button>
-      )
-    }
-
-    const state = cellStates[cellKey(company.id, yearMonth, task.code)] ?? {
-      status: 'pending',
-      completedAt: null,
-      sentAt: null,
-      attachmentCount: 0,
-    }
-    const dummyEvidenceUrl = `https://example.com/work-output/${company.id}/${yearMonth}/${task.code}`
-
-    return (
-      <button
-        type="button"
-        onClick={() => openCellPanel(company.id, yearMonth, task.code)}
-        className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-left transition hover:border-sky-300 hover:bg-sky-50/40"
-        title="작업 열기"
-      >
-        <div className="flex items-center justify-between gap-1">
-          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${WORK_STATUS_CLASS[state.status]}`}>
-            {WORK_STATUS_LABEL[state.status]}
-          </span>
-          <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
-            <span className="inline-flex items-center gap-0.5">
-              <Paperclip className="h-3 w-3" />
-              {state.attachmentCount}
-            </span>
-          </span>
-        </div>
-        <div className="mt-1 space-y-0.5 text-[10px] text-zinc-500">
-          <p>완료: {formatDateLabel(state.completedAt)}</p>
-          <p>발송: {formatDateLabel(state.sentAt)}</p>
-        </div>
-        <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <a
-            href={dummyEvidenceUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => event.stopPropagation()}
-            className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-200 bg-white transition hover:border-sky-300 hover:text-sky-600"
-            title="파일보기(새창)"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              handleQuickSend(company.id, yearMonth, task.code)
-            }}
-            className="inline-flex h-6 w-6 items-center justify-center rounded border border-zinc-200 bg-white transition hover:border-sky-300 hover:text-sky-600"
-            title="메일발송"
-          >
-            <Mail className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </button>
+    const duplicated = selectedCompany.tasks.some(
+      (task) => task.name.replace(/\s+/g, '').toLowerCase() === nextName.replace(/\s+/g, '').toLowerCase()
     )
+    if (duplicated) {
+      toast.error('동일 텍스트 업무가 이미 존재합니다.')
+      return
+    }
+    updateCompany(selectedCompany.id, (prev) => ({
+      ...prev,
+      tasks: [
+        ...prev.tasks,
+        { id: newTaskId(), name: nextName, status: 'not_started', attachmentCount: 0, completedAt: null, note: '', delayedDays: 0 },
+      ],
+    }))
+    setCustomTaskName('')
+    setIsAddModalOpen(false)
+    toast.success('업무 항목이 추가되었습니다.')
   }
+
+  const renderStatus = (status: WorkStatus, delayedDays: number) => (
+    <div className="inline-flex items-center gap-1">
+      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[status]}`}>
+        {STATUS_LABEL[status]}
+      </span>
+      {delayedDays > 0 && status !== 'done' && status !== 'excluded' && status !== 'na' ? (
+        <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+          D+{delayedDays}
+        </span>
+      ) : null}
+    </div>
+  )
 
   return (
-    <div className="min-w-0 space-y-4">
-      <section className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex items-center gap-1">
-            <UiButton size="iconSm" variant="secondary" onClick={() => moveCurrentMonth(-1)} aria-label="이전 월">
-              <ChevronLeft className="h-4 w-4" />
-            </UiButton>
-            <button
-              type="button"
-              onClick={() => {
-                setYearMonthInput(currentYearMonth)
-                setIsYearMonthPickerOpen((prev) => !prev)
-              }}
-              className="inline-flex h-8 min-w-[104px] items-center justify-center rounded-md border border-zinc-300 bg-white px-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
-            >
-              {currentYearMonthShortLabel}
-            </button>
-            <UiButton size="iconSm" variant="secondary" onClick={() => moveCurrentMonth(1)} aria-label="다음 월">
-              <ChevronRight className="h-4 w-4" />
-            </UiButton>
-            {isYearMonthPickerOpen ? (
-              <div className="absolute left-0 top-10 z-20 w-[240px] rounded-md border border-zinc-200 bg-white p-3 shadow-lg">
-                <p className="mb-2 text-xs font-semibold text-zinc-600">년월 선택</p>
-                <input
-                  type="month"
-                  value={isValidYearMonth(yearMonthInput) ? yearMonthInput : currentYearMonth}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setYearMonthInput(value)
-                    if (isValidYearMonth(value)) {
-                      setCurrentYearMonth(value)
-                    }
-                  }}
-                  className="h-8 w-full rounded-md border border-zinc-300 px-2 text-sm text-zinc-700"
-                />
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    value={yearMonthInput}
-                    onChange={(event) => setYearMonthInput(event.target.value)}
-                    placeholder="YYYY-MM"
-                    className="h-8 flex-1 rounded-md border border-zinc-300 px-2 text-sm text-zinc-700 placeholder:text-zinc-400"
-                  />
-                  <UiButton size="sm" variant="primary" onClick={applyYearMonthInput}>적용</UiButton>
-                </div>
+    <div className="space-y-4">
+      {selectedCompany ? (
+        <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-4">
+          <header className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-zinc-800">
+                  {selectedCompany.name} · {selectedCompany.kind} · 담당자 {selectedCompany.assignee}
+                </p>
+                <p className="text-xs text-zinc-500">귀속월 {attributionMonth} / 신고월 {reportMonth}</p>
               </div>
-            ) : null}
-          </div>
-          <select
-            value={completionFilter}
-            onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)}
-            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-700"
-          >
-            <option value="incomplete">미완료</option>
-            <option value="all">전체</option>
-          </select>
-          <select
-            value={assigneeFilter}
-            onChange={(event) => setAssigneeFilter(event.target.value)}
-            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-700"
-          >
-            <option value="all">담당자 전체</option>
-            {assigneeOptions.filter((option) => option !== 'all').map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <select
-            value={taskTypeFilter}
-            onChange={(event) => setTaskTypeFilter(event.target.value as TaskTypeFilter)}
-            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-700"
-          >
-            <option value="all">업무유형 전체</option>
-            <option value="tax">세무</option>
-            <option value="insurance">4대보험</option>
-            <option value="payroll">급여/산출물</option>
-            <option value="report">신고/발송</option>
-          </select>
-          <div className="ml-auto w-full min-w-[220px] max-w-[320px]">
-            <UiSearchInput
-              value={companyKeyword}
-              onChange={setCompanyKeyword}
-              placeholder="업체 검색"
-              wrapperClassName="h-8"
-              inputClassName="text-xs"
-            />
-          </div>
-        </div>
-      </section>
+              <div className="flex items-center gap-2">
+                <UiButton size="sm" variant="secondary" onClick={() => toast.success('전월 복사(목업)')}>
+                  전월 복사
+                </UiButton>
+                <UiButton size="sm" variant="primary" onClick={() => setIsAddModalOpen(true)}>
+                  항목 추가
+                </UiButton>
+                <UiButton size="sm" variant="soft" onClick={() => toast.success('저장(목업)')}>
+                  저장
+                </UiButton>
+                <UiButton size="sm" variant="tabInactive" onClick={() => setSelectedCompanyId(null)}>
+                  목록으로
+                </UiButton>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-zinc-600">
+              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
+              <p>완료는 증빙 첨부 후 처리 권장</p>
+            </div>
+          </header>
 
-      <section className="rounded-lg border border-zinc-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-2">
-          <UiButton
-            variant={activeTab === 'monthly' ? 'tabActive' : 'tabInactive'}
-            size="sm"
-            onClick={() => setActiveTab('monthly')}
-          >
-            월별 업무
-          </UiButton>
-          <UiButton
-            variant={activeTab === 'yearly' ? 'tabActive' : 'tabInactive'}
-            size="sm"
-            onClick={() => setActiveTab('yearly')}
-          >
-            연간 업무
-          </UiButton>
-          <span className="mx-1 h-4 w-px bg-zinc-200" />
-          <UiButton
-            variant={activeView === 'overview' ? 'tabActive' : 'tabInactive'}
-            size="sm"
-            onClick={() => setActiveView('overview')}
-          >
-            전체 운영뷰
-          </UiButton>
-          <UiButton
-            variant={activeView === 'detail' ? 'tabActive' : 'tabInactive'}
-            size="sm"
-            onClick={() => setActiveView('detail')}
-            disabled={!selectedCompany}
-          >
-            업체 상세뷰
-          </UiButton>
-        </div>
-
-        <div className={`grid min-h-[620px] ${activeView === 'overview' ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[220px_minmax(0,1fr)_320px]'}`}>
-          {activeView === 'detail' ? (
-            <aside className="border-r border-zinc-200 p-3">
-              <p className="mb-2 text-xs font-semibold text-zinc-500">업체 목록</p>
-              <div className="space-y-1 overflow-y-auto pr-1">
-                {visibleCompanies.map((company) => (
-                  <button
-                    key={company.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCompanyId(company.id)
-                      setActiveView('detail')
-                    }}
-                    className={`flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-left text-sm transition ${
-                      selectedCompanyId === company.id
-                        ? 'border-sky-300 bg-sky-50 text-sky-700'
-                        : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                    }`}
-                  >
-                    <span className="truncate">{company.name}</span>
-                    <span className="ml-2 text-[11px] text-zinc-500">{company.assignee}</span>
-                  </button>
+          <div className="overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="min-w-full text-xs">
+              <thead className="bg-zinc-100 text-zinc-700">
+                <tr>
+                  <th className="px-2 py-2 text-left font-semibold">업무명</th>
+                  <th className="px-2 py-2 text-center font-semibold">상태</th>
+                  <th className="px-2 py-2 text-center font-semibold">첨부</th>
+                  <th className="px-2 py-2 text-center font-semibold">완료일</th>
+                  <th className="px-2 py-2 text-left font-semibold">비고</th>
+                  <th className="px-2 py-2 text-center font-semibold">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedCompany.tasks.map((task) => (
+                  <tr key={task.id} className="border-t border-zinc-200">
+                    <td className="px-2 py-2 text-zinc-800">{task.name}</td>
+                    <td className="px-2 py-2 text-center">{renderStatus(task.status, task.delayedDays)}</td>
+                    <td className="px-2 py-2 text-center">{task.attachmentCount}개</td>
+                    <td className="px-2 py-2 text-center text-zinc-600">{task.completedAt || '—'}</td>
+                    <td className="px-2 py-2 text-zinc-600">{task.note || '—'}</td>
+                    <td className="px-2 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <UiButton size="xs" variant="secondary" onClick={() => handleAttach(task.id)}>
+                          파일첨부
+                        </UiButton>
+                        <UiButton size="xs" variant="tabInactive" onClick={() => setFileModalTaskId(task.id)}>
+                          상세
+                        </UiButton>
+                        <UiButton size="xs" variant="primary" onClick={() => handleTaskStatus(task.id, 'done')}>
+                          완료
+                        </UiButton>
+                      </div>
+                    </td>
+                  </tr>
                 ))}
-                {visibleCompanies.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-zinc-300 px-3 py-8 text-center text-xs text-zinc-400">
-                    검색 조건에 맞는 업체가 없습니다.
-                  </p>
-                ) : null}
-              </div>
-            </aside>
-          ) : null}
-
-          <div className="min-w-0 border-r border-zinc-200">
-            {activeView === 'overview' ? (
-              <div className="h-full overflow-auto">
-                <table className="min-w-max border-collapse text-xs">
-                  <thead className="sticky top-0 z-20 bg-zinc-50">
-                    <tr>
-                      {FIXED_LEFT_COLUMNS.map((column, index) => (
-                        <th
-                          key={column.key}
-                          style={{ width: column.width, minWidth: column.width, left: fixedLeftOffsets[index] }}
-                          className="sticky top-0 z-30 border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-center font-semibold text-zinc-600"
-                        >
-                          {column.label}
-                        </th>
-                      ))}
-                      {filteredTaskColumns.map((column) => (
-                        <th
-                          key={column.code}
-                          className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-center font-semibold text-zinc-600"
-                          style={{ width: 180, minWidth: 180 }}
-                        >
-                          {column.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleCompanies.map((company, rowIndex) => (
-                      <tr key={company.id} className="odd:bg-white even:bg-zinc-50/40">
-                        <td
-                          style={{ left: fixedLeftOffsets[0], width: FIXED_LEFT_COLUMNS[0].width }}
-                          className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center"
-                        >
-                          {rowIndex + 1}
-                        </td>
-                        <td
-                          style={{ left: fixedLeftOffsets[1], width: FIXED_LEFT_COLUMNS[1].width }}
-                          className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center"
-                        >
-                          {company.kind}
-                        </td>
-                        <td
-                          style={{ left: fixedLeftOffsets[2], width: FIXED_LEFT_COLUMNS[2].width }}
-                          className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center"
-                        >
-                          {company.isLaborFirm ? 'Y' : 'N'}
-                        </td>
-                        <td
-                          style={{ left: fixedLeftOffsets[3], width: FIXED_LEFT_COLUMNS[3].width }}
-                          className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-left"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedCompanyId(company.id)
-                              setActiveView('detail')
-                            }}
-                            className="truncate text-sky-700 hover:underline"
-                          >
-                            {company.name}
-                          </button>
-                        </td>
-                        <td
-                          style={{ left: fixedLeftOffsets[4], width: FIXED_LEFT_COLUMNS[4].width }}
-                          className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center"
-                        >
-                          {company.filingCycle}
-                        </td>
-                        <td style={{ left: fixedLeftOffsets[5], width: FIXED_LEFT_COLUMNS[5].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.labor ? 'Y' : '-'}</td>
-                        <td style={{ left: fixedLeftOffsets[6], width: FIXED_LEFT_COLUMNS[6].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.retirement ? 'Y' : '-'}</td>
-                        <td style={{ left: fixedLeftOffsets[7], width: FIXED_LEFT_COLUMNS[7].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.business ? 'Y' : '-'}</td>
-                        <td style={{ left: fixedLeftOffsets[8], width: FIXED_LEFT_COLUMNS[8].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.etc ? 'Y' : '-'}</td>
-                        <td style={{ left: fixedLeftOffsets[9], width: FIXED_LEFT_COLUMNS[9].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.daily ? 'Y' : '-'}</td>
-                        <td style={{ left: fixedLeftOffsets[10], width: FIXED_LEFT_COLUMNS[10].width }} className="sticky z-10 border-b border-r border-zinc-200 bg-inherit px-2 py-2 text-center">{company.taskFlags.interestDividend ? 'Y' : '-'}</td>
-                        {filteredTaskColumns.map((task) => (
-                          <td key={`${company.id}:${task.code}`} className="border-b border-r border-zinc-200 px-1.5 py-1.5 align-top">
-                            {renderStateCard(company, currentYearMonth, task)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="h-full p-3">
-                {selectedCompany ? (
-                  <div className="flex h-full flex-col">
-                    <div className="mb-3 flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-800">{selectedCompany.name} 월 히스토리</p>
-                        <p className="text-xs text-zinc-500">업체 상세뷰 · {activeTab === 'monthly' ? '월별 업무' : '연간 업무'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <UiButton size="iconSm" variant="secondary" onClick={() => setDetailCenterYearMonth((prev) => shiftYearMonth(prev, -1))}>
-                          <ChevronLeft className="h-4 w-4" />
-                        </UiButton>
-                        <span className="w-24 text-center text-sm font-semibold text-zinc-700">
-                          {formatYearMonthLabel(detailCenterYearMonth)}
-                        </span>
-                        <UiButton size="iconSm" variant="secondary" onClick={() => setDetailCenterYearMonth((prev) => shiftYearMonth(prev, 1))}>
-                          <ChevronRight className="h-4 w-4" />
-                        </UiButton>
-                      </div>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-auto">
-                      <table className="min-w-full border-collapse text-xs">
-                        <thead className="sticky top-0 z-10 bg-zinc-50">
-                          <tr>
-                            <th className="w-24 border-b border-r border-zinc-200 px-2 py-2 text-center font-semibold text-zinc-600">대상월</th>
-                            {filteredTaskColumns.map((task) => (
-                              <th key={task.code} className="border-b border-r border-zinc-200 px-2 py-2 text-center font-semibold text-zinc-600">
-                                {task.label}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detailMonths.map((yearMonth) => (
-                            <tr key={yearMonth} className="odd:bg-white even:bg-zinc-50/40">
-                              <td className="border-b border-r border-zinc-200 px-2 py-2 text-center font-medium text-zinc-700">
-                                {formatYearMonthLabel(yearMonth)}
-                              </td>
-                              {filteredTaskColumns.map((task) => (
-                                <td key={`${yearMonth}:${task.code}`} className="border-b border-r border-zinc-200 px-1.5 py-1.5 align-top">
-                                  {renderStateCard(selectedCompany, yearMonth, task)}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex h-full items-center justify-center rounded-md border border-dashed border-zinc-300 text-sm text-zinc-400">
-                    좌측에서 업체를 선택해 주세요.
-                  </div>
-                )}
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
+        </section>
+      ) : (
+        <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-4">
+          <header className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1">
+                <UiButton size="iconXs" variant="ghost" onClick={() => setAttributionMonth((prev) => monthShift(prev, -1))}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </UiButton>
+                <span className="text-xs font-semibold text-zinc-700">귀속월 {attributionMonth}</span>
+                <UiButton size="iconXs" variant="ghost" onClick={() => setAttributionMonth((prev) => monthShift(prev, 1))}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </UiButton>
+              </div>
+              <div className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2 py-1">
+                <UiButton size="iconXs" variant="ghost" onClick={() => setReportMonth((prev) => monthShift(prev, -1))}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </UiButton>
+                <span className="text-xs font-semibold text-zinc-700">신고월 {reportMonth}</span>
+                <UiButton size="iconXs" variant="ghost" onClick={() => setReportMonth((prev) => monthShift(prev, 1))}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </UiButton>
+              </div>
+              <label className="ml-2 inline-flex items-center gap-1 text-xs text-zinc-700">
+                <input type="checkbox" checked={incompleteOnly} onChange={(event) => setIncompleteOnly(event.target.checked)} />
+                미완료만
+              </label>
+              <select
+                value={assigneeFilter}
+                onChange={(event) => setAssigneeFilter(event.target.value)}
+                className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+              >
+                {assignees.map((item) => (
+                  <option key={item} value={item}>
+                    {item === 'all' ? '담당자 전체' : item}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={kindFilter}
+                onChange={(event) => setKindFilter(event.target.value as 'all' | CompanyKind)}
+                className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
+              >
+                <option value="all">구분 전체</option>
+                <option value="법인">법인</option>
+                <option value="개인">개인</option>
+              </select>
+              <div className="ml-auto w-full max-w-xs">
+                <UiSearchInput value={keyword} onChange={setKeyword} placeholder="업체명 검색" wrapperClassName="h-8" inputClassName="text-xs" />
+              </div>
+            </div>
+            <div className="text-xs text-zinc-600">
+              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
+              <p>완료는 증빙 첨부 후 처리 권장</p>
+            </div>
+          </header>
 
-          <aside className="p-3">
-            <p className="mb-2 text-xs font-semibold text-zinc-500">선택 셀 상세 액션</p>
-            {selectedCell && selectedCellState && selectedCellCompany ? (
-              <div className="space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-zinc-800">{selectedCellCompany.name}</p>
-                  <p className="text-xs text-zinc-500">{selectedCellTaskLabel} · {formatYearMonthLabel(selectedCell.yearMonth)}</p>
-                </div>
-                <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">현재 상태</span>
-                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${WORK_STATUS_CLASS[selectedCellState.status]}`}>
-                      {WORK_STATUS_LABEL[selectedCellState.status]}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">완료일</span>
-                    <span className="font-medium text-zinc-700">{formatDateLabel(selectedCellState.completedAt)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">발송일</span>
-                    <span className="font-medium text-zinc-700">{formatDateLabel(selectedCellState.sentAt)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">증빙파일 수</span>
-                    <span className="font-medium text-zinc-700">{selectedCellState.attachmentCount}건</span>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <UiButton className="w-full justify-center" size="sm" variant="secondary" onClick={handleAttachmentRegister}>
-                    증빙파일 등록
-                  </UiButton>
-                  <UiButton className="w-full justify-center" size="sm" variant="primary" onClick={handleDone}>
-                    완료 처리
-                  </UiButton>
-                  <UiButton className="w-full justify-center" size="sm" variant="soft" onClick={handleSent}>
-                    메일 발송
-                  </UiButton>
-                  <UiButton
-                    className="w-full justify-center"
-                    size="sm"
-                    variant="tabInactive"
-                    onClick={() => setSelectedCell(null)}
-                  >
-                    닫기
-                  </UiButton>
-                </div>
-                <div className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-700">
-                  업무산출물(전용) 중심으로 처리하고, 문서함 연동(보조)은 후속 단계에서 연결합니다.
-                </div>
-              </div>
+          <div className="overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="min-w-full text-xs">
+              <thead className="bg-zinc-100 text-zinc-700">
+                <tr>
+                  <th className="w-12 px-2 py-2 text-center font-semibold">No</th>
+                  <th className="w-16 px-2 py-2 text-center font-semibold">구분</th>
+                  <th className="px-2 py-2 text-left font-semibold">상호</th>
+                  <th className="w-28 px-2 py-2 text-center font-semibold">진행률</th>
+                  <th className="w-20 px-2 py-2 text-center font-semibold">미완료수</th>
+                  <th className="w-80 px-2 py-2 text-left font-semibold">주요업무</th>
+                  <th className="px-2 py-2 text-left font-semibold">비고</th>
+                  <th className="w-44 px-2 py-2 text-center font-semibold">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listRows.map((company, idx) => {
+                  const stat = statsByCompany.get(company.id) || { done: 0, total: 0, incomplete: 0, chips: [] }
+                  const progress = stat.total > 0 ? Math.round((stat.done / stat.total) * 100) : null
+                  return (
+                    <tr key={company.id} className="border-t border-zinc-200">
+                      <td className="px-2 py-2 text-center text-zinc-600">{idx + 1}</td>
+                      <td className="px-2 py-2 text-center">{company.kind}</td>
+                      <td className="px-2 py-2 text-zinc-800">{company.name}</td>
+                      <td className="px-2 py-2 text-center text-zinc-700">{company.excluded ? '—' : `${progress ?? 0}%`}</td>
+                      <td className="px-2 py-2 text-center text-zinc-700">{company.excluded ? 'N/A' : stat.incomplete}</td>
+                      <td className="px-2 py-2">
+                        {company.excluded ? (
+                          <span className="inline-flex rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">N/A</span>
+                        ) : stat.chips.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {stat.chips.map((chip) => (
+                              <span key={chip} className="inline-flex rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-600">
+                                {chip}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-zinc-600">{company.note || '—'}</td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <UiButton size="xs" variant="secondary" onClick={() => handleOpenDetail(company.id)}>
+                            상세
+                          </UiButton>
+                          <UiButton size="xs" variant={company.excluded ? 'soft' : 'tabInactive'} onClick={() => handleToggleExclude(company.id)}>
+                            {company.excluded ? '제외 해제' : '대상 제외'}
+                          </UiButton>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {listRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-2 py-16 text-center text-zinc-400">
+                      조건에 맞는 업체가 없습니다.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {isAddModalOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-zinc-800">업무 항목 추가</p>
+              <UiButton size="xs" variant="tabInactive" onClick={() => setIsAddModalOpen(false)}>
+                닫기
+              </UiButton>
+            </div>
+            <div className="mb-3 flex items-center gap-2">
+              <UiButton size="xs" variant={addTab === 'template' ? 'tabActive' : 'tabInactive'} onClick={() => setAddTab('template')}>
+                템플릿에서 선택
+              </UiButton>
+              <UiButton size="xs" variant={addTab === 'custom' ? 'tabActive' : 'tabInactive'} onClick={() => setAddTab('custom')}>
+                직접 입력
+              </UiButton>
+            </div>
+            {addTab === 'template' ? (
+              <select
+                value={templateTaskName}
+                onChange={(event) => setTemplateTaskName(event.target.value)}
+                className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-700"
+              >
+                {TASK_TEMPLATES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <div className="rounded-md border border-dashed border-zinc-300 px-3 py-10 text-center text-sm text-zinc-400">
-                셀을 선택하면 작업 패널이 열립니다.
-              </div>
+              <input
+                value={customTaskName}
+                onChange={(event) => setCustomTaskName(event.target.value)}
+                placeholder="업무명을 입력해 주세요."
+                className="h-9 w-full rounded-md border border-zinc-300 px-2 text-sm text-zinc-700"
+              />
             )}
-          </aside>
+            <p className="mt-2 text-xs text-zinc-500">동일 텍스트 중복은 저장되지 않습니다.</p>
+            <div className="mt-3 flex justify-end gap-2">
+              <UiButton size="sm" variant="tabInactive" onClick={() => setIsAddModalOpen(false)}>
+                취소
+              </UiButton>
+              <UiButton size="sm" variant="primary" onClick={addTaskToSelectedCompany}>
+                <Plus className="h-3.5 w-3.5" />
+                추가
+              </UiButton>
+            </div>
+          </div>
         </div>
-      </section>
+      ) : null}
+
+      {fileModalTask ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-2xl rounded-lg border border-zinc-200 bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-zinc-800">연결 파일 · {fileModalTask.name}</p>
+              <UiButton size="xs" variant="tabInactive" onClick={() => setFileModalTaskId(null)}>
+                닫기
+              </UiButton>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-zinc-200">
+              <table className="min-w-full text-xs">
+                <thead className="bg-zinc-100 text-zinc-700">
+                  <tr>
+                    <th className="px-2 py-2 text-left font-semibold">파일명</th>
+                    <th className="px-2 py-2 text-center font-semibold">업로더</th>
+                    <th className="px-2 py-2 text-center font-semibold">업로드일</th>
+                    <th className="px-2 py-2 text-center font-semibold">액션</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fileModalItems.map((item) => (
+                    <tr key={item.id} className="border-t border-zinc-200">
+                      <td className="px-2 py-2">{item.fileName}</td>
+                      <td className="px-2 py-2 text-center">{item.uploader}</td>
+                      <td className="px-2 py-2 text-center">{item.uploadedAt}</td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <UiButton size="xs" variant="tabInactive" onClick={() => window.open('https://example.com', '_blank')}>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            미리보기
+                          </UiButton>
+                          <UiButton size="xs" variant="secondary" onClick={() => toast.success('다운로드(목업)')}>
+                            다운로드
+                          </UiButton>
+                          <UiButton size="xs" variant="tabInactive" onClick={() => toast.success('연결해제(목업)')}>
+                            연결해제
+                          </UiButton>
+                          <UiButton
+                            size="xs"
+                            variant="danger"
+                            onClick={() => {
+                              if (!window.confirm('원본파일을 삭제하시겠습니까?')) return
+                              toast.success('원본삭제(목업)')
+                            }}
+                          >
+                            원본삭제
+                          </UiButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 text-xs text-zinc-600">
+              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
+              <p>완료는 증빙 첨부 후 처리 권장</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
+

@@ -1781,7 +1781,7 @@ export default function AdminDocsPage() {
           ) : viewMode === 'icon' ? (
             <div
               ref={iconGridRef}
-              className={`relative flex min-h-[420px] flex-wrap items-start gap-1 ${marquee.active ? 'select-none' : ''}`}
+              className={`relative flex min-h-[420px] flex-wrap content-start items-start gap-1 ${marquee.active ? 'select-none' : ''}`}
               onMouseDown={(event) => {
                 if (event.button !== 0) return
                 if (isSelectableCard(event.target)) return
@@ -1800,11 +1800,15 @@ export default function AdminDocsPage() {
                 const isSelected = selectedEntryIds.includes(entry.id)
                 const isPrimarySelected = selectedIconEntryId === entry.id
                 const dropFolderId = entry.type === 'folder' ? entry.folderId || null : null
+                const cardBaseClass = `rounded-lg p-1 text-center transition ${
+                  isSelected ? 'bg-sky-200/20 shadow-sm' : 'bg-transparent hover:shadow-sm'
+                } ${dropFolderId && dragOverFolderId === dropFolderId ? 'ring-1 ring-sky-300 bg-sky-50' : ''}`
+                const cardLabelClass = `text-xs leading-tight text-zinc-800 ${isPrimarySelected ? 'whitespace-normal break-words' : 'truncate'}`
 
                 return (
                   <div
                     key={entry.id}
-                    className="relative h-[52px] w-[72px] overflow-visible"
+                    className="relative min-h-[52px] w-[72px] overflow-visible"
                     ref={(node) => {
                       iconCardRefs.current[entry.id] = node
                     }}
@@ -1834,21 +1838,12 @@ export default function AdminDocsPage() {
                         event.preventDefault()
                         void handleDropToFolder(dropFolderId)
                       }}
-                      className={`absolute left-0 right-0 top-0 rounded-lg p-1 text-center transition ${
-                        isPrimarySelected
-                          ? 'z-30 h-auto min-h-full bg-sky-200/20 shadow-sm'
-                          : isSelected
-                            ? 'z-20 h-full bg-sky-200/20 shadow-sm'
-                            : 'h-full bg-transparent hover:shadow-sm'
-                      } ${dropFolderId && dragOverFolderId === dropFolderId ? 'ring-1 ring-sky-300 bg-sky-50' : ''}`}
+                      className={`${cardBaseClass} ${isPrimarySelected ? 'absolute left-0 right-0 top-0 z-30' : 'relative z-10'}`}
                     >
                       <div className="mb-0.5 flex justify-center">
                         <span className="inline-flex min-w-0 items-center justify-center">{renderDocIcon(entry)}</span>
                       </div>
-                      <p
-                        className={`text-xs leading-tight text-zinc-800 ${isPrimarySelected ? 'whitespace-normal break-words' : 'truncate'}`}
-                        title={entry.name}
-                      >
+                      <p className={cardLabelClass} title={entry.name}>
                         {entry.name}
                       </p>
                     </div>
