@@ -26,27 +26,27 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/mail/compose')) return { parent: '메일', child: '메일작성' }
   if (pathname.startsWith('/client/mail/accounts')) return { parent: '메일', child: '설정' }
   if (pathname.startsWith('/client/mail')) return { parent: '메일' }
-  if (pathname.startsWith('/client/companies/new')) return { parent: '외부업무(고객사)', child: '고객사등록' }
-  if (pathname.startsWith('/client/companies/')) return { parent: '외부업무(고객사)', child: '고객사 기본사항' }
-  if (pathname.startsWith('/client/companies')) return { parent: '외부업무(고객사)', child: '고객사 기본사항' }
-  if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '외부업무(기장)', child: '기장 고객사 관리' }
-  if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '외부업무(기장)', child: '월별 청구/수납 관리' }
-  if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '외부업무(기장)', child: '월별 집계' }
-  if (pathname.startsWith('/client/bookkeeping/debits/history/')) return { parent: '외부업무(기장)', child: '업로드 이력 상세' }
-  if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return { parent: '외부업무(기장)', child: '업로드 이력 상세' }
-  if (pathname.startsWith('/client/bookkeeping/debits/history')) return { parent: '외부업무(기장)', child: '업로드 이력' }
-  if (pathname.startsWith('/client/bookkeeping/debits/upload')) return { parent: '외부업무(기장)', child: '자동이체 업로드' }
-  if (pathname.startsWith('/client/bookkeeping/debits')) return { parent: '외부업무(기장)', child: '입금내역' }
-  if (pathname.startsWith('/client/staff/register')) return { parent: '내부업무', child: '직원등록' }
-  if (pathname.startsWith('/client/staff/signup-requests')) return { parent: '내부업무', child: '직원가입신청' }
-  if (pathname.startsWith('/client/staff/profile-status')) return { parent: '내부업무', child: '직원정보수정/재직상태' }
-  if (pathname.startsWith('/client/staff/leave')) return { parent: '내부업무', child: '직원 근태/휴가 관리' }
-  if (pathname.startsWith('/client/staff/approvals/documents')) return { parent: '내부업무', child: '결재 문서 승인' }
-  if (pathname.startsWith('/client/staff/approvals')) return { parent: '내부업무', child: '결재 문서 승인' }
-  if (pathname.startsWith('/client/staff/organization')) return { parent: '내부업무', child: '권한/조직배치' }
-  if (pathname.startsWith('/client/staff/attendance')) return { parent: '내부업무', child: '직원 근태/휴가 관리' }
-  if (pathname.startsWith('/client/staff/account-security')) return { parent: '내부업무', child: '초기비밀번호 재설정/잠금해제' }
-  if (pathname.startsWith('/client/staff')) return { parent: '내부업무', child: '직원목록/검색' }
+  if (pathname.startsWith('/client/companies/new')) return { parent: '업무(고객사)', child: '고객사등록' }
+  if (pathname.startsWith('/client/companies/')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
+  if (pathname.startsWith('/client/companies')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
+  if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '업무(기장)', child: '기장 고객사 관리' }
+  if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '업무(기장)', child: '월별 청구/수납 관리' }
+  if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '업무(기장)', child: '월별 집계' }
+  if (pathname.startsWith('/client/bookkeeping/debits/history/')) return { parent: '업무(기장)', child: '업로드 이력 상세' }
+  if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return { parent: '업무(기장)', child: '업로드 이력 상세' }
+  if (pathname.startsWith('/client/bookkeeping/debits/history')) return { parent: '업무(기장)', child: '업로드 이력' }
+  if (pathname.startsWith('/client/bookkeeping/debits/upload')) return { parent: '업무(기장)', child: '자동이체 업로드' }
+  if (pathname.startsWith('/client/bookkeeping/debits')) return { parent: '업무(기장)', child: '입금내역' }
+  if (pathname.startsWith('/client/staff/register')) return { parent: '인사', child: '직원등록' }
+  if (pathname.startsWith('/client/staff/signup-requests')) return { parent: '인사', child: '직원가입신청' }
+  if (pathname.startsWith('/client/staff/profile-status')) return { parent: '인사', child: '직원정보수정/재직상태' }
+  if (pathname.startsWith('/client/staff/leave')) return { parent: '인사', child: '직원 근태/휴가 관리' }
+  if (pathname.startsWith('/client/staff/approvals/documents')) return { parent: '인사', child: '결재 문서 승인' }
+  if (pathname.startsWith('/client/staff/approvals')) return { parent: '인사', child: '결재 문서 승인' }
+  if (pathname.startsWith('/client/staff/organization')) return { parent: '인사', child: '권한/조직배치' }
+  if (pathname.startsWith('/client/staff/attendance')) return { parent: '인사', child: '직원 근태/휴가 관리' }
+  if (pathname.startsWith('/client/staff/account-security')) return { parent: '인사', child: '초기비밀번호 재설정/잠금해제' }
+  if (pathname.startsWith('/client/staff')) return { parent: '인사', child: '직원목록/검색' }
   if (pathname.startsWith('/client/client-management/company-create')) return { parent: '클라이언트 관리', child: '클라이언트(업체) 등록' }
   if (pathname.startsWith('/client/client-management/company-list')) return { parent: '클라이언트 관리', child: '클라이언트(업체) 목록' }
   if (pathname.startsWith('/client/client-management/create')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 등록' }
@@ -63,7 +63,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/setting/subscription')) return { parent: '내 정보', child: '요금제/구독' }
   if (pathname.startsWith('/client/setting/security')) return { parent: '내 정보', child: '로그/보안' }
   if (pathname.startsWith('/client/setting')) return { parent: '내 정보' }
-  if (pathname.startsWith('/client/schedule')) return { parent: '외부업무(고객사)', child: '고객사 일정' }
+  if (pathname.startsWith('/client/schedule')) return { parent: '업무(고객사)', child: '고객사 일정' }
   return { parent: '클라이언트' }
 }
 

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Settings } from 'lucide-react'
+import { Mail, Settings } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import Pagination from '@/components/common/Pagination'
 import {
   getAdminDashboardWidgetCatalog,
   getAdminDashboardWidgetLayout,
@@ -13,7 +14,7 @@ import {
 import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { fetchMyApprovalDocuments } from '@/services/admin/approvalDocumentService'
-import { listMailMessages } from '@/services/admin/mailService'
+import { listMailAccounts, listMailMessages } from '@/services/admin/mailService'
 import { fetchAdminNotificationUnreadCount } from '@/services/admin/notificationService'
 import { fetchAdminWorkPostInbox } from '@/services/admin/workPostService'
 import { getAdminWithholding33List } from '@/services/admin/withholding33Service'
@@ -39,6 +40,26 @@ type AdminWidgetData = {
   }
   approval_pending?: number
   mail_unread?: number
+  mail_widget?: {
+    companyUnreadTotal: number
+    personalUnreadTotal: number
+    companyUnreadItems: Array<{
+      id: number
+      mailAccountId: number
+      sender: string
+      subject: string
+      receivedAt: string | null
+      sortAt: string | null
+    }>
+    personalUnreadItems: Array<{
+      id: number
+      mailAccountId: number
+      sender: string
+      subject: string
+      receivedAt: string | null
+      sortAt: string | null
+    }>
+  }
   notification_unread?: number
   work_post_inbox?: {
     noticeTotal: number
@@ -218,6 +239,21 @@ function sanitizeLayoutItems(items: DashboardUserLayoutItem[]): DashboardUserLay
   return normalizeSortOrder(resolveCollisions(normalized, '__bootstrap__'))
 }
 
+function applyPreferredWidgetSizes(items: DashboardUserLayoutItem[]): DashboardUserLayoutItem[] {
+  return items.map((item) => {
+    if (item.widget_key !== 'mail_unread') return item
+    return {
+      ...item,
+      grid_w: 4,
+      grid_h: 3,
+      min_w: Math.max(4, item.min_w),
+      min_h: Math.max(3, item.min_h),
+      max_w: Math.max(4, item.max_w),
+      max_h: Math.max(3, item.max_h),
+    }
+  })
+}
+
 function renderSimpleCountCard(title: string, count?: number, subtitle?: string) {
   return (
     <div className="h-full">
@@ -241,8 +277,15 @@ export default function AdminDashboardWidgets() {
   const [editMode, setEditMode] = useState(false)
   const [showControls, setShowControls] = useState(false)
   const [workPostTab, setWorkPostTab] = useState<'notice' | 'task'>('notice')
+  const [mailWidgetTab, setMailWidgetTab] = useState<'company' | 'personal'>('company')
+  const [mailWidgetPageByTab, setMailWidgetPageByTab] = useState<{ company: number; personal: number }>({
+    company: 1,
+    personal: 1,
+  })
+  const [mailWidgetVisibleRows, setMailWidgetVisibleRows] = useState(3)
   const [draftItems, setDraftItems] = useState<DashboardUserLayoutItem[]>([])
   const gridRef = useRef<HTMLElement | null>(null)
+  const mailWidgetListWrapRef = useRef<HTMLDivElement | null>(null)
 
   const visibleItems = useMemo(() => {
     if (editMode) return draftItems
@@ -321,12 +364,79 @@ export default function AdminDashboardWidgets() {
 
     if (keys.has('mail_unread')) {
       jobs.push(
-        listMailMessages({ page: 1, size: 1, is_read: false })
-          .then((res) => {
-            nextData.mail_unread = Number(res.total || 0)
-          })
+        (async () => {
+          const accountsRes = await listMailAccounts(true)
+          const companyAccounts = (accountsRes.items || []).filter((row) => row.account_scope === 'company')
+          const personalAccounts = (accountsRes.items || []).filter((row) => row.account_scope === 'personal')
+
+          const fetchScopeUnread = async (accountIds: number[]) => {
+            const settled = await Promise.all(
+              accountIds.map(async (accountId) => {
+                try {
+                  const res = await listMailMessages({
+                    page: 1,
+                    size: 100,
+                    is_read: false,
+                    mail_account_id: accountId,
+                  })
+                  return {
+                    total: Number(res.total || 0),
+                    items: (res.items || []).map((row) => ({
+                      id: row.id,
+                      mailAccountId: row.mail_account_id,
+                      sender: row.from_name || row.from_email || '(발신자 없음)',
+                      subject: row.subject || '(제목 없음)',
+                      receivedAt: row.received_at || row.sent_at || null,
+                      sortAt: row.received_at || row.sent_at || row.updated_at || row.created_at,
+                    })),
+                  }
+                } catch {
+                  return { total: 0, items: [] as Array<{
+                    id: number
+                    mailAccountId: number
+                    sender: string
+                    subject: string
+                    receivedAt: string | null
+                    sortAt: string | null
+                  }> }
+                }
+              })
+            )
+
+            const total = settled.reduce((acc, row) => acc + row.total, 0)
+            const mergedItems = settled
+              .flatMap((row) => row.items)
+              .sort((a, b) => {
+                const aTs = a.sortAt ? new Date(a.sortAt).getTime() : 0
+                const bTs = b.sortAt ? new Date(b.sortAt).getTime() : 0
+                return bTs - aTs
+              })
+              .slice(0, 100)
+
+            return { total, items: mergedItems }
+          }
+
+          const [companyUnread, personalUnread] = await Promise.all([
+            fetchScopeUnread(companyAccounts.map((row) => row.id)),
+            fetchScopeUnread(personalAccounts.map((row) => row.id)),
+          ])
+
+          nextData.mail_unread = companyUnread.total + personalUnread.total
+          nextData.mail_widget = {
+            companyUnreadTotal: companyUnread.total,
+            personalUnreadTotal: personalUnread.total,
+            companyUnreadItems: companyUnread.items,
+            personalUnreadItems: personalUnread.items,
+          }
+        })()
           .catch(() => {
             nextData.mail_unread = 0
+            nextData.mail_widget = {
+              companyUnreadTotal: 0,
+              personalUnreadTotal: 0,
+              companyUnreadItems: [],
+              personalUnreadItems: [],
+            }
           })
       )
     }
@@ -429,7 +539,9 @@ export default function AdminDashboardWidgets() {
       }
     }
 
-    const sanitizedItems = sanitizeLayoutItems(applyLocalUnmanagedLayout(mergedItems))
+    const sanitizedItems = sanitizeLayoutItems(
+      applyPreferredWidgetSizes(applyLocalUnmanagedLayout(mergedItems))
+    )
     setLayout({ ...layoutRes, items: sanitizedItems })
     setCatalog(filteredCatalog)
     setDraftItems(sanitizedItems)
@@ -454,6 +566,29 @@ export default function AdminDashboardWidgets() {
       mounted = false
     }
   }, [loadDashboard])
+
+  useEffect(() => {
+    const target = mailWidgetListWrapRef.current
+    if (!target || typeof ResizeObserver === 'undefined') return
+
+    const recalc = (height: number) => {
+      const headerHeight = 31
+      const rowHeight = 31
+      const maxRows = 8
+      const minRows = 2
+      const next = Math.max(minRows, Math.min(maxRows, Math.floor((height - headerHeight) / rowHeight)))
+      setMailWidgetVisibleRows(next)
+    }
+
+    recalc(target.getBoundingClientRect().height)
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      recalc(entry.contentRect.height)
+    })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [layout, editMode])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -633,8 +768,123 @@ export default function AdminDashboardWidgets() {
         }
         case 'approval_pending':
           return renderSimpleCountCard('내 결재 대기', widgetData.approval_pending, '처리 대기 문서')
-        case 'mail_unread':
-          return renderSimpleCountCard('미확인 메일', widgetData.mail_unread, '읽지 않은 메일')
+        case 'mail_unread': {
+          const mailData = widgetData.mail_widget || {
+            companyUnreadTotal: 0,
+            personalUnreadTotal: 0,
+            companyUnreadItems: [],
+            personalUnreadItems: [],
+          }
+          const activeItems =
+            mailWidgetTab === 'company' ? mailData.companyUnreadItems : mailData.personalUnreadItems
+          const activeCount =
+            mailWidgetTab === 'company' ? mailData.companyUnreadTotal : mailData.personalUnreadTotal
+          const listLabel = mailWidgetTab === 'company' ? '공용' : '개인'
+          const pageSize = Math.max(1, mailWidgetVisibleRows)
+          const activePageRaw = mailWidgetTab === 'company' ? mailWidgetPageByTab.company : mailWidgetPageByTab.personal
+          const totalPages = Math.max(1, Math.ceil(Math.max(0, activeCount) / pageSize))
+          const activePage = Math.min(Math.max(1, activePageRaw), totalPages)
+          const start = (activePage - 1) * pageSize
+          const visibleItems = activeItems.slice(start, start + pageSize)
+
+          return (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                  <Mail className="h-4 w-4 text-zinc-600" />
+                  <span>메일</span>
+                </div>
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setMailWidgetTab('company')}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${
+                      mailWidgetTab === 'company'
+                        ? 'border-sky-300 bg-sky-50 text-sky-700'
+                        : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+                    }`}
+                  >
+                    공용
+                    <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                      {mailData.companyUnreadTotal}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMailWidgetTab('personal')}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${
+                      mailWidgetTab === 'personal'
+                        ? 'border-sky-300 bg-sky-50 text-sky-700'
+                        : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+                    }`}
+                  >
+                    개인
+                    <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-700">
+                      {mailData.personalUnreadTotal}
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex-1 space-y-1.5">
+                {activeItems.length > 0 ? (
+                  <div
+                    ref={mailWidgetListWrapRef}
+                    className="h-full overflow-hidden rounded-md bg-white"
+                  >
+                    <div className="grid grid-cols-4 border-b border-zinc-200 bg-zinc-50 text-[11px] font-semibold text-zinc-600">
+                      <div className="col-span-1 truncate px-2 py-[9px]">보낸사람</div>
+                      <div className="col-span-3 truncate border-l border-zinc-200 px-2 py-[9px]">제목</div>
+                    </div>
+                    <div className="divide-y divide-zinc-100">
+                      {visibleItems.map((row) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => router.push(`/admin/mail/inbox?mailbox=all&account_id=${row.mailAccountId}&message_id=${row.id}`)}
+                          className="grid w-full grid-cols-4 text-left text-xs transition hover:bg-zinc-50"
+                          title={`${row.sender} | ${row.subject}`}
+                        >
+                          <div className="col-span-1 truncate px-2 py-[9px] font-medium text-zinc-700">{row.sender}</div>
+                          <div className="col-span-3 truncate border-l border-zinc-100 px-2 py-[9px] text-zinc-800">{row.subject}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-6 text-center text-xs text-zinc-500">
+                    {listLabel} 신규 메일이 없습니다.
+                  </div>
+                )}
+              </div>
+              <div className="mt-1 grid grid-cols-3 items-center">
+                <div />
+                {activeCount > pageSize ? (
+                  <Pagination
+                    className="mt-0 justify-center gap-1 text-[11px]"
+                    page={activePage}
+                    total={activeCount}
+                    limit={pageSize}
+                    showFirstLast={false}
+                    windowSize={1}
+                    buttonSize="xs"
+                    buttonClassName="!h-5 !min-w-[18px] !border-0 !px-1 !text-[10px]"
+                    onPageChange={(nextPage) =>
+                      setMailWidgetPageByTab((prev) => ({
+                        ...prev,
+                        [mailWidgetTab]: nextPage,
+                      }))
+                    }
+                  />
+                ) : (
+                  <div />
+                )}
+                <p className="text-right text-[11px] text-zinc-500">
+                  안읽은 메일 {activeCount === undefined ? 0 : activeCount}건
+                </p>
+              </div>
+            </div>
+          )
+        }
         case 'notification_unread':
           return renderSimpleCountCard('미읽음 알림', widgetData.notification_unread, '새 알림')
         case 'work_post_inbox':
@@ -704,7 +954,7 @@ export default function AdminDashboardWidgets() {
           )
       }
     },
-    [router, widgetData, workPostTab]
+    [mailWidgetPageByTab, mailWidgetTab, mailWidgetVisibleRows, router, widgetData, workPostTab]
   )
 
   return (

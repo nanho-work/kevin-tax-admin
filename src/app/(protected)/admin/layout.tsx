@@ -15,8 +15,10 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const isBoardRoute = pathname.startsWith('/admin/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task'
   const isDocsRoute = pathname.startsWith('/admin/docs')
+  const isDashboardRoute = pathname.startsWith('/admin/dashboard')
   const isDocsEditorRoute = pathname.startsWith('/admin/docs/editor/')
-  const effectiveCollapsed = isSidebarCollapsed || isBoardRoute || isDocsRoute
+  const isSingleRailRoute = isBoardRoute || isDocsRoute || isDashboardRoute
+  const effectiveCollapsed = isSidebarCollapsed || isSingleRailRoute
 
   useEffect(() => {
     const saved = window.localStorage.getItem('admin_sidebar_collapsed')
@@ -55,7 +57,7 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
         <AdminSidebar
           collapsed={effectiveCollapsed}
           onToggleCollapse={() =>
-            setIsSidebarCollapsed((prev) => ((isBoardRoute || isDocsRoute) ? false : !prev))
+            setIsSidebarCollapsed((prev) => (isSingleRailRoute ? false : !prev))
           }
         />
       </div>

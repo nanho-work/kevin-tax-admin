@@ -112,6 +112,60 @@ export interface AdminHometaxCredentialLogListResponse {
   items: AdminHometaxCredentialLogOut[]
 }
 
+export type AdminCompanyContactRole = 'main' | 'backup' | 'etc'
+
+export interface AdminCompanyContactOut {
+  id: number
+  client_id: number
+  company_id: number
+  name: string
+  department?: string | null
+  position?: string | null
+  contact_role: AdminCompanyContactRole
+  priority: number
+  phone?: string | null
+  email?: string | null
+  notify_mail: boolean
+  is_active: boolean
+  deleted_at?: string | null
+  memo?: string | null
+  created_by_type: string
+  created_by_id: number
+  updated_by_type?: string | null
+  updated_by_id?: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminCompanyContactListResponse {
+  total: number
+  items: AdminCompanyContactOut[]
+}
+
+export interface AdminCompanyContactCreateRequest {
+  name: string
+  department?: string
+  position?: string
+  contact_role?: AdminCompanyContactRole
+  priority?: number
+  phone?: string
+  email?: string
+  notify_mail?: boolean
+  memo?: string
+}
+
+export interface AdminCompanyContactUpdateRequest {
+  name?: string
+  department?: string
+  position?: string
+  contact_role?: AdminCompanyContactRole
+  priority?: number
+  phone?: string
+  email?: string
+  notify_mail?: boolean
+  memo?: string
+}
+
 const uploadAdminCompanyDocumentAdapter = createMultipartUploadAdapter<
   unknown,
   { file: File; company_id: number; doc_type_code: string }
@@ -363,6 +417,47 @@ export async function revealAdminHometaxCredentialPassword(
   const res = await adminHttp.post<AdminHometaxCredentialRevealOut>(
     `${BASE}/${company_id}/hometax-credential/reveal`,
     payload
+  )
+  return res.data
+}
+
+export async function listAdminCompanyContacts(
+  company_id: number,
+  include_inactive = false
+): Promise<AdminCompanyContactListResponse> {
+  const res = await adminHttp.get<AdminCompanyContactListResponse>(
+    `${BASE}/${company_id}/contacts`,
+    { params: { include_inactive } }
+  )
+  return res.data
+}
+
+export async function createAdminCompanyContact(
+  company_id: number,
+  payload: AdminCompanyContactCreateRequest
+): Promise<AdminCompanyContactOut> {
+  const res = await adminHttp.post<AdminCompanyContactOut>(`${BASE}/${company_id}/contacts`, payload)
+  return res.data
+}
+
+export async function updateAdminCompanyContact(
+  company_id: number,
+  contact_id: number,
+  payload: AdminCompanyContactUpdateRequest
+): Promise<AdminCompanyContactOut> {
+  const res = await adminHttp.patch<AdminCompanyContactOut>(
+    `${BASE}/${company_id}/contacts/${contact_id}`,
+    payload
+  )
+  return res.data
+}
+
+export async function deleteAdminCompanyContact(
+  company_id: number,
+  contact_id: number
+): Promise<{ message: string }> {
+  const res = await adminHttp.delete<{ message: string }>(
+    `${BASE}/${company_id}/contacts/${contact_id}`
   )
   return res.data
 }

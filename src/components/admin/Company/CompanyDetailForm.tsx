@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Search } from 'lucide-react'
+import { Search, Star } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
@@ -34,6 +34,7 @@ interface Props {
   enableCustomDocuments?: boolean
   editable?: boolean
   showSystemInfo?: boolean
+  showHometaxLogsSection?: boolean
   listPath?: string
   fetchDetailFn?: (company_id: number) => Promise<CompanyDetailResponse>
   createFn?: (payload: CompanyCreateRequest) => Promise<unknown>
@@ -116,6 +117,40 @@ interface Props {
       ip?: string | null
     }>
   }>
+  listCompanyContactsFn?: (
+    company_id: number,
+    include_inactive?: boolean
+  ) => Promise<{ total: number; items: LocalCompanyContact[] }>
+  createCompanyContactFn?: (
+    company_id: number,
+    payload: {
+      name: string
+      department?: string
+      position?: string
+      contact_role?: CompanyContactRole
+      priority?: number
+      phone?: string
+      email?: string
+      notify_mail?: boolean
+      memo?: string
+    }
+  ) => Promise<unknown>
+  updateCompanyContactFn?: (
+    company_id: number,
+    contact_id: number,
+    payload: {
+      name?: string
+      department?: string
+      position?: string
+      contact_role?: CompanyContactRole
+      priority?: number
+      phone?: string
+      email?: string
+      notify_mail?: boolean
+      memo?: string
+    }
+  ) => Promise<unknown>
+  deleteCompanyContactFn?: (company_id: number, contact_id: number) => Promise<{ message: string }>
   createCompanyAccountFn?: (payload: CompanyAccountCreateRequest) => Promise<CompanyAccountOut>
   listCompanyAccountsFn?: (params: CompanyAccountListParams) => Promise<CompanyAccountListResponse>
   updateCompanyAccountStatusFn?: (account_id: number, status: CompanyAccountStatus) => Promise<CompanyAccountOut>
@@ -141,6 +176,86 @@ type LocalHometaxCredential = {
   enc_key_version: string
 }
 
+type CompanyContactRole = 'main' | 'backup' | 'etc'
+
+type LocalCompanyContact = {
+  id: number
+  name: string
+  department?: string | null
+  position?: string | null
+  contact_role: CompanyContactRole
+  priority: number
+  phone?: string | null
+  email?: string | null
+  notify_mail: boolean
+  memo?: string | null
+  is_active: boolean
+}
+
+type ContactSlotKey = 'main' | 'backup' | 'etc'
+
+type ContactSlotState = {
+  key: ContactSlotKey
+  label: string
+  role: CompanyContactRole
+  priority: number
+  contactId: number | null
+  name: string
+  department: string
+  position: string
+  phone: string
+  email: string
+  notify_mail: boolean
+  memo: string
+}
+
+const CONTACT_SLOT_DEFAULTS: ContactSlotState[] = [
+  {
+    key: 'main',
+    label: '메인 담당자',
+    role: 'main',
+    priority: 1,
+    contactId: null,
+    name: '',
+    department: '',
+    position: '',
+    phone: '',
+    email: '',
+    notify_mail: true,
+    memo: '',
+  },
+  {
+    key: 'backup',
+    label: '서브 담당자',
+    role: 'backup',
+    priority: 2,
+    contactId: null,
+    name: '',
+    department: '',
+    position: '',
+    phone: '',
+    email: '',
+    notify_mail: true,
+    memo: '',
+  },
+  {
+    key: 'etc',
+    label: '서브 담당자2',
+    role: 'etc',
+    priority: 3,
+    contactId: null,
+    name: '',
+    department: '',
+    position: '',
+    phone: '',
+    email: '',
+    notify_mail: true,
+    memo: '',
+  },
+]
+
+const CONTACT_SLOT_ORDER: ContactSlotKey[] = ['main', 'backup', 'etc']
+
 function formatBusinessRegistrationNumber(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 10)
   const p1 = digits.slice(0, 3)
@@ -149,6 +264,13 @@ function formatBusinessRegistrationNumber(value: string) {
   if (digits.length <= 3) return p1
   if (digits.length <= 5) return `${p1}-${p2}`
   return `${p1}-${p2}-${p3}`
+}
+
+function formatPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
 }
 
 function toSuggestedDocumentTitle(fileName: string) {
@@ -169,32 +291,44 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
-      <div className="border-b border-zinc-100 px-5 py-4">
+    <section className="space-y-3">
+      <div className="border-b border-zinc-200 pb-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold text-zinc-900">{title}</h3>
-            {description ? <p className="mt-1 text-sm text-zinc-500">{description}</p> : null}
+            <h3 className="text-[13px] font-semibold text-zinc-900">{title}</h3>
+            {description ? <p className="mt-1 text-xs text-zinc-500">{description}</p> : null}
           </div>
           {action ? <div className="sm:ml-auto">{action}</div> : null}
         </div>
       </div>
-      <div className="px-5 py-5">{children}</div>
+      <div>{children}</div>
     </section>
   )
 }
 
-function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  className,
+  labelClassName,
+  contentClassName,
+  children,
+}: {
+  label: string
+  className?: string
+  labelClassName?: string
+  contentClassName?: string
+  children: React.ReactNode
+}) {
   return (
-    <div className={`space-y-1.5 ${className ?? ''}`.trim()}>
-      <label className="block text-sm font-medium text-zinc-700">{label}</label>
-      {children}
+    <div className={`${className ?? ''}`.trim()}>
+      <label className={`block text-xs font-semibold text-zinc-900 ${labelClassName ?? ''}`.trim()}>{label}</label>
+      <div className={contentClassName}>{children}</div>
     </div>
   )
 }
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 const MAX_CUSTOM_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024 * 1024
 
 function validateCustomDocumentFile(file: File): string | null {
@@ -258,6 +392,7 @@ export default function CompanyDetailForm({
   enableCustomDocuments = false,
   editable = true,
   showSystemInfo = true,
+  showHometaxLogsSection = true,
   listPath = '/admin/companies',
   fetchDetailFn = fetchCompanyDetail,
   createFn,
@@ -280,6 +415,10 @@ export default function CompanyDetailForm({
   patchHometaxCredentialActiveFn,
   revealHometaxCredentialPasswordFn,
   listHometaxCredentialLogsFn,
+  listCompanyContactsFn,
+  createCompanyContactFn,
+  updateCompanyContactFn,
+  deleteCompanyContactFn,
   createCompanyAccountFn = createAdminCompanyAccount,
   listCompanyAccountsFn = getAdminCompanyAccounts,
   updateCompanyAccountStatusFn = updateAdminCompanyAccountStatus,
@@ -342,6 +481,14 @@ export default function CompanyDetailForm({
   const [loadingHometaxLogs, setLoadingHometaxLogs] = useState(false)
   const [hometaxFetched, setHometaxFetched] = useState(false)
   const [hometaxLogsFetched, setHometaxLogsFetched] = useState(false)
+  const [contactsApiAvailable, setContactsApiAvailable] = useState(true)
+  const [contactSlots, setContactSlots] = useState<ContactSlotState[]>(CONTACT_SLOT_DEFAULTS)
+  const [visibleContactSlotKeys, setVisibleContactSlotKeys] = useState<ContactSlotKey[]>(['main'])
+  const [editingContactKey, setEditingContactKey] = useState<ContactSlotKey | null>(null)
+  const [loadingContacts, setLoadingContacts] = useState(false)
+  const [savingContactKey, setSavingContactKey] = useState<ContactSlotKey | null>(null)
+  const [deletingContactKey, setDeletingContactKey] = useState<ContactSlotKey | null>(null)
+  const [openContactActionMenuKey, setOpenContactActionMenuKey] = useState<ContactSlotKey | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const customDocFileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -369,8 +516,24 @@ export default function CompanyDetailForm({
   const supportsHometaxWrite = !isCreateMode && Boolean(upsertHometaxCredentialFn)
   const supportsHometaxActivePatch = !isCreateMode && Boolean(patchHometaxCredentialActiveFn)
   const supportsHometaxReveal = !isCreateMode && Boolean(revealHometaxCredentialPasswordFn)
-  const supportsHometaxLogs = !isCreateMode && Boolean(listHometaxCredentialLogsFn)
+  const supportsHometaxLogs = !isCreateMode && showHometaxLogsSection && Boolean(listHometaxCredentialLogsFn)
   const supportsHometax = supportsHometaxRead
+  const supportsCompanyContacts =
+    !isCreateMode &&
+    hasValidCompanyId &&
+    contactsApiAvailable &&
+    Boolean(listCompanyContactsFn) &&
+    Boolean(createCompanyContactFn) &&
+    Boolean(updateCompanyContactFn) &&
+    Boolean(deleteCompanyContactFn)
+  const visibleContactSlots = useMemo(
+    () => contactSlots.filter((slot) => visibleContactSlotKeys.includes(slot.key)),
+    [contactSlots, visibleContactSlotKeys]
+  )
+  const listModeSlots = useMemo(
+    () => visibleContactSlots.filter((slot) => Boolean(slot.contactId) && editingContactKey !== slot.key),
+    [visibleContactSlots, editingContactKey]
+  )
   const supportsCompanyAccount =
     !isCreateMode &&
     hasValidCompanyId &&
@@ -397,6 +560,16 @@ export default function CompanyDetailForm({
   }
   const canEditFields = isCreateMode ? true : editable && editMode
   const editableInputClass = canEditFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
+  const basicInfoInputClass = `${editableInputClass} text-center`
+  const basicInfoFieldClass = 'overflow-hidden border-b border-zinc-200 pb-2'
+  const basicInfoLabelClass = 'bg-zinc-50 px-2 py-1'
+  const basicInfoContentClass = 'pt-2'
+  const canEditContactsFields = isCreateMode ? true : editable
+  const contactEditableInputClass = canEditContactsFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
+
+  useEffect(() => {
+    setOpenContactActionMenuKey(null)
+  }, [editingContactKey, savingContactKey, deletingContactKey, loadingContacts, editMode])
 
   useEffect(() => {
     if (isCreateMode) {
@@ -412,6 +585,9 @@ export default function CompanyDetailForm({
         address1: '',
         address2: '',
         is_active: true,
+        manager_name: '',
+        manager_phone: '',
+        manager_email: '',
         created_at: '',
         updated_at: '',
       })
@@ -430,6 +606,110 @@ export default function CompanyDetailForm({
     }
     if (hasValidCompanyId) load()
   }, [companyId, fetchDetailFn, hasValidCompanyId, isCreateMode])
+
+  useEffect(() => {
+    if (!form) return
+    setContactSlots((prev) =>
+      prev.map((slot) => {
+        if (slot.key !== 'main' || slot.contactId) return slot
+        return {
+          ...slot,
+          name: form.manager_name || '',
+          phone: form.manager_phone || '',
+          email: form.manager_email || '',
+        }
+      })
+    )
+  }, [form?.manager_name, form?.manager_phone, form?.manager_email])
+
+  const slotHasAnyValue = (slot: ContactSlotState) =>
+    Boolean(
+      slot.contactId ||
+        slot.name.trim() ||
+        slot.phone.trim() ||
+        slot.email.trim() ||
+        slot.department.trim() ||
+        slot.position.trim() ||
+        slot.memo.trim()
+    )
+
+  const buildSlotFromContact = (slot: ContactSlotState, contact: LocalCompanyContact): ContactSlotState => ({
+    ...slot,
+    contactId: contact.id,
+    name: contact.name || '',
+    department: contact.department || '',
+    position: contact.position || '',
+    phone: contact.phone || '',
+    email: contact.email || '',
+    notify_mail: Boolean(contact.notify_mail),
+    memo: contact.memo || '',
+    priority: Number(contact.priority || slot.priority),
+    role: (contact.contact_role || slot.role) as CompanyContactRole,
+  })
+
+  const loadCompanyContacts = async () => {
+    if (!supportsCompanyContacts || !listCompanyContactsFn) return
+    try {
+      setLoadingContacts(true)
+      const res = await listCompanyContactsFn(companyId, false)
+      setContactsApiAvailable(true)
+      const activeItems = (res.items || []).filter((item) => item.is_active !== false)
+      setContactSlots((prev) => {
+        let next = CONTACT_SLOT_DEFAULTS.map((slot) => ({ ...slot }))
+        const mainContact = activeItems.find((item) => item.contact_role === 'main')
+        const backupContact = activeItems.find((item) => item.contact_role === 'backup')
+        const etcContact = activeItems.find((item) => item.contact_role === 'etc')
+        if (mainContact) next[0] = buildSlotFromContact(next[0], mainContact)
+        if (backupContact) next[1] = buildSlotFromContact(next[1], backupContact)
+        if (etcContact) next[2] = buildSlotFromContact(next[2], etcContact)
+
+        // 백엔드 role이 비어있거나 예외값인 경우 priority 순으로 빈 슬롯에 보완
+        const takenIds = new Set(next.map((s) => s.contactId).filter(Boolean) as number[])
+        const remain = activeItems.filter((item) => !takenIds.has(item.id))
+        for (const item of remain) {
+          const target = next.find((slot) => !slot.contactId)
+          if (!target) break
+          const idx = next.findIndex((slot) => slot.key === target.key)
+          next[idx] = buildSlotFromContact(next[idx], item)
+        }
+
+        // main 슬롯은 기존 manager 필드 fallback 값 유지
+        if (!next[0].contactId) {
+          next[0].name = form?.manager_name || ''
+          next[0].phone = form?.manager_phone || ''
+          next[0].email = form?.manager_email || ''
+        }
+        const backupHasValue = slotHasAnyValue(next[1])
+        const etcHasValue = slotHasAnyValue(next[2])
+        const visible: ContactSlotKey[] = ['main']
+        if (backupHasValue || etcHasValue) visible.push('backup')
+        if (etcHasValue) visible.push('etc')
+        setVisibleContactSlotKeys(visible)
+        setEditingContactKey((prev) => {
+          // 메인 담당자 미등록 상태에서는 폼을 바로 열어 입력 유도
+          if (!next[0].contactId && !next[0].name.trim()) return 'main'
+          if (!prev) return null
+          return visible.includes(prev) ? prev : null
+        })
+        return next
+      })
+    } catch (error) {
+      const status = (error as any)?.response?.status
+      if (status === 404) {
+        // 백엔드 라우트가 아직 반영되지 않은 환경에서는 조용히 fallback
+        setContactsApiAvailable(false)
+        return
+      }
+      toast.error(extractApiDetail(error) || '담당자 목록을 불러오지 못했습니다.')
+    } finally {
+      setLoadingContacts(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!supportsCompanyContacts) return
+    void loadCompanyContacts()
+  }, [companyId, supportsCompanyContacts])
 
   const fetchPreviewByDocType = async (docTypeCode: string): Promise<CompanyDocumentPreviewResponse | null> => {
     try {
@@ -578,7 +858,7 @@ export default function CompanyDetailForm({
 
   useEffect(() => {
     if (!supportsHometaxRead || !hasValidCompanyId || !getHometaxCredentialFn) return
-    if (!hometaxExpanded || hometaxFetched) return
+    if (hometaxFetched) return
     const loadHometax = async () => {
       try {
         setLoadingHometax(true)
@@ -611,7 +891,6 @@ export default function CompanyDetailForm({
     getHometaxCredentialFn,
     hasValidCompanyId,
     supportsHometaxRead,
-    hometaxExpanded,
     hometaxFetched,
   ])
 
@@ -733,6 +1012,170 @@ export default function CompanyDetailForm({
     } catch (error) {
       toast.error(extractApiDetail(error) || '홈택스 정보 확인에 실패했습니다.')
     }
+  }
+
+  const patchContactSlot = (key: ContactSlotKey, updater: (slot: ContactSlotState) => ContactSlotState) => {
+    setContactSlots((prev) => prev.map((slot) => (slot.key === key ? updater(slot) : slot)))
+  }
+
+  const handleSaveCompanyContact = async (slotKey: ContactSlotKey) => {
+    if (!createCompanyContactFn || !updateCompanyContactFn) return
+    const slot = contactSlots.find((item) => item.key === slotKey)
+    if (!slot) return
+    const trimmedName = slot.name.trim()
+    if (!trimmedName) {
+      toast.error('담당자 이름을 입력해 주세요.')
+      return
+    }
+    try {
+      setSavingContactKey(slotKey)
+      if (slot.contactId) {
+        await updateCompanyContactFn(companyId, slot.contactId, {
+          name: trimmedName,
+          department: slot.department.trim() || undefined,
+          position: slot.position.trim() || undefined,
+          phone: slot.phone.trim() || undefined,
+          email: slot.email.trim() || undefined,
+          notify_mail: slot.notify_mail,
+          memo: slot.memo.trim() || undefined,
+          contact_role: slot.role,
+          priority: slot.priority,
+        })
+        toast.success(`${slot.label} 정보가 수정되었습니다.`)
+      } else {
+        await createCompanyContactFn(companyId, {
+          name: trimmedName,
+          department: slot.department.trim() || undefined,
+          position: slot.position.trim() || undefined,
+          phone: slot.phone.trim() || undefined,
+          email: slot.email.trim() || undefined,
+          notify_mail: slot.notify_mail,
+          memo: slot.memo.trim() || undefined,
+          contact_role: slot.role,
+          priority: slot.priority,
+        })
+        toast.success(`${slot.label} 정보가 등록되었습니다.`)
+      }
+
+      if (slot.key === 'main') {
+        setForm((prev) =>
+          prev
+            ? {
+                ...prev,
+                manager_name: trimmedName,
+                manager_phone: slot.phone.trim() || '',
+                manager_email: slot.email.trim() || '',
+              }
+            : prev
+        )
+      }
+      setEditingContactKey(null)
+      await loadCompanyContacts()
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '담당자 저장 중 오류가 발생했습니다.')
+    } finally {
+      setSavingContactKey(null)
+    }
+  }
+
+  const handleDeleteCompanyContact = async (slotKey: ContactSlotKey) => {
+    if (!deleteCompanyContactFn) return
+    const slot = contactSlots.find((item) => item.key === slotKey)
+    if (!slot?.contactId) {
+      patchContactSlot(slotKey, (prev) => ({ ...prev, name: '', department: '', position: '', phone: '', email: '', memo: '' }))
+      if (slotKey !== 'main') {
+        setVisibleContactSlotKeys((prev) => prev.filter((key) => key !== slotKey))
+      }
+      setEditingContactKey(null)
+      if (slotKey === 'main') {
+        setForm((prev) =>
+          prev
+            ? {
+                ...prev,
+                manager_name: '',
+                manager_phone: '',
+                manager_email: '',
+              }
+            : prev
+        )
+      }
+      return
+    }
+    if (!confirm(`${slot.label}를 삭제하시겠습니까?`)) return
+    try {
+      setDeletingContactKey(slotKey)
+      const res = await deleteCompanyContactFn(companyId, slot.contactId)
+      toast.success(res?.message || '담당자가 삭제되었습니다.')
+      await loadCompanyContacts()
+      if (slotKey !== 'main') {
+        setVisibleContactSlotKeys((prev) => prev.filter((key) => key !== slotKey))
+      }
+      setEditingContactKey(null)
+      if (slotKey === 'main') {
+        setForm((prev) =>
+          prev
+            ? {
+                ...prev,
+                manager_name: '',
+                manager_phone: '',
+                manager_email: '',
+              }
+            : prev
+        )
+      }
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '담당자 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingContactKey(null)
+    }
+  }
+
+  const handlePromoteToMain = async (slotKey: 'backup' | 'etc') => {
+    if (!updateCompanyContactFn) return
+    const targetSlot = contactSlots.find((slot) => slot.key === slotKey)
+    const mainSlot = contactSlots.find((slot) => slot.key === 'main')
+    if (!targetSlot?.contactId) {
+      toast.error('먼저 담당자를 등록해 주세요.')
+      return
+    }
+
+    try {
+      setSavingContactKey(slotKey)
+
+      if (mainSlot?.contactId) {
+        await updateCompanyContactFn(companyId, mainSlot.contactId, {
+          contact_role: 'backup',
+          priority: 2,
+        })
+      }
+
+      await updateCompanyContactFn(companyId, targetSlot.contactId, {
+        contact_role: 'main',
+        priority: 1,
+      })
+
+      setEditingContactKey(null)
+      await loadCompanyContacts()
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '메인 담당자 변경 중 오류가 발생했습니다.')
+    } finally {
+      setSavingContactKey(null)
+    }
+  }
+
+  const handlePromoteByStar = async (slotKey: 'backup' | 'etc') => {
+    const confirmed = window.confirm('메인 담당자로 변경하시겠습니까?')
+    if (!confirmed) return
+    await handlePromoteToMain(slotKey)
+  }
+
+  const handleAddContactSlot = () => {
+    setVisibleContactSlotKeys((prev) => {
+      const nextKey = CONTACT_SLOT_ORDER.find((key) => !prev.includes(key))
+      if (!nextKey) return prev
+      setEditingContactKey(nextKey)
+      return [...prev, nextKey]
+    })
   }
 
   const handleUploadBusinessLicense = async () => {
@@ -1017,37 +1460,29 @@ export default function CompanyDetailForm({
   }
 
   if (loading) {
-    return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">회사 정보를 불러오는 중...</div>
+    return <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-xs text-zinc-500">회사 정보를 불러오는 중...</div>
   }
   if (!form) {
-    return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm text-rose-700">회사 정보를 찾을 수 없습니다.</div>
+    return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-xs text-rose-700">회사 정보를 찾을 수 없습니다.</div>
   }
 
   return (
     <div className="w-full space-y-6">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3">
+        <div className="space-y-6 xl:col-span-3 xl:border-r xl:border-zinc-200 xl:pr-6">
           <Section
             title="기본 정보"
             action={
               <div className="flex items-center gap-3">
-                {supportsHometax ? (
-                  <span
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
-                      hasHometaxRegistered
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border-zinc-300 bg-zinc-100 text-zinc-600'
-                    }`}
-                  >
-                    홈택스 {hasHometaxRegistered ? '등록됨' : '미등록'}
-                  </span>
-                ) : null}
                 {isCreateMode && createFn ? (
                   <button
                     onClick={async () => {
                       try {
                         setSaving(true)
                         const payload: CompanyCreateRequest = {
+                          manager_name: (contactSlots.find((slot) => slot.key === 'main')?.name || form.manager_name || '').trim() || undefined,
+                          manager_phone: (contactSlots.find((slot) => slot.key === 'main')?.phone || form.manager_phone || '').trim() || undefined,
+                          manager_email: (contactSlots.find((slot) => slot.key === 'main')?.email || form.manager_email || '').trim() || undefined,
                           company_name: form.company_name?.trim() || '',
                           owner_name: form.owner_name?.trim() || '',
                           registration_number: form.registration_number?.trim() || '',
@@ -1068,13 +1503,13 @@ export default function CompanyDetailForm({
                       }
                     }}
                     disabled={saving}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
                   >
                     {saving ? '등록 중...' : '등록완료'}
                   </button>
                 ) : editable && updateFn ? (
                   <>
-                    <span className="text-sm font-medium text-zinc-700">수정</span>
+                    <span className="text-xs font-medium text-zinc-700">수정</span>
                     <button
                       type="button"
                       role="switch"
@@ -1101,6 +1536,13 @@ export default function CompanyDetailForm({
                             const refreshed = await fetchDetailFn(companyId)
                             setForm(refreshed)
                             setEditMode(false)
+                            // 기본정보 저장 시, 담당자 폼 임시상태를 남기지 않고 서버 상태로 재동기화
+                            setEditingContactKey(null)
+                            if (supportsCompanyContacts) {
+                              await loadCompanyContacts()
+                            } else {
+                              setVisibleContactSlotKeys(['main'])
+                            }
                           } catch (err: any) {
                             toast.error(err.response?.data?.detail || '수정 실패')
                           } finally {
@@ -1108,7 +1550,7 @@ export default function CompanyDetailForm({
                           }
                         }}
                         disabled={saving}
-                        className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                        className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
                       >
                         {saving ? '저장 중...' : '수정완료'}
                       </button>
@@ -1118,83 +1560,170 @@ export default function CompanyDetailForm({
                 </div>
             }
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="회사명">
-                <input className={editableInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
-              </Field>
-              <Field label="대표자">
-                <input className={editableInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
-              </Field>
-              <Field label="구분">
-                <select className={editableInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option value="">선택</option>
-                  <option value="법인">법인</option>
-                  <option value="개인">개인</option>
-                </select>
-              </Field>
-              <Field label="사업자등록번호">
-                <input
-                  className={editableInputClass}
-                  value={form.registration_number || ''}
-                  readOnly={!canEditFields}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      registration_number: formatBusinessRegistrationNumber(e.target.value),
-                    })
-                  }
-                  inputMode="numeric"
-                  maxLength={12}
-                  placeholder="000-00-00000"
-                />
-              </Field>
-              <Field label="업태">
-                <input className={editableInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
-              </Field>
-              <Field label="종목">
-                <input className={editableInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
-              </Field>
-              <div className="xl:col-span-3">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_auto_minmax(0,1fr)_minmax(0,1fr)]">
-                  <Field label="우편번호">
+            {canEditFields ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <Field
+                  label="구분"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <select className={basicInfoInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                    <option value="">선택</option>
+                    <option value="법인">법인</option>
+                    <option value="개인">개인</option>
+                  </select>
+                </Field>
+                <Field
+                  label="회사명"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
+                </Field>
+                <Field
+                  label="사업자등록번호"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input
+                    className={basicInfoInputClass}
+                    value={form.registration_number || ''}
+                    readOnly={!canEditFields}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        registration_number: formatBusinessRegistrationNumber(e.target.value),
+                      })
+                    }
+                    inputMode="numeric"
+                    maxLength={12}
+                    placeholder="000-00-00000"
+                  />
+                </Field>
+                <Field
+                  label="대표자"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
+                </Field>
+                <Field
+                  label="업태"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
+                </Field>
+                <Field
+                  label="종목"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
+                </Field>
+                <div className="hidden xl:block" />
+                <div className="hidden xl:block" />
+                <Field
+                  label="우편번호"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <div className="flex items-center gap-2">
                     <input
-                      className={editableInputClass}
+                      className={basicInfoInputClass}
                       value={form.postal_code || ''}
                       readOnly={!canEditFields}
                       onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
                     />
-                  </Field>
-                  <div className="space-y-1.5">
-                    <label className="block text-sm font-medium text-zinc-700">우편번호검색</label>
                     <button
                       type="button"
                       disabled={!canEditFields}
                       onClick={() => setAddressSearchOpen(true)}
-                      className="inline-flex h-10 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-300 bg-white text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      title="우편번호 검색"
                     >
                       <Search size={14} />
-                      검색
                     </button>
                   </div>
-                  <Field label="주소1">
-                    <input
-                      className={editableInputClass}
-                      value={form.address1 || ''}
-                      readOnly={!canEditFields}
-                      onChange={(e) => setForm({ ...form, address1: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="주소2">
-                    <input
-                      className={editableInputClass}
-                      value={form.address2 || ''}
-                      readOnly={!canEditFields}
-                      onChange={(e) => setForm({ ...form, address2: e.target.value })}
-                    />
-                  </Field>
-                </div>
+                </Field>
+                <Field
+                  label="주소"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input
+                    className={basicInfoInputClass}
+                    value={form.address1 || ''}
+                    readOnly={!canEditFields}
+                    onChange={(e) => setForm({ ...form, address1: e.target.value })}
+                  />
+                </Field>
+                <Field
+                  label="상세주소"
+                  className={`${basicInfoFieldClass} text-center`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input
+                    className={basicInfoInputClass}
+                    value={form.address2 || ''}
+                    readOnly={!canEditFields}
+                    onChange={(e) => setForm({ ...form, address2: e.target.value })}
+                  />
+                </Field>
+                <div className="hidden xl:block" />
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>구분</p>
+                  <p className="text-xs text-zinc-900">{form.category || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>회사명</p>
+                  <p className="text-xs text-zinc-900">{form.company_name || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>사업자등록번호</p>
+                  <p className="text-xs text-zinc-900">{form.registration_number || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>대표자</p>
+                  <p className="text-xs text-zinc-900">{form.owner_name || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>업태</p>
+                  <p className="text-xs text-zinc-900">{form.industry_type || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>종목</p>
+                  <p className="text-xs text-zinc-900">{form.business_type || '-'}</p>
+                </div>
+                <div className="hidden xl:block" />
+                <div className="hidden xl:block" />
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>우편번호</p>
+                  <p className="text-xs text-zinc-900">{form.postal_code || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>주소</p>
+                  <p className="text-xs text-zinc-900">{form.address1 || '-'}</p>
+                </div>
+                <div className={`${basicInfoFieldClass} text-center`}>
+                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>상세주소</p>
+                  <p className="text-xs text-zinc-900">{form.address2 || '-'}</p>
+                </div>
+                <div className="hidden xl:block" />
+              </div>
+            )}
           </Section>
           <KakaoAddressSearchModal
             open={addressSearchOpen}
@@ -1213,21 +1742,279 @@ export default function CompanyDetailForm({
             }
           />
 
-          {showSystemInfo ? (
-            <Section title="시스템 정보">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="활성 상태">
-                  <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
-                </Field>
-                <Field label="등록일">
-                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
-                </Field>
-                <Field label="수정일">
-                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
-                </Field>
+          <Section
+            title="회사 담당자"
+            action={
+              <div className="flex items-center gap-2">
+                {supportsCompanyContacts ? (
+                  <button
+                    type="button"
+                    onClick={handleAddContactSlot}
+                    disabled={!canEditContactsFields || visibleContactSlotKeys.length >= 3}
+                    className="inline-flex h-7 items-center rounded-md border border-zinc-300 bg-white px-2 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    + 담당자 추가
+                  </button>
+                ) : null}
+                {supportsCompanyContacts ? (
+                  <span className="text-[11px] text-zinc-500">최대 3명 (메인/서브/서브2)</span>
+                ) : (
+                  <span className="text-[11px] text-zinc-500">목업</span>
+                )}
               </div>
-            </Section>
-          ) : null}
+            }
+          >
+            <div className="grid grid-cols-1 gap-2">
+              {listModeSlots.length > 0 ? (
+                <div className="hidden grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_45px] gap-2 border-b border-zinc-200 px-2 py-1 text-[11px] font-semibold text-zinc-900 md:grid">
+                  <div className="text-center">구분</div>
+                  <div className="text-center">이름</div>
+                  <div className="text-center">연락처</div>
+                  <div className="text-center">이메일</div>
+                  <div className="text-center">부서</div>
+                  <div className="text-center">직책</div>
+                  <div className="text-center">메일수신</div>
+                </div>
+              ) : null}
+              {visibleContactSlots.map((slot) => {
+                const isListMode = Boolean(slot.contactId) && editingContactKey !== slot.key
+                return (
+                  <div
+                    key={slot.key}
+                    className={
+                      isListMode
+                        ? 'border-b border-zinc-200 px-2 py-2'
+                        : 'space-y-2 rounded-lg border border-zinc-200 bg-white p-2'
+                    }
+                  >
+                    {isListMode ? (
+                      <div className="space-y-1">
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_45px] md:items-center">
+                          <div className="flex items-center justify-center">
+                            {slot.key === 'main' ? (
+                              <span title="메인 담당자" className="inline-flex h-5 w-5 items-center justify-center">
+                                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                title={`${slot.key === 'backup' ? '서브 담당자' : '서브 담당자2'} · 클릭하면 메인으로 변경`}
+                                disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
+                                onClick={() => void handlePromoteByStar(slot.key as 'backup' | 'etc')}
+                                className="inline-flex h-5 w-5 items-center justify-center disabled:opacity-60"
+                              >
+                                <Star className="h-4 w-4 text-zinc-300 hover:text-amber-300" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="truncate text-center text-xs text-zinc-700">{slot.name || '-'}</div>
+                          <div className="truncate text-center text-xs text-zinc-700">{slot.phone || '-'}</div>
+                          <div className="truncate text-center text-xs text-zinc-700">{slot.email || '-'}</div>
+                          <div className="truncate text-center text-xs text-zinc-500">{slot.department || '-'}</div>
+                          <div className="truncate text-center text-xs text-zinc-500">{slot.position || '-'}</div>
+                          <div className="text-center text-xs text-zinc-500">{slot.notify_mail ? 'Y' : 'N'}</div>
+                        </div>
+                        <div className="grid grid-cols-[44px_minmax(0,1fr)_45px]">
+                          <div />
+                          <div className="truncate text-right text-xs text-zinc-500">{slot.memo || ''}</div>
+                          <div className="relative flex items-center justify-center">
+                            <button
+                              type="button"
+                              disabled={!canEditContactsFields}
+                              onClick={() =>
+                                setOpenContactActionMenuKey((prev) => (prev === slot.key ? null : slot.key))
+                              }
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-300 bg-white text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                            >
+                              ...
+                            </button>
+                            {openContactActionMenuKey === slot.key ? (
+                              <div className="absolute right-0 top-7 z-20 w-24 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
+                                <button
+                                  type="button"
+                                  disabled={!canEditContactsFields}
+                                  onClick={() => {
+                                    setOpenContactActionMenuKey(null)
+                                    setEditingContactKey(slot.key)
+                                  }}
+                                  className="flex h-8 w-full items-center px-3 text-left text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                                >
+                                  수정
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!canEditContactsFields || deletingContactKey === slot.key || loadingContacts}
+                                  onClick={() => {
+                                    setOpenContactActionMenuKey(null)
+                                    void handleDeleteCompanyContact(slot.key)
+                                  }}
+                                  className="flex h-8 w-full items-center px-3 text-left text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                                >
+                                  {deletingContactKey === slot.key ? '처리중...' : '삭제'}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center">
+                          {slot.key === 'main' ? (
+                            <span title="메인 담당자" className="inline-flex h-5 w-5 items-center justify-center">
+                              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title={`${slot.key === 'backup' ? '서브 담당자' : '서브 담당자2'} · 클릭하면 메인으로 변경`}
+                              disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
+                              onClick={() => void handlePromoteByStar(slot.key as 'backup' | 'etc')}
+                              className="inline-flex h-5 w-5 items-center justify-center disabled:opacity-60"
+                            >
+                              <Star className="h-4 w-4 text-zinc-300 hover:text-amber-300" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <input
+                            className={contactEditableInputClass}
+                            value={slot.name}
+                            readOnly={!canEditContactsFields}
+                            onChange={(e) =>
+                              patchContactSlot(slot.key, (prev) => {
+                                const nextName = e.target.value
+                                if (slot.key === 'main') {
+                                  setForm((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          manager_name: nextName,
+                                        }
+                                      : current
+                                  )
+                                }
+                                return { ...prev, name: nextName }
+                              })
+                            }
+                            placeholder="이름"
+                          />
+                          <input
+                            className={contactEditableInputClass}
+                            value={slot.phone}
+                            readOnly={!canEditContactsFields}
+                            onChange={(e) =>
+                              patchContactSlot(slot.key, (prev) => {
+                                const nextPhone = formatPhoneNumber(e.target.value)
+                                if (slot.key === 'main') {
+                                  setForm((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          manager_phone: nextPhone,
+                                        }
+                                      : current
+                                  )
+                                }
+                                return { ...prev, phone: nextPhone }
+                              })
+                            }
+                            placeholder="연락처"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                          <input
+                            className={contactEditableInputClass}
+                            value={slot.email}
+                            readOnly={!canEditContactsFields}
+                            onChange={(e) =>
+                              patchContactSlot(slot.key, (prev) => {
+                                const nextEmail = e.target.value
+                                if (slot.key === 'main') {
+                                  setForm((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          manager_email: nextEmail,
+                                        }
+                                      : current
+                                  )
+                                }
+                                return { ...prev, email: nextEmail }
+                              })
+                            }
+                            placeholder="이메일"
+                          />
+                          <label className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700">
+                            <input
+                              type="checkbox"
+                              checked={slot.notify_mail}
+                              disabled={!canEditContactsFields}
+                              onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, notify_mail: e.target.checked }))}
+                            />
+                            메일수신
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <input
+                            className={contactEditableInputClass}
+                            value={slot.department}
+                            readOnly={!canEditContactsFields}
+                            onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, department: e.target.value }))}
+                            placeholder="부서"
+                          />
+                          <input
+                            className={contactEditableInputClass}
+                            value={slot.position}
+                            readOnly={!canEditContactsFields}
+                            onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, position: e.target.value }))}
+                            placeholder="직책"
+                          />
+                        </div>
+                        <input
+                          className={contactEditableInputClass}
+                          value={slot.memo}
+                          readOnly={!canEditContactsFields}
+                          onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, memo: e.target.value }))}
+                          placeholder="메모"
+                        />
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
+                            onClick={() => void handleSaveCompanyContact(slot.key)}
+                            className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                          >
+                            {savingContactKey === slot.key ? '저장중...' : slot.contactId ? '수정' : '등록'}
+                          </button>
+                          {slot.contactId ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={!canEditContactsFields}
+                                onClick={() => setEditingContactKey(null)}
+                                className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                              >
+                                취소
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canEditContactsFields || deletingContactKey === slot.key || loadingContacts}
+                                onClick={() => void handleDeleteCompanyContact(slot.key)}
+                                className="inline-flex h-8 items-center rounded-lg border border-rose-200 bg-white px-3 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                              >
+                                {deletingContactKey === slot.key ? '처리중...' : '삭제'}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Section>
 
           {supportsCompanyAccount ? (
             <Section
@@ -1238,7 +2025,7 @@ export default function CompanyDetailForm({
                     type="button"
                     onClick={handleToggleCompanyAccountStatus}
                     disabled={savingCompanyAccount}
-                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
                   >
                     {savingCompanyAccount ? '처리 중...' : companyAccount.status === 'active' ? '비활성화' : '활성화'}
                   </button>
@@ -1246,33 +2033,39 @@ export default function CompanyDetailForm({
               }
             >
               {loadingCompanyAccount ? (
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
                   고객사 계정 정보를 불러오는 중...
                 </div>
               ) : companyAccount ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Field label="로그인 아이디">
-                    <input className={`${inputClass} bg-zinc-100`} value={companyAccount.login_id} readOnly />
-                  </Field>
-                  <Field label="상태">
-                    <div className="flex h-10 items-center rounded-lg border border-zinc-300 bg-zinc-100 px-3">
-                      {companyAccount.status === 'active' ? (
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                          활성
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                          비활성
-                        </span>
-                      )}
-                    </div>
-                  </Field>
-                  <Field label="마지막 로그인">
-                    <input className={`${inputClass} bg-zinc-100`} value={toDateTime(companyAccount.last_login_at)} readOnly />
-                  </Field>
-                  <Field label="등록일">
-                    <input className={`${inputClass} bg-zinc-100`} value={toDateTime(companyAccount.created_at)} readOnly />
-                  </Field>
+                <div className="overflow-hidden rounded-lg border border-zinc-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-zinc-50 text-zinc-900">
+                      <tr>
+                        <th className="px-3 py-2 text-center">로그인 아이디</th>
+                        <th className="px-3 py-2 text-center">상태</th>
+                        <th className="px-3 py-2 text-center">마지막 로그인</th>
+                        <th className="px-3 py-2 text-center">등록일</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      <tr>
+                        <td className="px-3 py-2 text-center text-zinc-900">{companyAccount.login_id || '-'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {companyAccount.status === 'active' ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              활성
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                              비활성
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center text-zinc-700">{toDateTime(companyAccount.last_login_at)}</td>
+                        <td className="px-3 py-2 text-center text-zinc-700">{toDateTime(companyAccount.created_at)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
@@ -1298,7 +2091,7 @@ export default function CompanyDetailForm({
                       type="button"
                       onClick={handleCreateCompanyAccount}
                       disabled={savingCompanyAccount}
-                      className="h-10 rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60 md:min-w-[120px]"
+                      className="h-10 rounded-lg bg-neutral-900 px-4 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60 md:min-w-[120px]"
                     >
                       {savingCompanyAccount ? '등록 중...' : '계정 생성'}
                     </button>
@@ -1313,7 +2106,11 @@ export default function CompanyDetailForm({
               title="홈택스 정보"
               action={
                 <div className="flex items-center gap-2">
-                  {hasHometaxRegistered ? (
+                  {!hometaxFetched ? (
+                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
+                      확인 중
+                    </div>
+                  ) : hasHometaxRegistered ? (
                     <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                       등록됨
                     </div>
@@ -1336,7 +2133,7 @@ export default function CompanyDetailForm({
               {hometaxExpanded ? (
                 <div className="space-y-4">
                   {loadingHometax ? (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
                       홈택스 정보를 불러오는 중...
                     </div>
                   ) : null}
@@ -1375,7 +2172,7 @@ export default function CompanyDetailForm({
                           type="button"
                           onClick={handleUpsertHometax}
                           disabled={savingHometax}
-                          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                          className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
                         >
                           {savingHometax ? '저장 중...' : '홈택스 정보 저장'}
                         </button>
@@ -1383,15 +2180,14 @@ export default function CompanyDetailForm({
                     </>
                   ) : null}
                   {!hasHometaxRegistered && !supportsHometaxWrite ? (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
                       홈택스 등록/수정 권한이 없습니다.
                     </div>
                   ) : null}
 
-                  {supportsHometaxReveal ? (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                      <p className="text-xs text-zinc-600">정보 확인 시 본인 계정 비밀번호 재입력이 필요합니다.</p>
-                      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                  {supportsHometaxReveal && hasHometaxRegistered ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
                         <input
                           type="password"
                           className={inputClass}
@@ -1402,7 +2198,7 @@ export default function CompanyDetailForm({
                         <button
                           type="button"
                           onClick={handleRevealHometax}
-                          className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                         >
                           정보 확인
                         </button>
@@ -1424,23 +2220,16 @@ export default function CompanyDetailForm({
                       {revealedCount !== null ? (
                         <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
                       ) : null}
-                      {hometaxCredential?.enc_key_version ? (
-                        <p className="mt-1 text-xs text-zinc-400">암호화 키 버전: {hometaxCredential.enc_key_version}</p>
-                      ) : null}
                     </div>
-                  ) : (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
-                      홈택스 평문 확인 권한이 없습니다.
-                    </div>
-                  )}
+                  ) : null}
 
                   {supportsHometaxLogs ? (
                     <div className="overflow-hidden rounded-lg border border-zinc-200">
-                      <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-600">
+                      <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-900">
                         조회 이력
                       </div>
                       <table className="w-full text-xs">
-                        <thead className="bg-white text-zinc-500">
+                        <thead className="bg-white text-zinc-900">
                           <tr>
                             <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
                             <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
@@ -1474,11 +2263,7 @@ export default function CompanyDetailForm({
                         </tbody>
                       </table>
                     </div>
-                  ) : (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-500">
-                      홈택스 조회 이력 확인 권한이 없습니다.
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
             </Section>
@@ -1500,7 +2285,7 @@ export default function CompanyDetailForm({
                       <FileDropzone
                         onFilesDrop={(files) => applyCustomDocumentFiles(Array.from(files))}
                         onClick={() => customDocFileInputRef.current?.click()}
-                        className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                        className="flex h-full min-h-[92px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-xs transition"
                         idleClassName="border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
                         activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
                         title={
@@ -1554,7 +2339,7 @@ export default function CompanyDetailForm({
                             applyCustomDocumentFiles([])
                             if (customDocFileInputRef.current) customDocFileInputRef.current.value = ''
                           }}
-                          className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100"
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 text-xs font-medium text-rose-700 hover:bg-rose-100"
                         >
                           취소
                         </button>
@@ -1562,7 +2347,7 @@ export default function CompanyDetailForm({
                           type="button"
                           onClick={handleAddCustomDocument}
                           disabled={uploadingCustomDoc || !supportsCustomDocumentWrite}
-                          className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                         >
                           {uploadingCustomDoc ? '등록 중...' : customDocFiles.length > 1 ? '일괄등록' : '등록'}
                         </button>
@@ -1584,8 +2369,8 @@ export default function CompanyDetailForm({
                 ) : null}
 
                 <div className="overflow-hidden rounded-lg border border-zinc-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-zinc-50 text-xs text-zinc-600">
+                  <table className="w-full text-xs">
+                    <thead className="bg-zinc-50 text-xs text-zinc-900">
                       <tr>
                         <th className="px-3 py-2 text-left">문서이름</th>
                         <th className="px-3 py-2 text-center">업로드일자</th>
@@ -1657,13 +2442,29 @@ export default function CompanyDetailForm({
               </div>
             </Section>
           ) : null}
+
+          {showSystemInfo ? (
+            <Section title="시스템 정보">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="활성 상태">
+                  <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
+                </Field>
+                <Field label="등록일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
+                </Field>
+                <Field label="수정일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
+                </Field>
+              </div>
+            </Section>
+          ) : null}
         </div>
-        <div className="w-full xl:col-span-2 xl:max-w-[500px] xl:justify-self-start">
-          <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
-            <div className="px-5 py-5">
+        <div className="w-full xl:col-span-2 xl:max-w-[500px] xl:justify-self-start xl:pl-6">
+          <section className="space-y-3">
+            <div className="border-b border-zinc-200 pb-2">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-zinc-900">문서 목록</p>
+                  <p className="text-xs font-semibold text-zinc-900">문서 목록</p>
                   <button
                     type="button"
                     onClick={() => setDocumentsExpanded((prev) => !prev)}
@@ -1675,8 +2476,11 @@ export default function CompanyDetailForm({
                 <p className="text-xs text-zinc-500">
                   3개 필수 문서 외 다른 문서는 스크롤을 내려서 등록해 주세요.
                 </p>
+              </div>
+            </div>
 
-                {supportsDocumentUpload ? (
+            <div className="space-y-3">
+              {documentsExpanded && supportsDocumentUpload ? (
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)] md:grid-rows-[auto_auto]">
                     <input
                       ref={fileInputRef}
@@ -1689,7 +2493,7 @@ export default function CompanyDetailForm({
                       <FileDropzone
                         onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex h-full min-h-[88px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-sm transition"
+                        className="flex h-full min-h-[88px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-xs transition"
                         idleClassName={
                           selectedDocumentFile
                             ? 'border-emerald-300 bg-emerald-50 text-zinc-600 animate-[pulse_1.8s_ease-in-out_infinite]'
@@ -1717,22 +2521,21 @@ export default function CompanyDetailForm({
                       type="button"
                       disabled={uploadingDocument || !selectedDocumentFile}
                       onClick={handleUploadBusinessLicense}
-                      className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
                     >
                       {uploadingDocument ? '등록 중...' : '등록'}
                     </button>
                   </div>
                 ) : null}
-                {isCreateMode ? (
+              {documentsExpanded && isCreateMode ? (
                   <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
                     회사 등록 후 문서 업로드/미리보기가 가능합니다.
                   </div>
                 ) : null}
 
-                {documentsExpanded ? (
-                  <div className="overflow-hidden rounded-lg border border-zinc-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-zinc-50 text-xs text-zinc-600">
+              <div className="overflow-hidden rounded-lg border border-zinc-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-zinc-50 text-xs text-zinc-900">
                         <tr>
                           <th className="px-3 py-2 text-left">문서명</th>
                           <th className="px-3 py-2 text-center">상태</th>
@@ -1786,9 +2589,8 @@ export default function CompanyDetailForm({
                       </tbody>
                     </table>
                   </div>
-                ) : null}
 
-                {activePreview?.preview_url ? (
+              {activePreview?.preview_url ? (
                   <div className="space-y-2">
                     <div className="aspect-[3/4] min-h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
                       {isImageFile(activePreview.file_name) ? (
@@ -1819,11 +2621,10 @@ export default function CompanyDetailForm({
                     </a>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
+                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-xs text-zinc-500">
                     선택한 문서의 미리보기가 없습니다.
                   </div>
                 )}
-              </div>
             </div>
           </section>
         </div>

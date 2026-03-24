@@ -155,6 +155,60 @@ export interface ClientHometaxCredentialLogListResponse {
   items: ClientHometaxCredentialLogOut[]
 }
 
+export type ClientCompanyContactRole = 'main' | 'backup' | 'etc'
+
+export interface ClientCompanyContactOut {
+  id: number
+  client_id: number
+  company_id: number
+  name: string
+  department?: string | null
+  position?: string | null
+  contact_role: ClientCompanyContactRole
+  priority: number
+  phone?: string | null
+  email?: string | null
+  notify_mail: boolean
+  is_active: boolean
+  deleted_at?: string | null
+  memo?: string | null
+  created_by_type: string
+  created_by_id: number
+  updated_by_type?: string | null
+  updated_by_id?: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientCompanyContactListResponse {
+  total: number
+  items: ClientCompanyContactOut[]
+}
+
+export interface ClientCompanyContactCreateRequest {
+  name: string
+  department?: string
+  position?: string
+  contact_role?: ClientCompanyContactRole
+  priority?: number
+  phone?: string
+  email?: string
+  notify_mail?: boolean
+  memo?: string
+}
+
+export interface ClientCompanyContactUpdateRequest {
+  name?: string
+  department?: string
+  position?: string
+  contact_role?: ClientCompanyContactRole
+  priority?: number
+  phone?: string
+  email?: string
+  notify_mail?: boolean
+  memo?: string
+}
+
 interface FetchCompanyParams {
   page: number
   limit: number
@@ -356,5 +410,43 @@ export async function revealClientHometaxCredentialPassword(
   payload: ClientHometaxCredentialRevealRequest
 ): Promise<ClientHometaxCredentialRevealOut> {
   const res = await clientHttp.post<ClientHometaxCredentialRevealOut>(`${BASE}/${company_id}/hometax-credential/reveal`, payload)
+  return res.data
+}
+
+export async function listClientCompanyContacts(
+  company_id: number,
+  include_inactive = false
+): Promise<ClientCompanyContactListResponse> {
+  const res = await clientHttp.get<ClientCompanyContactListResponse>(`${BASE}/${company_id}/contacts`, {
+    params: { include_inactive },
+  })
+  return res.data
+}
+
+export async function createClientCompanyContact(
+  company_id: number,
+  payload: ClientCompanyContactCreateRequest
+): Promise<ClientCompanyContactOut> {
+  const res = await clientHttp.post<ClientCompanyContactOut>(`${BASE}/${company_id}/contacts`, payload)
+  return res.data
+}
+
+export async function updateClientCompanyContact(
+  company_id: number,
+  contact_id: number,
+  payload: ClientCompanyContactUpdateRequest
+): Promise<ClientCompanyContactOut> {
+  const res = await clientHttp.patch<ClientCompanyContactOut>(
+    `${BASE}/${company_id}/contacts/${contact_id}`,
+    payload
+  )
+  return res.data
+}
+
+export async function deleteClientCompanyContact(
+  company_id: number,
+  contact_id: number
+): Promise<{ message: string }> {
+  const res = await clientHttp.delete<{ message: string }>(`${BASE}/${company_id}/contacts/${contact_id}`)
   return res.data
 }

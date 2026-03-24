@@ -291,7 +291,7 @@ function ChatBubble({
     <div
       onContextMenu={onContextMenu}
       className={`relative rounded-lg border ${
-        isMine ? 'border-sky-600 bg-sky-600 text-white' : 'border-zinc-200 bg-white text-zinc-800'
+        isMine ? 'border-sky-200 bg-sky-100 text-sky-900' : 'border-amber-200 bg-amber-50 text-zinc-800'
       } ${className || ''}`}
     >
       {children}
@@ -307,8 +307,8 @@ function ChatBubble({
         >
           <path
             d="M8 0.7 C4.3 2 2.2 4 0 8.9 L8 7.1 Z"
-            fill={isMine ? '#0284c7' : '#ffffff'}
-            stroke={isMine ? '#0284c7' : '#e4e4e7'}
+            fill={isMine ? '#e0f2fe' : '#fffbeb'}
+            stroke={isMine ? '#bae6fd' : '#fde68a'}
             strokeWidth="1"
             strokeLinejoin="round"
           />
@@ -4225,7 +4225,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                     <ChatBubble
                                       align="left"
                                       tone="other"
-                                      className={`w-full px-2 py-1 transition ${
+                                      className={`w-fit max-w-full px-2 py-1 transition ${
                                         isJumpHighlight
                                           ? 'ring-2 ring-amber-400'
                                           : ''
@@ -4389,7 +4389,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                       if (!mine || message.message_type === 'system' || message.is_deleted) return
                                       openMessageContextMenu(event, message.id)
                                     }}
-                                    className={`w-[68.6667%] px-2 py-1 transition ${
+                                    className={`w-fit max-w-[68.6667%] px-2 py-1 transition ${
                                       isJumpHighlight
                                         ? mine
                                           ? 'ring-2 ring-amber-300'
@@ -4916,7 +4916,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
                                     if (!isMine || message.message_type === 'system' || message.is_deleted) return
                                     openMessageContextMenu(event, message.id)
                                   }}
-                                  className={`w-[68.6667%] px-2 py-1 text-xs ${!isMine && showSenderLabel ? 'ml-[46px]' : ''}`}
+                                  className={`w-fit max-w-[68.6667%] px-2 py-1 text-xs ${!isMine && showSenderLabel ? 'ml-[46px]' : ''}`}
                                 >
                                   {isAttachmentMessage && attachment ? (
                                     <div className="space-y-2">

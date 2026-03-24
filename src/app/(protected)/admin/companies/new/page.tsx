@@ -29,6 +29,7 @@ export default function NewCompanyPage() {
         listPath="/admin/companies"
         createFn={createCompany}
         editable
+        showHometaxLogsSection={false}
         enableCustomDocuments={false}
       />
     </div>

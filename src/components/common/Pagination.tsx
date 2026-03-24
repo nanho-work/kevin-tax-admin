@@ -2,6 +2,7 @@
 'use client'
 
 import UiButton from '@/components/common/UiButton'
+import type { UiButtonProps } from '@/components/common/UiButton'
 import { cn } from '@/lib/cn'
 import { normalizePage, normalizePageSize } from '@/lib/pagination'
 
@@ -13,6 +14,8 @@ interface PaginationProps {
   className?: string
   windowSize?: number
   showFirstLast?: boolean
+  buttonSize?: UiButtonProps['size']
+  buttonClassName?: string
 }
 
 function buildPageNumbers(page: number, totalPages: number, windowSize: number): number[] {
@@ -30,6 +33,8 @@ export default function Pagination({
   className,
   windowSize = 5,
   showFirstLast = true,
+  buttonSize = 'sm',
+  buttonClassName,
 }: PaginationProps) {
   const safeLimit = normalizePageSize(limit, 20, Number.MAX_SAFE_INTEGER)
   const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / safeLimit))
@@ -45,8 +50,9 @@ export default function Pagination({
     <div className={cn('mt-4 flex items-center justify-center gap-1.5 text-sm', className)}>
       {showFirstLast ? (
         <UiButton
-          size="sm"
+          size={buttonSize}
           variant="secondary"
+          className={buttonClassName}
           onClick={() => move(1)}
           disabled={currentPage <= 1}
           aria-label="첫 페이지"
@@ -55,8 +61,9 @@ export default function Pagination({
         </UiButton>
       ) : null}
       <UiButton
-        size="sm"
+        size={buttonSize}
         variant="secondary"
+        className={buttonClassName}
         onClick={() => move(currentPage - 1)}
         disabled={currentPage <= 1}
         aria-label="이전 페이지"
@@ -67,8 +74,9 @@ export default function Pagination({
       {numbers.map((num) => (
         <UiButton
           key={num}
-          size="sm"
+          size={buttonSize}
           variant={num === currentPage ? 'primary' : 'secondary'}
+          className={buttonClassName}
           onClick={() => move(num)}
           aria-current={num === currentPage ? 'page' : undefined}
         >
@@ -77,8 +85,9 @@ export default function Pagination({
       ))}
 
       <UiButton
-        size="sm"
+        size={buttonSize}
         variant="secondary"
+        className={buttonClassName}
         onClick={() => move(currentPage + 1)}
         disabled={currentPage >= totalPages}
         aria-label="다음 페이지"
@@ -87,8 +96,9 @@ export default function Pagination({
       </UiButton>
       {showFirstLast ? (
         <UiButton
-          size="sm"
+          size={buttonSize}
           variant="secondary"
+          className={buttonClassName}
           onClick={() => move(totalPages)}
           disabled={currentPage >= totalPages}
           aria-label="마지막 페이지"

@@ -15,6 +15,10 @@ import {
   fetchClientCompanyDetail,
   getClientCompanyCustomDocumentDownloadUrl,
   getClientCompanyCustomDocumentPreviewUrl,
+  listClientCompanyContacts,
+  createClientCompanyContact,
+  updateClientCompanyContact,
+  deleteClientCompanyContact,
   listClientCompanyCustomDocumentLogs,
   listClientHometaxCredentialLogs,
   listClientCompanyCustomDocuments,
@@ -112,6 +116,10 @@ export default function ClientCompanyDetailPage() {
       getCustomDocumentDownloadUrlFn={getClientCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getClientCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listClientCompanyCustomDocumentLogs}
+      listCompanyContactsFn={listClientCompanyContacts}
+      createCompanyContactFn={createClientCompanyContact}
+      updateCompanyContactFn={updateClientCompanyContact}
+      deleteCompanyContactFn={deleteClientCompanyContact}
       getHometaxCredentialFn={canManageHometax ? getClientHometaxCredential : undefined}
       upsertHometaxCredentialFn={canManageHometax ? upsertClientHometaxCredential : undefined}
       patchHometaxCredentialActiveFn={canManageHometax ? patchClientHometaxCredentialActive : undefined}

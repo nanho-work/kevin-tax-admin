@@ -182,7 +182,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     },
     {
       key: 'staff',
-      label: '직원',
+      label: '인사',
       href: '/client/staff',
       icon: Briefcase,
       active: hasStaffManagementPath,
@@ -942,7 +942,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Building2 className="h-4 w-4" />
-              <span>외부업무(고객사)</span>
+              <span>업무(고객사)</span>
             </span>
           </div>
           <div className="space-y-1 px-2 py-2">
@@ -973,7 +973,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Briefcase className="h-4 w-4" />
-              <span>내부업무</span>
+              <span>인사</span>
             </span>
           </div>
           <div className="space-y-1 px-2 py-2">
@@ -1008,7 +1008,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              <span>외부업무(기장)</span>
+              <span>업무(기장)</span>
             </span>
           </div>
           <div className="space-y-1 px-2 py-2">

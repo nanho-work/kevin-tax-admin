@@ -318,6 +318,7 @@ export default function CompanyList({
                           if (page > 1) params.set('page', String(page))
                           if (keyword.trim()) params.set('keyword', keyword.trim())
                           if (categoryFilter) params.set('category', categoryFilter)
+                          if (c.company_name?.trim()) params.set('company_name', c.company_name.trim())
                           const query = params.toString()
                           const href = query ? `${detailBasePath}/${c.id}?${query}` : `${detailBasePath}/${c.id}`
                           return (

@@ -17,6 +17,10 @@ import {
   getAdminCompanyCustomDocumentDownloadUrl,
   getAdminCompanyCustomDocumentPreviewUrl,
   getAdminHometaxCredential,
+  listAdminCompanyContacts,
+  createAdminCompanyContact,
+  updateAdminCompanyContact,
+  deleteAdminCompanyContact,
   listAdminCompanyCustomDocumentLogs,
   listAdminCompanyCustomDocuments,
   listAdminHometaxCredentialLogs,
@@ -101,6 +105,11 @@ export default function CompanyDetailPage() {
       getCustomDocumentDownloadUrlFn={getAdminCompanyCustomDocumentDownloadUrl}
       getCustomDocumentPreviewUrlFn={getAdminCompanyCustomDocumentPreviewUrl}
       listCustomDocumentLogsFn={listAdminCompanyCustomDocumentLogs}
+      listCompanyContactsFn={listAdminCompanyContacts}
+      createCompanyContactFn={createAdminCompanyContact}
+      updateCompanyContactFn={updateAdminCompanyContact}
+      deleteCompanyContactFn={deleteAdminCompanyContact}
+      showHometaxLogsSection={false}
       getHometaxCredentialFn={getAdminHometaxCredential}
       upsertHometaxCredentialFn={upsertAdminHometaxCredential}
       patchHometaxCredentialActiveFn={patchAdminHometaxCredentialActive}

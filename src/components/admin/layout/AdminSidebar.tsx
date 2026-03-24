@@ -47,7 +47,7 @@ const menuSections: MenuSection[] = [
   { key: 'dashboard', label: '대시보드', href: '/admin/dashboard' },
   {
     key: 'leave',
-    label: '내부업무',
+    label: '인사',
     children: [
       { label: '휴가/근태관리', href: '/admin/staff/attendance' },
       { label: '프로필', href: '/admin/staff/profile' },
@@ -71,8 +71,9 @@ const menuSections: MenuSection[] = [
   },
   {
     key: 'companies',
-    label: '외부업무',
+    label: '업무',
     children: [
+      { label: '업무보드', href: '/admin/workflow/board' },
       { label: '기본관리', href: '/admin/companies' },
       { label: '원천세관리', href: '/admin/company-withholding/business' },
       { label: '고객사 일정', href: '/admin/tax-schedule' },
@@ -89,6 +90,7 @@ function getActiveSection(pathname: string, searchParams: URLSearchParams): stri
   if (pathname.startsWith('/admin/mail')) return 'mail'
   if (pathname.startsWith('/admin/docs')) return 'docs'
   if (pathname.startsWith('/admin/companies')) return 'companies'
+  if (pathname.startsWith('/admin/workflow')) return 'companies'
   if (pathname.startsWith('/admin/company-withholding')) return 'companies'
   if (pathname.startsWith('/admin/tax-schedule')) return 'companies'
   if (pathname.startsWith('/admin/dashboard')) return 'dashboard'
@@ -162,7 +164,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const [folderEditLoading, setFolderEditLoading] = useState(false)
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
-  const shouldHideSecondSidebar = activeRailSection === 'board' || activeRailSection === 'docs'
+  const shouldHideSecondSidebar =
+    activeRailSection === 'dashboard' ||
+    activeRailSection === 'board' ||
+    activeRailSection === 'docs'
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -326,7 +331,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     },
     {
       key: 'leave',
-      label: '내부',
+      label: '인사',
       href: '/admin/staff/attendance',
       icon: Briefcase,
       active: activeSection === 'leave',
@@ -354,7 +359,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     },
     {
       key: 'companies',
-      label: '외부',
+      label: '업무',
       href: '/admin/companies',
       icon: Building2,
       active: activeSection === 'companies',

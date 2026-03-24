@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
@@ -23,6 +23,7 @@ import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 
 const Header = () => {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const { session } = useAdminSessionContext()
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
@@ -49,26 +50,34 @@ const Header = () => {
   const profileInitial = (session?.name || '?').trim().charAt(0) || '?'
 
   const currentLabel = useMemo(() => {
-    if (pathname.startsWith('/admin/companies')) return '외부업무 > 기본관리'
-    if (pathname.startsWith('/admin/company-withholding')) return '외부업무 > 원천세관리'
+    const companyNameFromQuery = searchParams.get('company_name')?.trim()
+    const isCompanyDetailPath = /^\/admin\/companies\/\d+$/.test(pathname)
+    if (isCompanyDetailPath) {
+      return companyNameFromQuery
+        ? `업무 > 기본관리 > ${companyNameFromQuery}`
+        : '업무 > 기본관리 > 상세'
+    }
+    if (pathname.startsWith('/admin/companies')) return '업무 > 기본관리'
+    if (pathname.startsWith('/admin/workflow/board')) return '업무 > 업무보드'
+    if (pathname.startsWith('/admin/company-withholding')) return '업무 > 원천세관리'
     if (pathname.startsWith('/admin/mail/inbox')) return '메일 > 메일함'
     if (pathname.startsWith('/admin/mail/compose')) return '메일 > 메일작성'
     if (pathname.startsWith('/admin/mail/accounts')) return '메일 > 설정'
     if (pathname.startsWith('/admin/mail')) return '메일'
     if (pathname.startsWith('/admin/docs')) return '문서함'
-    if (pathname.startsWith('/admin/tax-schedule')) return '외부업무 > 고객사 일정'
-    if (pathname.startsWith('/admin/staff/my-leave')) return '내부업무 > 휴가/근태관리'
-    if (pathname.startsWith('/admin/staff/documents/new')) return '내부업무 > 전자문서'
-    if (pathname.startsWith('/admin/staff/documents')) return '내부업무 > 전자문서'
-    if (pathname.startsWith('/admin/staff/attendance')) return '내부업무 > 휴가/근태관리'
-    if (pathname.startsWith('/admin/staff/account')) return '내부업무 > 비밀번호 관리'
-    if (pathname.startsWith('/admin/staff')) return '내부업무'
+    if (pathname.startsWith('/admin/tax-schedule')) return '업무 > 고객사 일정'
+    if (pathname.startsWith('/admin/staff/my-leave')) return '인사 > 휴가/근태관리'
+    if (pathname.startsWith('/admin/staff/documents/new')) return '인사 > 전자문서'
+    if (pathname.startsWith('/admin/staff/documents')) return '인사 > 전자문서'
+    if (pathname.startsWith('/admin/staff/attendance')) return '인사 > 휴가/근태관리'
+    if (pathname.startsWith('/admin/staff/account')) return '인사 > 비밀번호 관리'
+    if (pathname.startsWith('/admin/staff')) return '인사'
     if (pathname.startsWith('/admin/blog')) return '블로그'
     if (pathname.startsWith('/admin/gpt')) return 'GPT'
     if (pathname.startsWith('/admin/setting')) return '설정'
     if (pathname.startsWith('/admin/dashboard')) return '대시보드'
     return '어드민'
-  }, [pathname])
+  }, [pathname, searchParams])
 
   const backPath = useMemo(() => {
     if (pathname.startsWith('/admin/companies/') && pathname !== '/admin/companies/new') return '/admin/companies'
