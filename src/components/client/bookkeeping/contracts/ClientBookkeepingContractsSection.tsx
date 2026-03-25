@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import useDebouncedSearch from '@/hooks/useDebouncedSearch'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   applyContractBulkUpload,
@@ -28,6 +29,8 @@ import TemplateDownloadButton from '@/components/client/templates/TemplateDownlo
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const headerSearchClass =
+  'h-9 w-full md:w-[340px] rounded-md border border-zinc-300 bg-white px-2.5 text-[13px] text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
 type ContractModalState = {
@@ -44,6 +47,9 @@ type ContractFormState = {
   end_date: string
   start_month: string
   end_month: string
+  report_cycle: '' | 'monthly' | 'semiannual'
+  payroll_day: string
+  payroll_basis: '' | 'current_month' | 'previous_month'
   monthly_fee_supply: string
   vat_included: boolean
   change_reason: string
@@ -88,6 +94,18 @@ function formatCurrency(value?: number | null) {
   return value.toLocaleString('ko-KR')
 }
 
+function formatReportCycle(value?: string | null) {
+  if (value === 'monthly') return '매월'
+  if (value === 'semiannual') return '반기'
+  return '-'
+}
+
+function formatPayrollBasis(value?: string | null) {
+  if (value === 'current_month') return '당월'
+  if (value === 'previous_month') return '전월'
+  return '-'
+}
+
 function formatContractPeriod(row: ClientBookkeepingContractOut) {
   if (row.start_date || row.end_date) {
     return `${row.start_date || '-'} ~ ${row.end_date || '진행중'}`
@@ -96,6 +114,18 @@ function formatContractPeriod(row: ClientBookkeepingContractOut) {
     return `${row.start_month || '-'} ~ ${row.end_month || '진행중'}`
   }
   return '-'
+}
+
+function isCurrentContract(row: ClientBookkeepingContractOut) {
+  if (row.start_date || row.end_date) return row.end_date == null
+  if (row.start_month || row.end_month) return row.end_month == null
+  return false
+}
+
+function isExpiredContract(row: ClientBookkeepingContractOut) {
+  if (row.start_date || row.end_date) return row.end_date != null
+  if (row.start_month || row.end_month) return row.end_month != null
+  return false
 }
 
 function defaultFormState(): ContractFormState {
@@ -107,6 +137,9 @@ function defaultFormState(): ContractFormState {
     end_date: '',
     start_month: '',
     end_month: '',
+    report_cycle: '',
+    payroll_day: '',
+    payroll_basis: '',
     monthly_fee_supply: '',
     vat_included: false,
     change_reason: '',
@@ -126,6 +159,9 @@ function mapContractToForm(target: ClientBookkeepingContractOut): ContractFormSt
     end_date: target.end_date ? target.end_date.replace(/-/g, '.') : '',
     start_month: derivedStartMonth,
     end_month: derivedEndMonth,
+    report_cycle: target.report_cycle || '',
+    payroll_day: target.payroll_day != null ? String(target.payroll_day) : '',
+    payroll_basis: target.payroll_basis || '',
     monthly_fee_supply: target.monthly_fee_supply != null ? String(target.monthly_fee_supply) : '',
     vat_included: Boolean(target.vat_included),
     change_reason: target.change_reason || '',
@@ -136,6 +172,7 @@ function mapContractToForm(target: ClientBookkeepingContractOut): ContractFormSt
 
 export default function ClientBookkeepingContractsSection() {
   const bulkFileInputRef = useRef<HTMLInputElement | null>(null)
+  const memoTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [rows, setRows] = useState<ClientBookkeepingContractOut[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -155,19 +192,32 @@ export default function ClientBookkeepingContractsSection() {
   const [isCompanyOptionOpen, setIsCompanyOptionOpen] = useState(false)
 
   const [memoPreview, setMemoPreview] = useState<string | null>(null)
+  const [memoTooltipRowId, setMemoTooltipRowId] = useState<number | null>(null)
+  const [openActionRowId, setOpenActionRowId] = useState<number | null>(null)
+  const [actionMenuPos, setActionMenuPos] = useState<{ top: number; left: number; openUp: boolean } | null>(null)
   const [generatingId, setGeneratingId] = useState<number | null>(null)
   const [generateResultMap, setGenerateResultMap] = useState<Record<number, ClientBookkeepingGenerateBillingsResponse>>({})
   const [modal, setModal] = useState<ContractModalState>({ open: false, mode: 'create' })
   const [form, setForm] = useState<ContractFormState>(defaultFormState())
 
   const isActiveFilter = useMemo(() => (includeInactive ? undefined : true), [includeInactive])
+  const latestQRef = useRef(q)
+  const latestActiveFilterRef = useRef<boolean | undefined>(isActiveFilter)
 
-  const loadContracts = async () => {
+  useEffect(() => {
+    latestQRef.current = q
+  }, [q])
+
+  useEffect(() => {
+    latestActiveFilterRef.current = isActiveFilter
+  }, [isActiveFilter])
+
+  const loadContracts = useCallback(async (keyword: string = latestQRef.current, activeFilter: boolean | undefined = latestActiveFilterRef.current) => {
     try {
       setLoading(true)
       const result = await listContracts({
-        is_active: isActiveFilter,
-        q: q.trim() || undefined,
+        is_active: activeFilter,
+        q: keyword.trim() || undefined,
       })
       setRows(result.items || [])
     } catch (error) {
@@ -176,7 +226,7 @@ export default function ClientBookkeepingContractsSection() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const loadAllCompanies = async () => {
     try {
@@ -218,8 +268,20 @@ export default function ClientBookkeepingContractsSection() {
     }
   }
 
+  const runSearch = useCallback(() => {
+    void loadContracts(latestQRef.current, latestActiveFilterRef.current)
+  }, [loadContracts])
+
+  const { runNow: runSearchNow } = useDebouncedSearch({
+    value: q,
+    onSearch: runSearch,
+    delay: 300,
+    minLength: 1,
+    searchOnEmpty: true,
+  })
+
   useEffect(() => {
-    loadContracts()
+    runSearch()
   }, [isActiveFilter])
 
   useEffect(() => {
@@ -233,6 +295,54 @@ export default function ClientBookkeepingContractsSection() {
     }, 250)
     return () => clearTimeout(timer)
   }, [companyQuery, modal.open])
+
+  useEffect(() => {
+    return () => {
+      if (memoTooltipTimerRef.current) {
+        clearTimeout(memoTooltipTimerRef.current)
+        memoTooltipTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionRowId(null)
+        setActionMenuPos(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    if (openActionRowId == null) return
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-contract-action-menu="true"]')) return
+      if (target.closest('[data-contract-action-btn="true"]')) return
+      setOpenActionRowId(null)
+      setActionMenuPos(null)
+    }
+    window.addEventListener('mousedown', onMouseDown)
+    return () => window.removeEventListener('mousedown', onMouseDown)
+  }, [openActionRowId])
+
+  useEffect(() => {
+    if (openActionRowId == null) return
+    const closeMenu = () => {
+      setOpenActionRowId(null)
+      setActionMenuPos(null)
+    }
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('resize', closeMenu)
+    return () => {
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('resize', closeMenu)
+    }
+  }, [openActionRowId])
 
   const openCreate = () => {
     setModal({ open: true, mode: 'create' })
@@ -259,6 +369,43 @@ export default function ClientBookkeepingContractsSection() {
     setIsCompanyOptionOpen(false)
   }
 
+  const handleMemoMouseEnter = (rowId: number) => {
+    if (memoTooltipTimerRef.current) {
+      clearTimeout(memoTooltipTimerRef.current)
+      memoTooltipTimerRef.current = null
+    }
+    memoTooltipTimerRef.current = setTimeout(() => {
+      setMemoTooltipRowId(rowId)
+      memoTooltipTimerRef.current = null
+    }, 500)
+  }
+
+  const handleMemoMouseLeave = () => {
+    if (memoTooltipTimerRef.current) {
+      clearTimeout(memoTooltipTimerRef.current)
+      memoTooltipTimerRef.current = null
+    }
+    setMemoTooltipRowId(null)
+  }
+
+  const toggleActionMenu = (rowId: number, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (openActionRowId === rowId) {
+      setOpenActionRowId(null)
+      setActionMenuPos(null)
+      return
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const estimatedMenuHeight = 112
+    const openUp = window.innerHeight - rect.bottom < estimatedMenuHeight
+    setOpenActionRowId(rowId)
+    setActionMenuPos({
+      top: openUp ? rect.top - 4 : rect.bottom + 4,
+      left: rect.right,
+      openUp,
+    })
+  }
+
   const selectCompany = (company: CompanyTaxDetail) => {
     setForm((prev) => ({
       ...prev,
@@ -276,6 +423,7 @@ export default function ClientBookkeepingContractsSection() {
     const endMonth = form.indefinite ? undefined : normalizeMonth(form.end_month)
     const monthlyFeeSupply =
       form.monthly_fee_supply.trim() === '' ? undefined : Number(form.monthly_fee_supply.replace(/,/g, ''))
+    const payrollDay = form.payroll_day.trim() === '' ? undefined : Number(form.payroll_day.trim())
 
     if (!form.company_id) {
       toast.error('고객사를 선택해 주세요.')
@@ -309,6 +457,10 @@ export default function ClientBookkeepingContractsSection() {
       toast.error('월 기장료(공급가)는 0 이상의 숫자여야 합니다.')
       return
     }
+    if (payrollDay != null && (!Number.isInteger(payrollDay) || payrollDay < 1 || payrollDay > 31)) {
+      toast.error('급여일은 1~31 범위의 숫자만 입력할 수 있습니다.')
+      return
+    }
 
     const changeReason = modal.mode === 'edit' ? form.change_reason.trim() || undefined : undefined
     const payload: ClientBookkeepingContractCreateRequest = {
@@ -317,6 +469,9 @@ export default function ClientBookkeepingContractsSection() {
       end_date: endDate,
       start_month: startMonth,
       end_month: endMonth,
+      report_cycle: form.report_cycle || undefined,
+      payroll_day: payrollDay,
+      payroll_basis: form.payroll_basis || undefined,
       monthly_fee_supply: monthlyFeeSupply,
       vat_included: form.vat_included,
       change_reason: changeReason,
@@ -427,22 +582,27 @@ export default function ClientBookkeepingContractsSection() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto_auto]">
+      <div className="py-1">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <UiButton
               type="button"
               onClick={openCreate}
               variant="primary"
-              size="lg"
+              size="md"
+              className="text-[13px]"
             >
               고객사 추가
             </UiButton>
-            <TemplateDownloadButton code="BOOKKEEPING_CONTRACT_BULK" label="고객사 계약 일괄등록 양식" />
+            <TemplateDownloadButton
+              code="BOOKKEEPING_CONTRACT_BULK"
+              label="일괄등록 양식 다운"
+              className="h-9 rounded-md border border-zinc-300 bg-white px-3 text-[13px] text-zinc-700 hover:bg-zinc-50"
+            />
             <FileDropzone
               onFilesDrop={handleBulkDrop}
               onClick={() => bulkFileInputRef.current?.click()}
-              className="h-10"
+              className="h-9"
               idleClassName="rounded-md border border-zinc-300 bg-white"
               activeClassName="rounded-md border border-sky-300 bg-sky-50"
               disabled={bulkPreviewLoading || bulkApplyLoading}
@@ -451,8 +611,8 @@ export default function ClientBookkeepingContractsSection() {
                 type="button"
                 disabled={bulkPreviewLoading || bulkApplyLoading}
                 variant="secondary"
-                size="lg"
-                className="h-full border-0"
+                size="md"
+                className="h-full border-0 text-[13px]"
               >
                 {bulkPreviewLoading ? '검증 중...' : '엑셀파일 일괄등록'}
               </UiButton>
@@ -467,29 +627,23 @@ export default function ClientBookkeepingContractsSection() {
               }}
             />
           </div>
-          <UiSearchInput
-            wrapperClassName={inputClass}
-            placeholder="회사명/사업자번호 검색"
-            value={q}
-            onChange={setQ}
-            onSubmit={loadContracts}
-          />
-          <label className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-300 px-3 text-sm text-zinc-700">
-            <input
-              type="checkbox"
-              checked={!includeInactive}
-              onChange={(e) => setIncludeInactive(!e.target.checked)}
+          <div className="flex items-center justify-end gap-2">
+            <UiSearchInput
+              wrapperClassName={headerSearchClass}
+              placeholder="회사명/사업자번호 검색"
+              value={q}
+              onChange={setQ}
+              onSubmit={runSearchNow}
             />
-            활성만
-          </label>
-          <UiButton
-            type="button"
-            onClick={loadContracts}
-            variant="secondary"
-            size="lg"
-          >
-            조회
-          </UiButton>
+            <label className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-300 px-3 text-[13px] text-zinc-700">
+              <input
+                type="checkbox"
+                checked={!includeInactive}
+                onChange={(e) => setIncludeInactive(!e.target.checked)}
+              />
+              활성만
+            </label>
+          </div>
         </div>
       </div>
 
@@ -530,6 +684,9 @@ export default function ClientBookkeepingContractsSection() {
                   <th className="px-2 py-2 text-center">사업자번호</th>
                   <th className="px-2 py-2 text-center">시작일</th>
                   <th className="px-2 py-2 text-center">종료일</th>
+                  <th className="px-2 py-2 text-center">신고주기</th>
+                  <th className="px-2 py-2 text-center">급여일</th>
+                  <th className="px-2 py-2 text-center">급여귀속기준</th>
                   <th className="px-2 py-2 text-right">월기장료</th>
                   <th className="px-2 py-2 text-center">VAT포함</th>
                   <th className="px-2 py-2 text-center">상태</th>
@@ -546,6 +703,9 @@ export default function ClientBookkeepingContractsSection() {
                       <td className="px-2 py-2 text-center">{row.registration_number || '-'}</td>
                       <td className="px-2 py-2 text-center">{row.start_date || '-'}</td>
                       <td className="px-2 py-2 text-center">{row.end_date || '-'}</td>
+                      <td className="px-2 py-2 text-center">{formatReportCycle(row.report_cycle)}</td>
+                      <td className="px-2 py-2 text-center">{row.payroll_day ?? '-'}</td>
+                      <td className="px-2 py-2 text-center">{formatPayrollBasis(row.payroll_basis)}</td>
                       <td className="px-2 py-2 text-right">{typeof row.monthly_fee_supply === 'number' ? row.monthly_fee_supply.toLocaleString('ko-KR') : '-'}</td>
                       <td className="px-2 py-2 text-center">{typeof row.vat_included === 'boolean' ? (row.vat_included ? 'Y' : 'N') : '-'}</td>
                       <td className="px-2 py-2 text-center">
@@ -612,19 +772,22 @@ export default function ClientBookkeepingContractsSection() {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-        <table className="min-w-[1320px] w-full text-sm">
-          <thead className="bg-zinc-50 text-xs text-zinc-600">
+      <div className="relative overflow-x-auto overflow-y-visible">
+        <table className="min-w-[1320px] w-full border-collapse text-[13px]">
+          <thead className="bg-zinc-50 text-[11px] text-zinc-600">
             <tr>
               <th className="px-3 py-3 text-center">회사명</th>
               <th className="px-3 py-3 text-center">사업자번호</th>
               <th className="px-3 py-3 text-center">버전</th>
               <th className="px-3 py-3 text-center">카테고리</th>
+              <th className="px-3 py-3 text-center">신고주기</th>
+              <th className="px-3 py-3 text-center">급여일</th>
+              <th className="px-3 py-3 text-center">급여귀속기준</th>
               <th className="px-3 py-3 text-right">월 기장료(공급가)</th>
               <th className="px-3 py-3 text-center">VAT 포함</th>
               <th className="px-3 py-3 text-center">계약기간</th>
               <th className="px-3 py-3 text-center">변경 사유</th>
-              <th className="px-3 py-3 text-center">고정 메모</th>
+              <th className="w-[120px] px-3 py-3 text-center">고정 메모</th>
               <th className="px-3 py-3 text-center">상태</th>
               <th className="px-3 py-3 text-center">액션</th>
             </tr>
@@ -632,13 +795,13 @@ export default function ClientBookkeepingContractsSection() {
           <tbody className="divide-y divide-zinc-200">
             {loading ? (
               <tr>
-                <td colSpan={11} className="px-3 py-10 text-center text-zinc-500">
+                <td colSpan={14} className="px-3 py-10 text-center text-zinc-500">
                   조회 중...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-3 py-10 text-center text-zinc-500">
+                <td colSpan={14} className="px-3 py-10 text-center text-zinc-500">
                   고객사 계약이 없습니다.
                 </td>
               </tr>
@@ -651,59 +814,59 @@ export default function ClientBookkeepingContractsSection() {
                     <td className="px-3 py-3 text-center">{row.registration_number || '-'}</td>
                     <td className="px-3 py-3 text-center">v{row.version_no}</td>
                     <td className="px-3 py-3 text-center">{company?.category || '-'}</td>
+                    <td className="px-3 py-3 text-center">{formatReportCycle(row.report_cycle)}</td>
+                    <td className="px-3 py-3 text-center">{row.payroll_day ?? '-'}</td>
+                    <td className="px-3 py-3 text-center">{formatPayrollBasis(row.payroll_basis)}</td>
                     <td className="px-3 py-3 text-right">{formatCurrency(row.monthly_fee_supply)}</td>
                     <td className="px-3 py-3 text-center">{row.vat_included ? '포함' : '별도'}</td>
                     <td className="px-3 py-3 text-center">
                       {formatContractPeriod(row)}
-                      {(row.start_date || row.end_date ? row.end_date == null : row.end_month == null) ? (
+                      {isCurrentContract(row) ? (
                         <span className="ml-2 inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
                           현재 계약
                         </span>
                       ) : null}
+                      {isExpiredContract(row) ? (
+                        <span className="ml-2 inline-flex rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] text-rose-700">
+                          계약 만료
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3 text-center">{row.change_reason || '-'}</td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="w-[120px] px-3 py-3 text-center">
                       {row.memo ? (
-                        <button
-                          type="button"
-                          title={row.memo}
-                          onClick={() => setMemoPreview(row.memo || '')}
-                          className="inline-block max-w-[240px] truncate text-center text-zinc-700 hover:underline"
-                        >
-                          {row.memo}
-                        </button>
+                        <div className="relative inline-block max-w-[120px]">
+                          <button
+                            type="button"
+                            onClick={() => setMemoPreview(row.memo || '')}
+                            onMouseEnter={() => handleMemoMouseEnter(row.id)}
+                            onMouseLeave={handleMemoMouseLeave}
+                            className="inline-block max-w-[120px] truncate text-center text-zinc-700 hover:underline"
+                          >
+                            {row.memo}
+                          </button>
+                          {memoTooltipRowId === row.id ? (
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 w-max max-w-[320px] -translate-x-1/2 rounded border border-zinc-200 bg-zinc-900 px-2 py-1 text-left text-[11px] leading-relaxed text-white shadow-lg">
+                              <span className="whitespace-pre-wrap break-words">{row.memo}</span>
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
                         '-'
                       )}
                     </td>
                     <td className="px-3 py-3 text-center">{row.is_active ? '활성' : '비활성'}</td>
                     <td className="px-3 py-3 text-center">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="relative inline-block text-left">
                         <UiButton
                           type="button"
-                          disabled={generatingId === row.id}
-                          onClick={() => handleGenerateBillings(row)}
+                          data-contract-action-btn="true"
+                          onClick={(event) => toggleActionMenu(row.id, event)}
                           variant="secondary"
                           size="sm"
-                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                          className="min-w-[32px] px-2"
                         >
-                          {generatingId === row.id ? '생성 중...' : '자동생성'}
-                        </UiButton>
-                        <UiButton
-                          type="button"
-                          onClick={() => openEdit(row)}
-                          variant="secondary"
-                          size="sm"
-                        >
-                          수정
-                        </UiButton>
-                        <UiButton
-                          type="button"
-                          onClick={() => handleToggleActive(row)}
-                          variant="secondary"
-                          size="sm"
-                        >
-                          {row.is_active ? '비활성' : '활성'}
+                          ...
                         </UiButton>
                       </div>
                       {generateResultMap[row.id] ? (
@@ -875,6 +1038,47 @@ export default function ClientBookkeepingContractsSection() {
                   }))
                 }
               />
+              <select
+                className={inputClass}
+                value={form.report_cycle}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    report_cycle: e.target.value as ContractFormState['report_cycle'],
+                  }))
+                }
+              >
+                <option value="">신고주기 선택</option>
+                <option value="monthly">매월</option>
+                <option value="semiannual">반기</option>
+              </select>
+              <input
+                className={inputClass}
+                inputMode="numeric"
+                maxLength={2}
+                placeholder="급여일(1~31)"
+                value={form.payroll_day}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    payroll_day: e.target.value.replace(/[^\d]/g, ''),
+                  }))
+                }
+              />
+              <select
+                className={inputClass}
+                value={form.payroll_basis}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    payroll_basis: e.target.value as ContractFormState['payroll_basis'],
+                  }))
+                }
+              >
+                <option value="">급여귀속기준 선택</option>
+                <option value="current_month">당월</option>
+                <option value="previous_month">전월</option>
+              </select>
               <label className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-300 px-3 text-sm text-zinc-700">
                 <input
                   type="checkbox"
@@ -949,6 +1153,55 @@ export default function ClientBookkeepingContractsSection() {
             </div>
             <p className="mt-3 whitespace-pre-wrap break-words text-sm text-zinc-700">{memoPreview}</p>
           </div>
+        </div>
+      ) : null}
+      {openActionRowId != null && actionMenuPos != null ? (
+        <div
+          data-contract-action-menu="true"
+          className="fixed z-[120] w-28 rounded-md border border-zinc-200 bg-white py-1 text-xs shadow-lg"
+          style={{
+            top: actionMenuPos.top,
+            left: actionMenuPos.left,
+            transform: actionMenuPos.openUp ? 'translate(-100%, -100%)' : 'translate(-100%, 0)',
+          }}
+        >
+          <button
+            type="button"
+            disabled={generatingId === openActionRowId}
+            onClick={() => {
+              const target = rows.find((item) => item.id === openActionRowId)
+              setOpenActionRowId(null)
+              setActionMenuPos(null)
+              if (target) void handleGenerateBillings(target)
+            }}
+            className="block w-full px-3 py-1.5 text-left text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {generatingId === openActionRowId ? '생성 중...' : '자동생성'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const target = rows.find((item) => item.id === openActionRowId)
+              setOpenActionRowId(null)
+              setActionMenuPos(null)
+              if (target) openEdit(target)
+            }}
+            className="block w-full px-3 py-1.5 text-left text-zinc-700 hover:bg-zinc-100"
+          >
+            수정
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const target = rows.find((item) => item.id === openActionRowId)
+              setOpenActionRowId(null)
+              setActionMenuPos(null)
+              if (target) void handleToggleActive(target)
+            }}
+            className="block w-full px-3 py-1.5 text-left text-zinc-700 hover:bg-zinc-100"
+          >
+            {rows.find((item) => item.id === openActionRowId)?.is_active ? '비활성' : '활성'}
+          </button>
         </div>
       ) : null}
     </section>

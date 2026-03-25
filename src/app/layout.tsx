@@ -1,6 +1,7 @@
 import '@/styles/globals.css'
 import type { Metadata } from 'next'
 import { Toaster } from 'react-hot-toast'
+import { ConfirmDialogProvider } from '@/contexts/ConfirmDialogContext'
 
 
 
@@ -20,13 +21,15 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body>
-        {children}
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: { marginTop: '64px' },
-          }}
-        />
+        <ConfirmDialogProvider>
+          {children}
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: { marginTop: '64px' },
+            }}
+          />
+        </ConfirmDialogProvider>
       </body>
     </html>
   )

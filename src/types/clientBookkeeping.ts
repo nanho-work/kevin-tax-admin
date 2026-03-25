@@ -6,12 +6,18 @@ export type ClientBookkeepingBillingStatus =
   | 'unpaid'
   | 'canceled'
 
+export type ClientBookkeepingReportCycle = 'monthly' | 'semiannual'
+export type ClientBookkeepingPayrollBasis = 'current_month' | 'previous_month'
+
 export interface ClientBookkeepingContractCreateRequest {
   company_id: number
   start_date?: string | null
   end_date?: string | null
   start_month?: string | null
   end_month?: string | null
+  report_cycle?: ClientBookkeepingReportCycle | null
+  payroll_day?: number | null
+  payroll_basis?: ClientBookkeepingPayrollBasis | null
   monthly_fee_supply?: number | null
   vat_included?: boolean
   is_active?: boolean
@@ -25,6 +31,9 @@ export interface ClientBookkeepingContractUpdateRequest {
   end_date?: string | null
   start_month?: string | null
   end_month?: string | null
+  report_cycle?: ClientBookkeepingReportCycle | null
+  payroll_day?: number | null
+  payroll_basis?: ClientBookkeepingPayrollBasis | null
   monthly_fee_supply?: number | null
   vat_included?: boolean | null
   is_active?: boolean | null
@@ -42,6 +51,9 @@ export interface ClientBookkeepingContractOut {
   end_date?: string | null
   start_month?: string | null
   end_month?: string | null
+  report_cycle?: ClientBookkeepingReportCycle | null
+  payroll_day?: number | null
+  payroll_basis?: ClientBookkeepingPayrollBasis | null
   monthly_fee_supply?: number | null
   vat_included: boolean
   is_active: boolean
@@ -395,6 +407,9 @@ export interface ClientBookkeepingContractBulkRowResult {
   registration_number?: string | null
   start_date?: string | null
   end_date?: string | null
+  report_cycle?: ClientBookkeepingReportCycle | null
+  payroll_day?: number | null
+  payroll_basis?: ClientBookkeepingPayrollBasis | null
   monthly_fee_supply?: number | null
   vat_included?: boolean | null
   status: string
