@@ -26,6 +26,7 @@ import {
   listTaskTemplates,
   patchTaskBoardExclude,
   patchTaskBoardExcludeByMonth,
+  patchTaskBoardReportCycle,
   updateTaskBoardItem,
   updateTaskTemplate,
   uploadTaskItemFile,
@@ -196,6 +197,8 @@ export default function WorkflowBoardPage() {
   const [isUpdatingCatalog, setIsUpdatingCatalog] = useState(false)
   const [isSavingChecklist, setIsSavingChecklist] = useState(false)
   const [editModeNotice, setEditModeNotice] = useState('')
+  const [editingReportCycleCompanyId, setEditingReportCycleCompanyId] = useState<number | null>(null)
+  const [updatingReportCycleCompanyId, setUpdatingReportCycleCompanyId] = useState<number | null>(null)
   const editNoticeTimerRef = useRef<number | null>(null)
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
@@ -1561,6 +1564,50 @@ export default function WorkflowBoardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isEditMode) {
+      setEditingReportCycleCompanyId(null)
+    }
+  }, [isEditMode])
+
+  const handleChangeReportCycle = async (
+    row: TaskBoardListItem,
+    nextReportCycle: 'monthly' | 'semiannual'
+  ) => {
+    if (!isEditMode) return
+    if (row.is_excluded) return
+    if (updatingReportCycleCompanyId != null) return
+    if ((row.report_cycle || null) === nextReportCycle) {
+      setEditingReportCycleCompanyId(null)
+      return
+    }
+    try {
+      setUpdatingReportCycleCompanyId(row.company_id)
+      const res = await patchTaskBoardReportCycle(scope, row.company_id, {
+        attribution_month: attributionMonth,
+        report_cycle: nextReportCycle,
+      })
+      setListRowsApi((prev) =>
+        prev.map((item) =>
+          item.company_id === row.company_id
+            ? {
+                ...item,
+                report_cycle: res.report_cycle,
+              }
+            : item
+        )
+      )
+      if (res.split_applied) {
+        showEditModeNotice(`${attributionMonth}부터 신고주기가 적용되었습니다.`)
+      }
+    } catch (error) {
+      toast.error(getTaskBoardErrorMessage(error))
+    } finally {
+      setEditingReportCycleCompanyId(null)
+      setUpdatingReportCycleCompanyId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {selectedCompanyId ? (
@@ -2111,13 +2158,50 @@ export default function WorkflowBoardPage() {
                         </button>
                       </td>
                       <td className="px-1 py-1.5 text-center" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
-                        <span
-                          className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${getReportCycleClass(
-                            row.report_cycle
-                          )}`}
-                        >
-                          {mapReportCycleLabel(row.report_cycle)}
-                        </span>
+                        {isEditMode ? (
+                          <div className="relative inline-flex">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingReportCycleCompanyId((prev) => (prev === row.company_id ? null : row.company_id))
+                              }
+                              disabled={row.is_excluded || updatingReportCycleCompanyId === row.company_id}
+                              className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                row.is_excluded ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400' : getReportCycleClass(row.report_cycle)
+                              }`}
+                              title={row.is_excluded ? '제외 업체는 수정할 수 없습니다.' : '신고주기 변경'}
+                            >
+                              {mapReportCycleLabel(row.report_cycle)}
+                              {!row.is_excluded ? <ChevronDown className="h-3 w-3" aria-hidden="true" /> : null}
+                            </button>
+                            {editingReportCycleCompanyId === row.company_id && !row.is_excluded ? (
+                              <div className="absolute right-0 top-full z-20 mt-1 w-20 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg">
+                                <button
+                                  type="button"
+                                  className="block w-full px-2 py-1.5 text-left text-[11px] text-zinc-700 transition hover:bg-zinc-50"
+                                  onClick={() => void handleChangeReportCycle(row, 'monthly')}
+                                >
+                                  매월
+                                </button>
+                                <button
+                                  type="button"
+                                  className="block w-full border-t border-zinc-100 px-2 py-1.5 text-left text-[11px] text-zinc-700 transition hover:bg-zinc-50"
+                                  onClick={() => void handleChangeReportCycle(row, 'semiannual')}
+                                >
+                                  반기
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span
+                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${getReportCycleClass(
+                              row.report_cycle
+                            )}`}
+                          >
+                            {mapReportCycleLabel(row.report_cycle)}
+                          </span>
+                        )}
                       </td>
                       <td
                         className="px-1 py-1.5 text-center text-zinc-700"
@@ -2235,7 +2319,17 @@ export default function WorkflowBoardPage() {
                                     <span className="text-zinc-400">-</span>
                                   ) : (
                                     <span className="inline-flex items-center justify-center text-[11px] text-zinc-700">
-                                      {checked && completedAt ? formatKSTDate(completedAt) : '-'}
+                                      {checked ? (
+                                        completedAt ? (
+                                          formatKSTDate(completedAt)
+                                        ) : (
+                                          <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                            미완료
+                                          </span>
+                                        )
+                                      ) : (
+                                        '-'
+                                      )}
                                     </span>
                                   )}
                                 </td>

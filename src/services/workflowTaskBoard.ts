@@ -164,6 +164,82 @@ export interface TaskBoardNoteOut {
   note: string | null
 }
 
+export interface TaskBoardReportCyclePatchRequest {
+  attribution_month: string
+  report_cycle: 'monthly' | 'semiannual'
+}
+
+export interface TaskBoardReportCyclePatchResponse {
+  company_id: number
+  attribution_month: string
+  previous_report_cycle?: 'monthly' | 'semiannual' | null
+  report_cycle: 'monthly' | 'semiannual'
+  source_contract_id?: number | null
+  contract_id?: number | null
+  split_applied?: boolean
+}
+
+export interface TaskBoardFilesListParams {
+  year?: number
+  month?: number
+  task_name?: string
+  q?: string
+  page?: number
+  size?: number
+}
+
+export interface TaskBoardFileItem {
+  company_id?: number
+  company_name?: string | null
+  board_id?: number
+  item_id?: number
+  task_name?: string | null
+  item_status?: TaskItemStatus | null
+  template_kind_snapshot?: TaskTemplateKind | null
+  execution_mode_snapshot?: TaskExecutionMode | null
+  attribution_month?: string | null
+  report_month?: string | null
+  docs_entry_id?: number | null
+  document_id?: number | null
+  title?: string | null
+  file_name?: string | null
+  content_type?: string | null
+  size_bytes?: number | null
+  uploaded_at?: string | null
+  uploaded_by_type?: string | null
+  uploaded_by_id?: number | null
+  uploader_name?: string | null
+}
+
+export interface TaskBoardFilesListResponse {
+  total: number
+  page: number
+  size: number
+  items: TaskBoardFileItem[]
+}
+
+export interface TaskBoardFilesSummaryResponse {
+  total_files?: number
+  total_size_bytes?: number
+  companies_count?: number
+  boards_count?: number
+  [key: string]: string | number | boolean | null | undefined
+}
+
+export interface TaskBoardFilePreviewUrlResponse {
+  entry_id: number
+  file_name: string
+  preview_url: string
+  expires_in: number
+}
+
+export interface TaskBoardFileDownloadUrlResponse {
+  entry_id: number
+  file_name: string
+  download_url: string
+  expires_in: number
+}
+
 export interface TaskTemplateItem {
   id: number
   client_id: number
@@ -556,5 +632,120 @@ export async function patchTaskBoardNote(
   const http = getHttp(scope)
   const base = getBase(scope)
   const res = await http.patch<TaskBoardNoteOut>(`${base}/${companyId}/task-boards/note`, payload)
+  return res.data
+}
+
+export async function patchTaskBoardReportCycle(
+  scope: TaskBoardScope,
+  companyId: number,
+  payload: TaskBoardReportCyclePatchRequest
+): Promise<TaskBoardReportCyclePatchResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.patch<TaskBoardReportCyclePatchResponse>(
+    `${base}/${companyId}/task-boards/report-cycle`,
+    payload
+  )
+  return res.data
+}
+
+export async function listTaskBoardFiles(
+  scope: TaskBoardScope,
+  companyId: number,
+  boardId: number,
+  params?: Omit<TaskBoardFilesListParams, 'year' | 'month'>
+): Promise<TaskBoardFilesListResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.get<TaskBoardFilesListResponse>(`${base}/${companyId}/task-boards/${boardId}/files`, {
+    params: {
+      task_name: params?.task_name,
+      q: params?.q,
+      page: params?.page,
+      size: params?.size,
+    },
+  })
+  return res.data
+}
+
+export async function listCompanyTaskFiles(
+  scope: TaskBoardScope,
+  companyId: number,
+  params?: TaskBoardFilesListParams
+): Promise<TaskBoardFilesListResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.get<TaskBoardFilesListResponse>(`${base}/${companyId}/task-files`, {
+    params: {
+      year: params?.year,
+      month: params?.month,
+      task_name: params?.task_name,
+      q: params?.q,
+      page: params?.page,
+      size: params?.size,
+    },
+  })
+  return res.data
+}
+
+export async function listAllTaskFiles(
+  scope: TaskBoardScope,
+  params?: TaskBoardFilesListParams
+): Promise<TaskBoardFilesListResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.get<TaskBoardFilesListResponse>(`${base}/task-files`, {
+    params: {
+      year: params?.year,
+      month: params?.month,
+      task_name: params?.task_name,
+      q: params?.q,
+      page: params?.page,
+      size: params?.size,
+    },
+  })
+  return res.data
+}
+
+export async function fetchTaskFilesSummary(
+  scope: TaskBoardScope,
+  params?: Omit<TaskBoardFilesListParams, 'page' | 'size'>
+): Promise<TaskBoardFilesSummaryResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.get<TaskBoardFilesSummaryResponse>(`${base}/task-files/summary`, {
+    params: {
+      year: params?.year,
+      month: params?.month,
+      task_name: params?.task_name,
+      q: params?.q,
+    },
+  })
+  return res.data
+}
+
+export async function fetchTaskFilePreviewUrl(
+  scope: TaskBoardScope,
+  entryId: number,
+  expiresIn = 600
+): Promise<TaskBoardFilePreviewUrlResponse> {
+  const http = getHttp(scope)
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || ''
+  const res = await http.get<TaskBoardFilePreviewUrlResponse>(`${apiBase}/${scope}/docs/entries/${entryId}/preview-url`, {
+    params: { expires_in: expiresIn },
+  })
+  return res.data
+}
+
+export async function fetchTaskFileDownloadUrl(
+  scope: TaskBoardScope,
+  entryId: number,
+  expiresIn = 600
+): Promise<TaskBoardFileDownloadUrlResponse> {
+  const http = getHttp(scope)
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || ''
+  const res = await http.get<TaskBoardFileDownloadUrlResponse>(`${apiBase}/${scope}/docs/entries/${entryId}/download-url`, {
+    params: { expires_in: expiresIn },
+  })
   return res.data
 }

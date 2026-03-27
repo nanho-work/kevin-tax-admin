@@ -310,13 +310,13 @@ export default function PortalNotificationBell({
       <UiButton
         onClick={handleOpen}
         variant="secondary"
-        size="icon"
-        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-50 ${
+        size="iconSm"
+        className={`relative inline-flex h-8 w-8 !p-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-50 ${
           isBellHighlight ? 'animate-pulse ring-2 ring-amber-300/70' : ''
         }`}
         aria-label="알림"
       >
-        <Bell size={16} />
+        <Bell size={14} />
         {unreadCount > 0 ? (
           <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-4 text-white">
             {unreadCount > 99 ? '99+' : unreadCount}

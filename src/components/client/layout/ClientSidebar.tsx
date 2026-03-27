@@ -58,6 +58,7 @@ const staffManagementMenus = [
 const boardMenus = [
   { label: '공지사항', href: '/client/staff/work-posts?post_type=notice' },
   { label: '업무보드', href: '/client/workflow/board' },
+  { label: '업무자료함', href: '/client/workflow/board/materials' },
 ]
 
 const clientManagementMenus = [

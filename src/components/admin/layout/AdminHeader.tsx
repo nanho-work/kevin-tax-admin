@@ -58,6 +58,7 @@ const Header = () => {
         : '업무 > 기본관리 > 상세'
     }
     if (pathname.startsWith('/admin/companies')) return '업무 > 기본관리'
+    if (pathname.startsWith('/admin/workflow/board/materials')) return '업무 > 업무보드 > 업무자료함'
     if (pathname.startsWith('/admin/workflow/board')) return '업무 > 업무보드'
     if (pathname.startsWith('/admin/company-withholding')) return '업무 > 원천세관리'
     if (pathname.startsWith('/admin/mail/inbox')) return '메일 > 메일함'
@@ -301,7 +302,7 @@ const Header = () => {
               onClick={() => void handleLogout()}
               disabled={loggingOut}
               variant="secondary"
-              size="md"
+              size="sm"
             >
               {loggingOut ? '로그아웃 중...' : '로그아웃'}
             </UiButton>

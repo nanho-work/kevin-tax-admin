@@ -22,6 +22,7 @@ type HeaderInfo = {
 
 function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/dashboard')) return { parent: '대시보드' }
+  if (pathname.startsWith('/client/workflow/board/materials')) return { parent: '업무', child: '업무자료함' }
   if (pathname.startsWith('/client/workflow/board')) return { parent: '업무', child: '업무보드' }
   if (pathname.startsWith('/client/mail/inbox')) return { parent: '메일', child: '메일함' }
   if (pathname.startsWith('/client/mail/compose')) return { parent: '메일', child: '메일작성' }
@@ -138,7 +139,7 @@ export default function ClientHeader() {
               onClick={() => void handleLogout()}
               disabled={loggingOut}
               variant="secondary"
-              size="md"
+              size="sm"
             >
               {loggingOut ? '로그아웃 중...' : '로그아웃'}
             </UiButton>
