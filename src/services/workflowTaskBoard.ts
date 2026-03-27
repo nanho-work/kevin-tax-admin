@@ -6,6 +6,16 @@ export type TaskBoardKind = 'all' | 'corporate' | 'individual'
 export type TaskBoardStatus = 'open' | 'closed'
 export type TaskTemplateKind = 'base' | 'process'
 export type TaskExecutionMode = 'check_only' | 'file_only' | 'file_and_notify'
+export type TaskBoardSortBy =
+  | 'company_name'
+  | 'report_cycle'
+  | 'payroll_basis'
+  | 'payroll_day'
+  | 'progress_percent'
+  | 'todo_count'
+  | 'note'
+  | 'updated_at'
+export type TaskBoardSortOrder = 'asc' | 'desc'
 
 export interface TaskBoardListItem {
   company_id: number
@@ -45,6 +55,8 @@ export interface TaskBoardListParams {
   assignee?: string
   incomplete_only?: boolean
   include_excluded?: boolean
+  sort_by?: TaskBoardSortBy
+  order?: TaskBoardSortOrder
   page?: number
   size?: number
 }
@@ -79,8 +91,17 @@ export interface TaskBoardItem {
   template_id?: number | null
   task_name: string
   task_name_norm: string
+  source_item_id?: number | null
+  source_task_name?: string | null
+  source_status?: TaskItemStatus | null
+  source_file_count?: number | null
+  can_deliver?: boolean | null
+  blocked_reason?: string | null
+  template_kind_snapshot?: TaskTemplateKind | null
+  execution_mode_snapshot?: TaskExecutionMode | null
   status: TaskItemStatus
   completed_at?: string | null
+  notified_at?: string | null
   note?: string | null
   created_at: string
   updated_at: string
@@ -99,6 +120,8 @@ export interface TaskBoardItemCreateRequest {
 export interface TaskBoardItemUpdateRequest {
   status?: TaskItemStatus
   note?: string | null
+  notified?: boolean
+  source_item_id?: number | null
 }
 
 export interface TaskBoardItemBulkUpsertPayloadItem {
@@ -107,6 +130,7 @@ export interface TaskBoardItemBulkUpsertPayloadItem {
   selected: boolean
   status?: TaskItemStatus
   note?: string | null
+  source_item_id?: number | null
 }
 
 export interface TaskBoardItemBulkUpsertRequest {
@@ -119,6 +143,12 @@ export interface TaskBoardItemBulkUpsertResponse {
   updated_count: number
   deleted_count: number
   skipped_count: number
+  items_total?: number
+  items?: TaskBoardItem[]
+}
+
+export interface TaskBoardItemBulkUpsertOptions {
+  returnItems?: boolean
 }
 
 export interface TaskBoardNoteUpsertRequest {
@@ -141,6 +171,9 @@ export interface TaskTemplateItem {
   task_name: string
   template_kind?: TaskTemplateKind
   execution_mode?: TaskExecutionMode
+  source_template_id?: number | null
+  source_task_name?: string | null
+  source_template_name?: string | null
   task_name_norm: string
   sort_order: number
   is_active: boolean
@@ -158,6 +191,7 @@ export interface TaskTemplateCreateRequest {
   sort_order?: number
   template_kind?: TaskTemplateKind
   execution_mode?: TaskExecutionMode
+  source_template_id?: number | null
 }
 
 export interface TaskTemplateUpdateRequest {
@@ -166,6 +200,7 @@ export interface TaskTemplateUpdateRequest {
   is_active?: boolean
   template_kind?: TaskTemplateKind
   execution_mode?: TaskExecutionMode
+  source_template_id?: number | null
 }
 
 export interface TaskTemplateListOptions {
@@ -177,8 +212,14 @@ export interface TaskItemDocLink {
   id: number
   item_id: number
   docs_entry_id: number
+  document_id?: number | null
+  file_name?: string | null
+  title?: string | null
+  content_type?: string | null
+  size_bytes?: number | null
   linked_by_type: 'client' | 'admin'
   linked_by_id: number
+  uploader_name?: string | null
   created_at: string
 }
 
@@ -187,8 +228,40 @@ export interface TaskItemDocLinkListResponse {
   items: TaskItemDocLink[]
 }
 
+export interface TaskItemFileUploadOut {
+  link: TaskItemDocLink
+  docs_entry_id: number
+  document_id: number
+  file_name: string
+  title?: string | null
+}
+
+export interface TaskItemFileUploadBulkFailedItem {
+  index: number
+  file_name: string
+  title?: string | null
+  error: string
+}
+
+export interface TaskItemFileUploadBulkSuccessItem {
+  index: number
+  file_name: string
+  title?: string | null
+  docs_entry_id: number
+  document_id: number
+  link_id: number
+}
+
+export interface TaskItemFileUploadBulkOut {
+  total: number
+  success_count: number
+  failed_count: number
+  success_items: TaskItemFileUploadBulkSuccessItem[]
+  failed_items: TaskItemFileUploadBulkFailedItem[]
+}
+
 interface ApiErrorPayload {
-  detail?: string | { code?: string; message?: string } | null
+  detail?: string | { code?: string; message?: string } | Array<{ msg?: string; type?: string }> | null
 }
 
 function getHttp(scope: TaskBoardScope) {
@@ -204,7 +277,19 @@ export function getTaskBoardErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<ApiErrorPayload>
   const detail = axiosError.response?.data?.detail
   if (typeof detail === 'string' && detail.trim()) return detail
-  if (detail && typeof detail === 'object') {
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0]
+    if (first && typeof first.msg === 'string' && first.msg.trim()) return first.msg
+  }
+  if (detail && !Array.isArray(detail) && typeof detail === 'object') {
+    const code = typeof detail.code === 'string' ? detail.code.trim() : ''
+    const message = typeof detail.message === 'string' ? detail.message.trim() : ''
+    if (code.includes('EXECUTION_MODE') || message.includes('다른 실행모드')) {
+      return '동일 업무명이 다른 실행모드로 이미 존재합니다.'
+    }
+    if (code.includes('TEMPLATE_DUPLICATE') || message.includes('이미 등록된 업무 템플릿')) {
+      return '이미 등록된 업무 템플릿입니다.'
+    }
     if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
     if (typeof detail.code === 'string' && detail.code.trim()) return detail.code
   }
@@ -299,17 +384,37 @@ export async function updateTaskBoardItem(
   return res.data
 }
 
+export async function deliverTaskBoardItem(
+  scope: TaskBoardScope,
+  companyId: number,
+  boardId: number,
+  itemId: number
+): Promise<TaskBoardItem> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.post<TaskBoardItem>(
+    `${base}/${companyId}/task-boards/${boardId}/items/${itemId}/deliver`
+  )
+  return res.data
+}
+
 export async function bulkUpsertTaskBoardItems(
   scope: TaskBoardScope,
   companyId: number,
   boardId: number,
-  payload: TaskBoardItemBulkUpsertRequest
+  payload: TaskBoardItemBulkUpsertRequest,
+  options?: TaskBoardItemBulkUpsertOptions
 ): Promise<TaskBoardItemBulkUpsertResponse> {
   const http = getHttp(scope)
   const base = getBase(scope)
   const res = await http.post<TaskBoardItemBulkUpsertResponse>(
     `${base}/${companyId}/task-boards/${boardId}/items/bulk-upsert`,
-    payload
+    payload,
+    {
+      params: {
+        return_items: options?.returnItems ? true : undefined,
+      },
+    }
   )
   return res.data
 }
@@ -387,6 +492,59 @@ export async function listTaskItemDocs(
   const http = getHttp(scope)
   const base = getBase(scope)
   const res = await http.get<TaskItemDocLinkListResponse>(`${base}/${companyId}/task-boards/${boardId}/items/${itemId}/docs`)
+  return res.data
+}
+
+export async function deleteTaskItemFile(
+  scope: TaskBoardScope,
+  companyId: number,
+  boardId: number,
+  itemId: number,
+  docsEntryId: number
+): Promise<{ message: string }> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const res = await http.delete<{ message: string }>(
+    `${base}/${companyId}/task-boards/${boardId}/items/${itemId}/files/${docsEntryId}`
+  )
+  return res.data
+}
+
+export async function uploadTaskItemFile(
+  scope: TaskBoardScope,
+  companyId: number,
+  boardId: number,
+  itemId: number,
+  payload: { file: File; title?: string }
+): Promise<TaskItemFileUploadOut> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const form = new FormData()
+  form.append('file', payload.file)
+  if (payload.title != null) form.append('title', payload.title)
+  const res = await http.post<TaskItemFileUploadOut>(
+    `${base}/${companyId}/task-boards/${boardId}/items/${itemId}/files`,
+    form
+  )
+  return res.data
+}
+
+export async function bulkUploadTaskItemFiles(
+  scope: TaskBoardScope,
+  companyId: number,
+  boardId: number,
+  itemId: number,
+  payload: { files: File[]; titles?: string[] }
+): Promise<TaskItemFileUploadBulkOut> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const form = new FormData()
+  payload.files.forEach((file) => form.append('files', file))
+  ;(payload.titles || []).forEach((title) => form.append('titles', title))
+  const res = await http.post<TaskItemFileUploadBulkOut>(
+    `${base}/${companyId}/task-boards/${boardId}/items/${itemId}/files/bulk`,
+    form
+  )
   return res.data
 }
 
