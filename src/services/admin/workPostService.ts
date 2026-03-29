@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { adminHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   WorkPostActionResponse,
   WorkPostDetail,
@@ -14,7 +15,7 @@ export function getAdminWorkPostErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
     const detail = (error.response?.data as any)?.detail
-    const detailText = typeof detail === 'string' ? detail : ''
+    const detailText = getApiErrorMessageFromDetail(detail, '')
 
     if (status === 400) return detailText || '요청 값을 확인해 주세요.'
     if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { adminHttp } from '@/services/http'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   DocsDownloadBulkPayload,
   DocsDownloadBulkResponse,
@@ -80,10 +81,8 @@ export function getAdminDocsErrorMessage(error: unknown): string {
   const status = error.response?.status
   const detail = (error.response?.data as ApiErrorPayload | undefined)?.detail
 
-  if (typeof detail === 'string' && detail.trim()) return detail
-  if (detail && typeof detail === 'object' && typeof detail.message === 'string' && detail.message.trim()) {
-    return detail.message
-  }
+  const parsed = getApiErrorMessageFromDetail(detail, '')
+  if (parsed) return parsed
 
   if (status === 400) return '요청 값을 확인해 주세요.'
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'

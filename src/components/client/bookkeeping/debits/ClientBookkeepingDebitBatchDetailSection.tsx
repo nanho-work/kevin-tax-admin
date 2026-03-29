@@ -21,6 +21,7 @@ import type {
 } from '@/types/clientBookkeeping'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 type Props = {
   batchId: number
@@ -31,9 +32,8 @@ type MappingTab = 'all' | 'unmapped' | 'mapped'
 function extractApiDetail(error: unknown): string | null {
   const responseData = (error as any)?.response?.data
   const detail = responseData?.detail
-  if (typeof detail === 'string' && detail.trim()) return detail
-  if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') return detail[0].msg
-  return null
+  const parsed = getApiErrorMessageFromDetail(detail, '')
+  return parsed || null
 }
 
 function formatDateTime(value?: string | null) {

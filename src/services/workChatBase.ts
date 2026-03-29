@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios'
 import { MAX_PAGE_SIZE, normalizePage, normalizePageSize } from '@/lib/pagination'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   WorkChatAttachment,
   WorkChatAttachmentUrlOut,
@@ -296,7 +297,7 @@ export function getWorkChatErrorMessage(error: unknown, defaultMessage = '채팅
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
     const detail = (error.response?.data as any)?.detail
-    const detailText = typeof detail === 'string' ? detail : ''
+    const detailText = getApiErrorMessageFromDetail(detail, '')
     if (status === 400) return detailText || '요청 값을 확인해 주세요.'
     if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
     if (status === 403) return detailText || '채팅방 접근 권한이 없습니다.'

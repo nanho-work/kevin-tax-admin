@@ -9,6 +9,7 @@ import FileDropzone from '@/components/common/FileDropzone'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
   createCompanyAccount as createAdminCompanyAccount,
@@ -546,19 +547,15 @@ export default function CompanyDetailForm({
 
   const extractApiDetail = (error: unknown): string | null => {
     const detail = (error as any)?.response?.data?.detail
-    if (typeof detail === 'string' && detail.trim()) return detail
     if (detail && typeof detail === 'object') {
       const code = typeof detail.code === 'string' ? detail.code : ''
-      const message = typeof detail.message === 'string' && detail.message.trim() ? detail.message.trim() : ''
       if (code === 'DOCS_QUOTA_EXCEEDED') {
         const availableBytes = Number(detail.available_bytes || 0)
         const incomingBytes = Number(detail.incoming_size_bytes || 0)
         return `문서함 용량이 부족합니다. 남은 용량 ${formatBytes(availableBytes)} / 업로드 파일 ${formatBytes(incomingBytes)}`
       }
-      if (message) return message
     }
-    if (Array.isArray(detail) && typeof detail[0]?.msg === 'string') return detail[0].msg
-    return null
+    return getApiErrorMessageFromDetail(detail, '') || null
   }
   const canEditFields = isCreateMode ? true : editable && editMode
   const editableInputClass = canEditFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`

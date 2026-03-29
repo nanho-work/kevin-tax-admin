@@ -43,6 +43,7 @@ import type {
   WorkPostType,
   WorkPostUpdatePayload,
 } from '@/types/workPost'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
@@ -175,7 +176,7 @@ function getErrorStatus(error: unknown): number | null {
 function getErrorDetail(error: unknown): string {
   if (!axios.isAxiosError(error)) return ''
   const detail = (error.response?.data as any)?.detail
-  return typeof detail === 'string' ? detail : ''
+  return getApiErrorMessageFromDetail(detail, '')
 }
 
 export default function ClientWorkPostsPage() {

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { clientHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   ClientConsentTerm,
   ClientConsentTermCreatePayload,
@@ -14,7 +15,8 @@ export function getClientConsentTermErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
     const detail = (error.response?.data as any)?.detail
-    if (typeof detail === 'string' && detail.trim()) return detail.trim()
+    const parsed = getApiErrorMessageFromDetail(detail, '')
+    if (parsed) return parsed
     if (status === 400) return '요청값을 확인해 주세요.'
     if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
     if (status === 403) return '권한이 없습니다.'

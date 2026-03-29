@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { clientHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   PortalNotificationItem,
   PortalNotificationListResponse,
@@ -47,7 +48,7 @@ export function getClientNotificationErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
     const detail = (error.response?.data as any)?.detail
-    const detailText = typeof detail === 'string' ? detail : ''
+    const detailText = getApiErrorMessageFromDetail(detail, '')
 
     if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
     if (status === 403) return '알림을 조회할 권한이 없습니다.'
