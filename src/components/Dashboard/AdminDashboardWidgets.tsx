@@ -2,15 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mail, Settings } from 'lucide-react'
+import { Bell, Briefcase, CalendarCheck2, CheckSquare, FileText, ListTodo, Mail, NotebookPen, Settings, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import {
   getAdminDashboardWidgetCatalog,
   getAdminDashboardWidgetLayout,
-  resetAdminDashboardWidgetLayout,
   saveAdminDashboardWidgetLayout,
 } from '@/services/admin/dashboardWidgetService'
+import {
+  carryOverAdminDashboardChecklist,
+  createAdminDashboardChecklistItem,
+  deleteAdminDashboardChecklistItem,
+  getAdminDashboardChecklistByDate,
+  patchAdminDashboardChecklistItem,
+} from '@/services/admin/dashboardChecklistService'
+import type { DashboardChecklistItemOut } from '@/types/dashboardChecklist'
+import { getAdminDashboardNote, patchAdminDashboardNote } from '@/services/admin/dashboardNoteService'
 import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
 import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { fetchMyApprovalDocuments } from '@/services/admin/approvalDocumentService'
@@ -75,6 +83,18 @@ type DragPayload = {
   source: 'existing' | 'catalog'
 }
 
+const HEADER_WIDGET_ORDER = [
+  'my_attendance',
+  'my_leave_balance',
+  'approval_pending',
+  'mail_unread',
+  'notification_unread',
+  'work_post_inbox',
+  'withholding_pending',
+  'checklist_widget',
+  'memo_widget',
+] as const
+
 const EXCLUDED_WIDGET_KEYS = new Set(['mail_ops_summary', 'tax_schedule_due'])
 const GRID_COLS = 12
 const ROW_HEIGHT = 84
@@ -94,6 +114,34 @@ const ADMIN_LOCAL_FALLBACK_WIDGETS: DashboardWidgetCatalogItem[] = [
     min_h: 2,
     max_w: 8,
     max_h: 6,
+    supports_mobile: true,
+  },
+  {
+    widget_id: -1002,
+    widget_key: 'memo_widget',
+    title: '메모장',
+    description: '개인 메모를 기록합니다',
+    required_permission_code: null,
+    default_w: 2,
+    default_h: 4,
+    min_w: 2,
+    min_h: 4,
+    max_w: 2,
+    max_h: 4,
+    supports_mobile: true,
+  },
+  {
+    widget_id: -1003,
+    widget_key: 'checklist_widget',
+    title: '오늘 체크리스트',
+    description: '오늘 할 일을 관리합니다',
+    required_permission_code: null,
+    default_w: 2,
+    default_h: 4,
+    min_w: 2,
+    min_h: 4,
+    max_w: 2,
+    max_h: 4,
     supports_mobile: true,
   },
 ]
@@ -241,17 +289,48 @@ function sanitizeLayoutItems(items: DashboardUserLayoutItem[]): DashboardUserLay
 
 function applyPreferredWidgetSizes(items: DashboardUserLayoutItem[]): DashboardUserLayoutItem[] {
   return items.map((item) => {
-    if (item.widget_key !== 'mail_unread') return item
-    return {
-      ...item,
-      grid_w: 4,
-      grid_h: 3,
-      min_w: Math.max(4, item.min_w),
-      min_h: Math.max(3, item.min_h),
-      max_w: Math.max(4, item.max_w),
-      max_h: Math.max(3, item.max_h),
+    if (item.widget_key === 'mail_unread') {
+      return {
+        ...item,
+        grid_w: 4,
+        grid_h: 3,
+        min_w: Math.max(4, item.min_w),
+        min_h: Math.max(3, item.min_h),
+        max_w: Math.max(4, item.max_w),
+        max_h: Math.max(3, item.max_h),
+      }
     }
+    if (item.widget_key === 'memo_widget') {
+      return {
+        ...item,
+        grid_w: 2,
+        grid_h: 4,
+        min_w: Math.max(2, item.min_w),
+        min_h: Math.max(4, item.min_h),
+        max_w: 2,
+        max_h: 4,
+      }
+    }
+    if (item.widget_key === 'checklist_widget') {
+      return {
+        ...item,
+        grid_w: 2,
+        grid_h: 4,
+        min_w: Math.max(2, item.min_w),
+        min_h: Math.max(4, item.min_h),
+        max_w: 2,
+        max_h: 4,
+      }
+    }
+    return item
   })
+}
+
+type ChecklistItem = {
+  id: number
+  text: string
+  done: boolean
+  sortOrder: number
 }
 
 function renderSimpleCountCard(title: string, count?: number, subtitle?: string) {
@@ -264,10 +343,53 @@ function renderSimpleCountCard(title: string, count?: number, subtitle?: string)
   )
 }
 
+function getWidgetHeaderIcon(widgetKey: string) {
+  switch (widgetKey) {
+    case 'my_attendance':
+      return CalendarCheck2
+    case 'my_leave_balance':
+      return CalendarCheck2
+    case 'approval_pending':
+      return CheckSquare
+    case 'mail_unread':
+      return Mail
+    case 'notification_unread':
+      return Bell
+    case 'work_post_inbox':
+      return FileText
+    case 'withholding_pending':
+      return Briefcase
+    case 'memo_widget':
+      return NotebookPen
+    case 'checklist_widget':
+      return ListTodo
+    default:
+      return Settings
+  }
+}
+
+function findAutoGridPosition(items: DashboardUserLayoutItem[], width: number, height: number): { x: number; y: number } {
+  const occupied = items.map((item) => ({
+    x1: item.grid_x,
+    y1: item.grid_y,
+    x2: item.grid_x + item.grid_w,
+    y2: item.grid_y + item.grid_h,
+  }))
+
+  for (let y = 0; y < 200; y += 1) {
+    for (let x = 0; x <= GRID_COLS - width; x += 1) {
+      const x2 = x + width
+      const y2 = y + height
+      const collided = occupied.some((box) => !(x2 <= box.x1 || box.x2 <= x || y2 <= box.y1 || box.y2 <= y))
+      if (!collided) return { x, y }
+    }
+  }
+  return { x: 0, y: 0 }
+}
+
 export default function AdminDashboardWidgets() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [layout, setLayout] = useState<DashboardUserLayoutResponse | null>(null)
   const [catalog, setCatalog] = useState<DashboardWidgetCatalogItem[]>([])
@@ -275,7 +397,6 @@ export default function AdminDashboardWidgets() {
   const [error, setError] = useState<string | null>(null)
   const [deviceType] = useState<DashboardDeviceType>('desktop')
   const [editMode, setEditMode] = useState(false)
-  const [showControls, setShowControls] = useState(false)
   const [workPostTab, setWorkPostTab] = useState<'notice' | 'task'>('notice')
   const [mailWidgetTab, setMailWidgetTab] = useState<'company' | 'personal'>('company')
   const [mailWidgetPageByTab, setMailWidgetPageByTab] = useState<{ company: number; personal: number }>({
@@ -284,8 +405,110 @@ export default function AdminDashboardWidgets() {
   })
   const [mailWidgetVisibleRows, setMailWidgetVisibleRows] = useState(3)
   const [draftItems, setDraftItems] = useState<DashboardUserLayoutItem[]>([])
+  const [memoText, setMemoText] = useState('')
+  const [memoTextColor, setMemoTextColor] = useState('#111827')
+  const [memoBgColor, setMemoBgColor] = useState('#FFF9C4')
+  const [memoFontSize, setMemoFontSize] = useState(14)
+  const [memoInitialized, setMemoInitialized] = useState(false)
+  const [checklistWorkDate] = useState(getKstDateString())
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
+  const [checklistCollapsedDone, setChecklistCollapsedDone] = useState(false)
+  const [checklistDraftText, setChecklistDraftText] = useState('')
   const gridRef = useRef<HTMLElement | null>(null)
   const mailWidgetListWrapRef = useRef<HTMLDivElement | null>(null)
+  const checklistInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
+  const [checklistPendingFocusId, setChecklistPendingFocusId] = useState<number | null>(null)
+  const memoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const memoLastSavedSignatureRef = useRef('')
+  const checklistTextSaveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout> | undefined>>({})
+
+  useEffect(() => {
+    let mounted = true
+    getAdminDashboardNote()
+      .then((note) => {
+        if (!mounted) return
+        setMemoText(note.content || '')
+        setMemoTextColor(note.text_color || '#111827')
+        setMemoBgColor(note.bg_color || '#FFF9C4')
+        setMemoFontSize(Number(note.font_size) || 14)
+        memoLastSavedSignatureRef.current = JSON.stringify({
+          content: note.content || '',
+          text_color: note.text_color || '#111827',
+          bg_color: note.bg_color || '#FFF9C4',
+          font_size: Number(note.font_size) || 14,
+        })
+      })
+      .catch(() => {
+        // keep local defaults
+      })
+      .finally(() => {
+        if (!mounted) return
+        setMemoInitialized(true)
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!memoInitialized) return
+    const payload = {
+      content: memoText,
+      text_color: memoTextColor,
+      bg_color: memoBgColor,
+      font_size: memoFontSize,
+    }
+    const signature = JSON.stringify(payload)
+    if (signature === memoLastSavedSignatureRef.current) return
+    if (memoSaveTimerRef.current) clearTimeout(memoSaveTimerRef.current)
+    memoSaveTimerRef.current = setTimeout(() => {
+      void patchAdminDashboardNote(payload)
+        .then((saved) => {
+          memoLastSavedSignatureRef.current = JSON.stringify({
+            content: saved.content || '',
+            text_color: saved.text_color || '#111827',
+            bg_color: saved.bg_color || '#FFF9C4',
+            font_size: Number(saved.font_size) || 14,
+          })
+        })
+        .catch(() => {
+          // no toast: autosave background failure
+        })
+    }, 400)
+    return () => {
+      if (memoSaveTimerRef.current) clearTimeout(memoSaveTimerRef.current)
+    }
+  }, [memoBgColor, memoFontSize, memoInitialized, memoText, memoTextColor])
+
+  useEffect(() => {
+    if (checklistPendingFocusId === null) return
+    const target = checklistInputRefs.current[checklistPendingFocusId]
+    target?.focus()
+    setChecklistPendingFocusId(null)
+  }, [checklistItems, checklistPendingFocusId])
+
+  const loadChecklistByDate = useCallback(async () => {
+    try {
+      const checklist = await getAdminDashboardChecklistByDate(checklistWorkDate)
+      const rawItems = Array.isArray(checklist?.items) ? checklist.items : []
+      const mapped = rawItems
+        .map((row: DashboardChecklistItemOut, idx: number) => ({
+          id: Number(row?.item_id ?? 0),
+          text: String(row?.content ?? ''),
+          done: Boolean(row?.is_done ?? false),
+          sortOrder: Number(row?.sort_order ?? idx),
+        }))
+        .filter((row: ChecklistItem) => row.id > 0)
+        .sort((a: ChecklistItem, b: ChecklistItem) => (a.sortOrder - b.sortOrder) || (a.id - b.id))
+      setChecklistItems(mapped)
+    } catch {
+      // keep empty mock-safe state
+    }
+  }, [checklistWorkDate])
+
+  useEffect(() => {
+    void loadChecklistByDate()
+  }, [loadChecklistByDate])
 
   const visibleItems = useMemo(() => {
     if (editMode) return draftItems
@@ -303,10 +526,15 @@ export default function AdminDashboardWidgets() {
     return map
   }, [catalog])
 
-  const availableCatalogItems = useMemo(() => {
-    const selected = new Set(draftItems.map((item) => item.widget_key))
-    return catalog.filter((row) => !selected.has(row.widget_key))
-  }, [catalog, draftItems])
+  const headerToggleItems = useMemo(() => {
+    const byKey = new Map(catalog.map((row) => [row.widget_key, row]))
+    const ordered: DashboardWidgetCatalogItem[] = []
+    for (const key of HEADER_WIDGET_ORDER) {
+      const row = byKey.get(key)
+      if (row) ordered.push(row)
+    }
+    return ordered
+  }, [catalog])
 
   const rowCount = useMemo(() => {
     const maxBottom = visibleItems.reduce((acc, item) => Math.max(acc, item.grid_y + item.grid_h), 0)
@@ -539,6 +767,38 @@ export default function AdminDashboardWidgets() {
       }
     }
 
+    // Restore unmanaged fallback widgets (widget_id < 0) from local layout map,
+    // because these widgets are not persisted to server layout payload.
+    const localUnmanaged = readLocalUnmanagedLayout()
+    const fallbackUnmanaged = filteredCatalog.filter((row) => row.widget_id < 0)
+    for (const widgetMeta of fallbackUnmanaged) {
+      const local = localUnmanaged[widgetMeta.widget_key]
+      const alreadyExists = mergedItems.some((item) => item.widget_key === widgetMeta.widget_key)
+      if (!local || alreadyExists) continue
+      mergedItems = [
+        ...mergedItems,
+        {
+          widget_id: widgetMeta.widget_id,
+          widget_key: widgetMeta.widget_key,
+          title: widgetMeta.title,
+          description: widgetMeta.description,
+          required_permission_code: widgetMeta.required_permission_code,
+          grid_x: local.grid_x,
+          grid_y: local.grid_y,
+          grid_w: local.grid_w,
+          grid_h: local.grid_h,
+          visible: local.visible,
+          sort_order: local.sort_order,
+          config_json: null,
+          min_w: widgetMeta.min_w,
+          min_h: widgetMeta.min_h,
+          max_w: widgetMeta.max_w,
+          max_h: widgetMeta.max_h,
+          supports_mobile: widgetMeta.supports_mobile,
+        },
+      ]
+    }
+
     const sanitizedItems = sanitizeLayoutItems(
       applyPreferredWidgetSizes(applyLocalUnmanagedLayout(mergedItems))
     )
@@ -589,29 +849,6 @@ export default function AdminDashboardWidgets() {
     observer.observe(target)
     return () => observer.disconnect()
   }, [layout, editMode])
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await loadDashboard()
-    } catch {
-      toast.error('위젯 새로고침에 실패했습니다.')
-    } finally {
-      setRefreshing(false)
-    }
-  }, [loadDashboard])
-
-  const handleReset = useCallback(async () => {
-    try {
-      await resetAdminDashboardWidgetLayout({ preset_id: null }, deviceType)
-      writeLocalUnmanagedLayout({})
-      toast.success('대시보드 레이아웃을 초기화했습니다.')
-      setEditMode(false)
-      await handleRefresh()
-    } catch {
-      toast.error('레이아웃 초기화에 실패했습니다.')
-    }
-  }, [deviceType, handleRefresh])
 
   const handleDropToCell = useCallback((payload: DragPayload, targetX: number, targetY: number) => {
     setDraftItems((prev) => {
@@ -715,18 +952,60 @@ export default function AdminDashboardWidgets() {
       )
       toast.success('대시보드 레이아웃을 저장했습니다.')
       setEditMode(false)
-      setShowControls(false)
-      await handleRefresh()
+      await loadDashboard()
     } catch {
       toast.error('레이아웃 저장에 실패했습니다.')
     } finally {
       setSaving(false)
     }
-  }, [deviceType, draftItems, handleRefresh])
+  }, [deviceType, draftItems, loadDashboard])
 
-  const handleRemoveWidget = useCallback((widgetKey: string) => {
-    setDraftItems((prev) => normalizeSortOrder(prev.filter((item) => item.widget_key !== widgetKey)))
-  }, [])
+  const handleHeaderToggleWidget = useCallback((widgetKey: string) => {
+    const applyToggle = (items: DashboardUserLayoutItem[]) => {
+      const exists = items.some((item) => item.widget_key === widgetKey)
+      if (exists) {
+        return sanitizeLayoutItems(applyPreferredWidgetSizes(items.filter((item) => item.widget_key !== widgetKey)))
+      }
+      const meta = catalogByKey.get(widgetKey)
+      if (!meta) return items
+      const width = Math.max(1, meta.default_w || meta.min_w || 1)
+      const height = Math.max(1, meta.default_h || meta.min_h || 1)
+      const pos = findAutoGridPosition(items, width, height)
+      const appended: DashboardUserLayoutItem = {
+        widget_id: meta.widget_id,
+        widget_key: meta.widget_key,
+        title: meta.title,
+        description: meta.description,
+        required_permission_code: meta.required_permission_code,
+        grid_x: pos.x,
+        grid_y: pos.y,
+        grid_w: width,
+        grid_h: height,
+        visible: true,
+        sort_order: items.length,
+        config_json: null,
+        min_w: meta.min_w,
+        min_h: meta.min_h,
+        max_w: meta.max_w,
+        max_h: meta.max_h,
+        supports_mobile: meta.supports_mobile,
+      }
+      return sanitizeLayoutItems(applyPreferredWidgetSizes([...items, appended]))
+    }
+
+    if (!editMode) return
+    setDraftItems((prev) => applyToggle(prev))
+  }, [catalogByKey, editMode])
+
+  const handleSettingsToggle = useCallback(async () => {
+    if (saving) return
+    if (!editMode) {
+      setDraftItems(layout?.items.filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key)) || [])
+      setEditMode(true)
+      return
+    }
+    await handleSaveLayout()
+  }, [editMode, handleSaveLayout, layout?.items, saving])
 
   const renderWidgetBody = useCallback(
     (item: DashboardUserLayoutItem) => {
@@ -944,6 +1223,248 @@ export default function AdminDashboardWidgets() {
           )
         case 'withholding_pending':
           return renderSimpleCountCard('원천세 검토 대기', widgetData.withholding_pending, '검토 전 건수')
+        case 'checklist_widget': {
+          const activeItems = checklistItems.filter((row) => row.text.trim().length > 0)
+          const doneCount = activeItems.filter((row) => row.done).length
+          const totalCount = activeItems.length
+          const visibleRows = checklistItems.filter((row) => !(checklistCollapsedDone && row.done))
+
+          const createFromDraft = () => {
+            const content = checklistDraftText.trim()
+            if (!content) return
+            void createAdminDashboardChecklistItem({
+              work_date: checklistWorkDate,
+              content,
+              sort_order: checklistItems.length,
+            })
+              .then(async (created) => {
+                setChecklistDraftText('')
+                await loadChecklistByDate()
+                const createdId = Number(created?.item_id ?? 0)
+                if (createdId > 0) setChecklistPendingFocusId(createdId)
+              })
+              .catch(() => {
+                toast.error('체크리스트 항목 생성에 실패했습니다.')
+              })
+          }
+
+          const createAfter = (index: number) => {
+            const base = checklistItems[index]
+            if (!base || base.text.trim().length === 0) return
+            void createAdminDashboardChecklistItem({
+              work_date: checklistWorkDate,
+              content: '새 할 일',
+              sort_order: index + 1,
+            })
+              .then(async (created) => {
+                await loadChecklistByDate()
+                const createdId = Number(created?.item_id ?? 0)
+                if (createdId > 0) setChecklistPendingFocusId(createdId)
+              })
+              .catch(() => {
+                toast.error('체크리스트 항목 생성에 실패했습니다.')
+              })
+          }
+
+          const removeAt = (index: number) => {
+            const target = checklistItems[index]
+            if (!target?.id) return
+            const prevRow = checklistItems[index - 1] ?? checklistItems[index + 1] ?? null
+            void deleteAdminDashboardChecklistItem(target.id)
+              .then(async () => {
+                await loadChecklistByDate()
+                if (prevRow) setChecklistPendingFocusId(prevRow.id)
+              })
+              .catch(() => {
+                toast.error('체크리스트 항목 삭제에 실패했습니다.')
+              })
+          }
+
+          const updateText = (targetId: number, text: string) => {
+            setChecklistItems((prev) => prev.map((row) => (row.id === targetId ? { ...row, text } : row)))
+            if (checklistTextSaveTimersRef.current[targetId]) {
+              clearTimeout(checklistTextSaveTimersRef.current[targetId])
+            }
+            checklistTextSaveTimersRef.current[targetId] = setTimeout(() => {
+              const row = checklistItems.find((item) => item.id === targetId)
+              const sortOrder = row?.sortOrder ?? 0
+              if (text.trim().length === 0) return
+              void patchAdminDashboardChecklistItem(targetId, {
+                content: text,
+                sort_order: sortOrder,
+              }).catch(() => {
+                // silent autosave failure
+              })
+            }, 350)
+          }
+
+          const toggleDone = (targetId: number) => {
+            const row = checklistItems.find((item) => item.id === targetId)
+            const nextDone = !Boolean(row?.done)
+            setChecklistItems((prev) => prev.map((item) => (item.id === targetId ? { ...item, done: nextDone } : item)))
+            void patchAdminDashboardChecklistItem(targetId, {
+              is_done: nextDone,
+              sort_order: row?.sortOrder ?? 0,
+            }).catch(() => {
+              toast.error('체크 상태 저장에 실패했습니다.')
+            })
+          }
+
+          return (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-zinc-500">오늘 체크리스트</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-zinc-600">{doneCount}/{totalCount}</span>
+                  <button
+                    type="button"
+                    onClick={() => setChecklistCollapsedDone((prev) => !prev)}
+                    className="rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50"
+                  >
+                    {checklistCollapsedDone ? '완료 펼치기' : '완료 접기'}
+                  </button>
+                </div>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500">{checklistWorkDate}</p>
+              <div className="mt-2 flex-1 space-y-1 overflow-auto pr-1">
+                {visibleRows.map((row, index) => (
+                  <div key={row.id} className="grid grid-cols-[14px_minmax(0,1fr)_16px] items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={row.done}
+                      onChange={() => toggleDone(row.id)}
+                      className="h-3.5 w-3.5 accent-sky-600"
+                    />
+                    <input
+                      ref={(el) => {
+                        checklistInputRefs.current[row.id] = el
+                      }}
+                      value={row.text}
+                      onChange={(event) => updateText(row.id, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          createAfter(index)
+                          return
+                        }
+                        if (event.key === 'Backspace' && row.text.trim().length === 0) {
+                          event.preventDefault()
+                          removeAt(index)
+                        }
+                      }}
+                      placeholder="할 일 입력"
+                      className={`h-6 rounded border border-zinc-200 px-1.5 text-[11px] outline-none focus:border-sky-300 ${
+                        row.done ? 'bg-zinc-50 text-zinc-400 line-through' : 'bg-white text-zinc-800'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAt(index)}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                      title="항목 삭제"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    createFromDraft()
+                  }}
+                  className="grid grid-cols-[14px_minmax(0,1fr)_16px] items-center gap-1"
+                >
+                  <input type="checkbox" checked={false} disabled className="h-3.5 w-3.5 accent-sky-600 opacity-40" />
+                  <input
+                    value={checklistDraftText}
+                    onChange={(event) => setChecklistDraftText(event.target.value)}
+                    placeholder="할 일 입력"
+                    className="h-6 rounded border border-zinc-200 px-1.5 text-[11px] text-zinc-800 outline-none focus:border-sky-300"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                    title="항목 추가"
+                  >
+                    +
+                  </button>
+                </form>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const fromDateObj = new Date(`${checklistWorkDate}T00:00:00+09:00`)
+                  const fromDate = new Date(fromDateObj.getTime() - 24 * 60 * 60 * 1000)
+                  const fromDateIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(fromDate)
+                  void carryOverAdminDashboardChecklist({
+                    from_date: fromDateIso,
+                    to_date: checklistWorkDate,
+                    include_done: false,
+                  })
+                    .then(() => loadChecklistByDate())
+                    .catch(() => toast.error('이월 처리에 실패했습니다.'))
+                }}
+                className="mt-1 rounded border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:bg-zinc-50"
+              >
+                전일 미완료 이월
+              </button>
+            </div>
+          )
+        }
+        case 'memo_widget':
+          return (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-zinc-500">메모장</p>
+                <div className="flex items-center gap-1.5">
+                  <label className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+                    글씨
+                    <input
+                      type="color"
+                      value={memoTextColor}
+                      onChange={(event) => setMemoTextColor(event.target.value)}
+                      className="h-5 w-5 cursor-pointer rounded border border-zinc-300 p-0"
+                      title="글씨색"
+                    />
+                  </label>
+                  <label className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+                    배경
+                    <input
+                      type="color"
+                      value={memoBgColor}
+                      onChange={(event) => setMemoBgColor(event.target.value)}
+                      className="h-5 w-5 cursor-pointer rounded border border-zinc-300 p-0"
+                      title="배경색"
+                    />
+                  </label>
+                  <select
+                    value={memoFontSize}
+                    onChange={(event) => setMemoFontSize(Number(event.target.value))}
+                    className="h-6 rounded border border-zinc-300 bg-white px-1 text-[10px] text-zinc-700"
+                    title="글씨 크기"
+                  >
+                    <option value={12}>12</option>
+                    <option value={13}>13</option>
+                    <option value={14}>14</option>
+                    <option value={15}>15</option>
+                    <option value={16}>16</option>
+                    <option value={18}>18</option>
+                  </select>
+                </div>
+              </div>
+              <textarea
+                value={memoText}
+                onChange={(event) => setMemoText(event.target.value)}
+                placeholder="메모를 입력하세요."
+                style={{
+                  color: memoTextColor,
+                  backgroundColor: memoBgColor,
+                  fontSize: `${memoFontSize}px`,
+                }}
+                className="mt-2 h-full min-h-0 w-full resize-none rounded-md border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-sky-300"
+              />
+            </div>
+          )
         default:
           return (
             <div className="h-full">
@@ -954,102 +1475,64 @@ export default function AdminDashboardWidgets() {
           )
       }
     },
-    [mailWidgetPageByTab, mailWidgetTab, mailWidgetVisibleRows, router, widgetData, workPostTab]
+    [
+      checklistCollapsedDone,
+      checklistDraftText,
+      checklistItems,
+      checklistWorkDate,
+      loadChecklistByDate,
+      mailWidgetPageByTab,
+      mailWidgetTab,
+      mailWidgetVisibleRows,
+      memoBgColor,
+      memoFontSize,
+      memoText,
+      memoTextColor,
+      router,
+      widgetData,
+      workPostTab,
+    ]
   )
 
   return (
     <main className="space-y-3">
       <div className="flex items-center justify-between px-1 py-1">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold text-zinc-900">대시보드</h1>
+          <div className="flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-1 py-1">
+            {headerToggleItems.map((row) => {
+              const active = visibleItems.some((item) => item.widget_key === row.widget_key)
+              const Icon = getWidgetHeaderIcon(row.widget_key)
+              return (
+                <button
+                  key={row.widget_key}
+                  type="button"
+                  disabled={saving || !editMode}
+                  onClick={() => void handleHeaderToggleWidget(row.widget_key)}
+                  title={`${row.title} ${active ? '끄기' : '켜기'}`}
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition ${
+                    active
+                      ? 'border-sky-200 bg-sky-100 text-sky-700'
+                      : 'border-zinc-200 bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              )
+            })}
+          </div>
         </div>
         <button
           type="button"
-          onClick={() => setShowControls((prev) => !prev)}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-md border ${showControls || editMode ? 'border-indigo-300 text-indigo-700' : 'border-zinc-300 text-zinc-700'}`}
+          onClick={() => void handleSettingsToggle()}
+          disabled={saving}
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-md border ${editMode ? 'border-indigo-300 text-indigo-700' : 'border-zinc-300 text-zinc-700'} disabled:cursor-not-allowed disabled:opacity-60`}
           aria-label="대시보드 편집 설정"
-          title="대시보드 설정"
+          title={editMode ? (saving ? '저장 중...' : '편집 저장') : '편집 시작'}
         >
           <Settings className="h-4 w-4" />
         </button>
       </div>
-
-      {(showControls || editMode) ? (
-        <section className="flex flex-wrap items-center gap-2 px-1 py-1">
-          {!editMode ? (
-            <button
-              type="button"
-              onClick={() => setEditMode(true)}
-              className="rounded-md border border-indigo-300 px-3 py-1.5 text-sm text-indigo-700"
-            >
-              위젯 편집 시작
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditMode(false)
-                  setDraftItems(layout?.items.filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key)) || [])
-                }}
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700"
-              >
-                편집 취소
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSaveLayout()}
-                disabled={saving}
-                className="rounded-md border border-emerald-300 px-3 py-1.5 text-sm text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? '저장 중...' : '레이아웃 저장'}
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => void handleRefresh()}
-            disabled={refreshing}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {refreshing ? '새로고침 중...' : '새로고침'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleReset()}
-            className="rounded-md border border-rose-300 px-3 py-1.5 text-sm text-rose-600"
-          >
-            레이아웃 초기화
-          </button>
-        </section>
-      ) : null}
-
-      {editMode ? (
-        <section className="px-1 py-1">
-          <p className="text-xs font-medium text-zinc-600">위젯 선택</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {availableCatalogItems.length === 0 ? (
-              <p className="text-xs text-zinc-500">추가 가능한 위젯이 없습니다.</p>
-            ) : (
-              availableCatalogItems.map((row) => (
-                <button
-                  key={row.widget_key}
-                  type="button"
-                  draggable
-                  onDragStart={(event) => {
-                    const payload: DragPayload = { widgetKey: row.widget_key, source: 'catalog' }
-                    event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
-                    event.dataTransfer.effectAllowed = 'move'
-                  }}
-                  className="cursor-grab rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs text-zinc-700"
-                >
-                  + {row.title}
-                </button>
-              ))
-            )}
-          </div>
-        </section>
-      ) : null}
 
       {loading ? (
         <div className="px-1 py-8 text-center text-sm text-zinc-500">
@@ -1104,15 +1587,8 @@ export default function AdminDashboardWidgets() {
               }}
             >
               {editMode ? (
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center">
                   <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveWidget(item.widget_key)}
-                    className="rounded border border-rose-200 px-1.5 py-0.5 text-[10px] text-rose-600"
-                  >
-                    제거
-                  </button>
                 </div>
               ) : null}
               {renderWidgetBody(item)}

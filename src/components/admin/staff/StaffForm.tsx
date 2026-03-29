@@ -6,6 +6,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'react-hot-toast'
 import type { CreateStaffRequest } from '@/types/admin'
 import { createAdminStaff } from '@/services/admin/adminStaffService'
 import { fetchAdminSession } from '@/services/admin/adminService'
@@ -94,10 +95,10 @@ export default function StaffForm() {
               ...form,
               profile_image: profileImage,
             })
-            alert(`직원 등록 완료: ${res.email}`)
+            toast.success(`직원 등록 완료: ${res.email}`)
             window.location.reload();
         } catch (err) {
-            alert('직원 등록 실패')
+            toast.error('직원 등록 실패')
         }
     }
 

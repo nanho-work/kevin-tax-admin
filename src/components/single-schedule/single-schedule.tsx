@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast'
 import { fetchSingleTaxes, updateSingleTaxStatus } from '@/services/single_scheduleService';
 import { SingleTaxResponse, StatusUpdateRequest } from '@/types/single_schedule';
 import SingleScheduleForm from './single-schedule-form';
@@ -121,7 +122,7 @@ const SingleSchedulePage = () => {
                           );
                           window.location.reload();
                         } catch (err) {
-                          alert('상태 변경에 실패했습니다.');
+                          toast.error('상태 변경에 실패했습니다.');
                           console.error(err);
                         }
                       }}

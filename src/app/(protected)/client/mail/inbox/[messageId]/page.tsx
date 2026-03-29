@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTimeKorean } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
 import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
@@ -81,6 +82,7 @@ function isPreviewableAttachment(attachment: MailMessageDetail['attachments'][nu
 
 export default function ClientMailMessageDetailPage() {
   const router = useRouter()
+  const { confirm } = useConfirmDialog()
   const params = useParams<{ messageId: string }>()
   const searchParams = useSearchParams()
   const messageId = Number(params.messageId)
@@ -376,7 +378,14 @@ export default function ClientMailMessageDetailPage() {
 
   const handlePurge = async () => {
     if (!detail) return
-    if (!window.confirm('완전삭제 후 복구할 수 없습니다. 삭제할까요?')) return
+    const ok = await confirm({
+      title: '메일 완전삭제',
+      description: '완전삭제 후 복구할 수 없습니다. 삭제할까요?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await purgeMailMessage(detail.id, scopedMailAccountId)
       emitMailCountsRefresh()

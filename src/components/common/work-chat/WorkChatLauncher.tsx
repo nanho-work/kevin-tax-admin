@@ -25,6 +25,7 @@ import {
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
 import ChatComposer from '@/components/common/work-chat/ChatComposer'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { fetchCompanyTaxList } from '@/services/admin/company'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import { adminWorkChatApi, getAdminWorkChatErrorMessage } from '@/services/admin/workChatService'
@@ -505,6 +506,7 @@ function extractWsMemberId(payload: any): number {
 }
 
 export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncherProps) {
+  const { confirm, prompt } = useConfirmDialog()
   const api = useMemo(
     () => (portalType === 'admin' ? adminWorkChatApi : clientWorkChatApi),
     [portalType]
@@ -1323,12 +1325,17 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
   const handleLeaveRoomByRoom = useCallback(
     async (room: WorkChatRoom, options?: { closeActionMenu?: boolean }) => {
       if (leavingRoomId === room.id) return
-      const confirmed = window.confirm(
-        room.room_type === 'company_bridge'
-          ? '회사 채팅방은 퇴장 대신 목록 숨김 처리됩니다. 진행하시겠습니까?'
-          : '대화방에서 나가시겠습니까?'
-      )
-      if (!confirmed) return
+      const ok = await confirm({
+        title: '대화방 처리',
+        description:
+          room.room_type === 'company_bridge'
+            ? '회사 채팅방은 퇴장 대신 목록 숨김 처리됩니다. 진행하시겠습니까?'
+            : '대화방에서 나가시겠습니까?',
+        confirmText: '확인',
+        cancelText: '취소',
+        variant: 'danger',
+      })
+      if (!ok) return
 
       try {
         setLeavingRoom(true)
@@ -1450,7 +1457,14 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       if (!room || room.room_type !== 'group') return
 
       const currentName = getRoomDisplayName(room)
-      const inputName = window.prompt('대화방 이름을 입력해 주세요.', currentName || '')
+      const inputName = await prompt({
+        title: '대화방 이름 변경',
+        description: '대화방 이름을 입력해 주세요.',
+        initialValue: currentName || '',
+        placeholder: '대화방 이름',
+        confirmText: '저장',
+        cancelText: '취소',
+      })
       if (inputName == null) return
       const nextName = inputName.trim()
       if (!nextName) {
@@ -1487,7 +1501,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         }
       }
     },
-    [api, getErrorMessage, loadRooms, renamingRoomId]
+    [api, getErrorMessage, loadRooms, prompt, renamingRoomId]
   )
 
   const handleStartChat = useCallback(

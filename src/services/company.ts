@@ -1,5 +1,5 @@
-// ✅ lib/api/admin/company.ts
-import axios from 'axios'
+// ✅ Legacy admin company service (deprecated route set)
+import { adminHttp } from '@/services/http'
 import type {
   CompanyTaxDetail,
   CompanyDetailResponse,
@@ -17,15 +17,6 @@ import type {
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/company`
 
-function authHeader() {
-  const token = localStorage.getItem('admin_access_token')
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-}
-
 interface FetchCompanyParams {
   page: number;
   limit: number;
@@ -42,9 +33,8 @@ export async function fetchCompanyTaxList({
   keyword,
 
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
-  const response = await axios.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
+  const response = await adminHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
     params: { page, limit, keyword },
-    ...authHeader()
   });
   return response.data;
 }
@@ -55,10 +45,7 @@ export async function fetchCompanyTaxList({
 export async function deactivateCompany(
   company_id: number
 ): Promise<{ message: string }> {
-  const res = await axios.delete<{ message: string }>(`${BASE}/delete/${company_id}`, {
-    ...authHeader()
-    
-  })
+  const res = await adminHttp.delete<{ message: string }>(`${BASE}/delete/${company_id}`)
   return res.data
 }
 
@@ -66,9 +53,7 @@ export async function deactivateCompany(
 // 회사 상세 정보 
 // ------------------------------
 export async function fetchCompanyDetail(company_id: number): Promise<CompanyDetailResponse> {
-  const res = await axios.get<CompanyDetailResponse>(`${BASE}/detail/${company_id}`, {
-    ...authHeader()
-  })
+  const res = await adminHttp.get<CompanyDetailResponse>(`${BASE}/detail/${company_id}`)
   return res.data
 }
 
@@ -86,12 +71,9 @@ export async function updateCompany(
   company_id: number,
   payload: CompanyUpdateRequest
 ): Promise<{ message: string }> {
-  const res = await axios.patch<{ message: string }>(
+  const res = await adminHttp.patch<{ message: string }>(
     `${BASE}/update/${company_id}`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data;
 }
@@ -105,9 +87,7 @@ export async function updateCompany(
 export async function createCompany(
   payload: CompanyCreateRequest
 ): Promise<CompanySimpleResponse> {
-  const res = await axios.post<CompanySimpleResponse>(`${BASE}/create`, payload, {
-    ...authHeader(),
-  });
+  const res = await adminHttp.post<CompanySimpleResponse>(`${BASE}/create`, payload);
   return res.data;
 }
 
@@ -118,11 +98,10 @@ export async function createCompany(
 export async function fetchWithholdingTaxList(
   companyId?: number
 ): Promise<WithholdingTaxDetailResponse[]> {
-  const res = await axios.get<WithholdingTaxDetailResponse[]>(
+  const res = await adminHttp.get<WithholdingTaxDetailResponse[]>(
     `${BASE}/tab/WithholdingTaxDetail`,
     {
       params: companyId ? { company_id: companyId } : {},
-      ...authHeader(),
     }
   );
   return res.data
@@ -132,12 +111,9 @@ export async function fetchWithholdingTaxList(
 export async function createWithholdingTax(
   payload: WithholdingTaxDetailRequest
 ): Promise<WithholdingTaxDetailResponse> {
-  const res = await axios.post<WithholdingTaxDetailResponse>(
+  const res = await adminHttp.post<WithholdingTaxDetailResponse>(
     `${BASE}/tab/WithholdingTaxDetail/create`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
@@ -147,12 +123,9 @@ export async function updateWithholdingTax(
   id: number,
   payload: WithholdingTaxDetailRequest
 ): Promise<WithholdingTaxDetailResponse> {
-  const res = await axios.patch<WithholdingTaxDetailResponse>(
+  const res = await adminHttp.patch<WithholdingTaxDetailResponse>(
     `${BASE}/tab/WithholdingTaxDetail/patch/${id}`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
@@ -160,12 +133,7 @@ export async function updateWithholdingTax(
 // 4. 원천세 삭제 (복수 삭제용)
 export async function deleteWithholdingTax(ids: number[]): Promise<{ message: string }> {
   const query = ids.map(id => `ids=${id}`).join('&');
-  const res = await axios.delete<{ message: string }>(
-    `${BASE}/tab/WithholdingTaxDetail/delete/bulk?${query}`,
-    {
-      ...authHeader(),
-    }
-  );
+  const res = await adminHttp.delete<{ message: string }>(`${BASE}/tab/WithholdingTaxDetail/delete/bulk?${query}`);
   return res.data;
 }
 
@@ -177,10 +145,8 @@ export async function deleteWithholdingTax(ids: number[]): Promise<{ message: st
 export async function fetchFinancialStatements(
   companyId?: number
 ): Promise<FinancialStatementResponse[]> {
-  const res = await axios.get<FinancialStatementResponse[]>(`${BASE}/tab/FinancialStatement`, {
+  const res = await adminHttp.get<FinancialStatementResponse[]>(`${BASE}/tab/FinancialStatement`, {
     params: companyId ? { company_id: companyId } : {},
-    ...authHeader(),
-    
   })
   return res.data
 }
@@ -189,12 +155,9 @@ export async function fetchFinancialStatements(
 export async function createFinancialStatement(
   payload: FinancialStatementRequest
 ): Promise<FinancialStatementResponse> {
-  const res = await axios.post<FinancialStatementResponse>(
+  const res = await adminHttp.post<FinancialStatementResponse>(
     `${BASE}/tab/FinancialStatement/create`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
@@ -204,12 +167,9 @@ export async function updateFinancialStatement(
   id: number,
   payload: FinancialStatementRequest
 ): Promise<FinancialStatementResponse> {
-  const res = await axios.patch<FinancialStatementResponse>(
+  const res = await adminHttp.patch<FinancialStatementResponse>(
     `${BASE}/tab/FinancialStatement/patch/${id}`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
@@ -217,12 +177,7 @@ export async function updateFinancialStatement(
 // 4. 원천세 삭제 (복수 삭제용)
 export async function deleteFinancialStatement(ids: number[]): Promise<{ message: string }> {
   const query = ids.map(id => `ids=${id}`).join('&');
-  const res = await axios.delete<{ message: string }>(
-    `${BASE}/tab/FinancialStatement/delete/bulk?${query}`,
-    {
-      ...authHeader(),
-    }
-  );
+  const res = await adminHttp.delete<{ message: string }>(`${BASE}/tab/FinancialStatement/delete/bulk?${query}`);
   return res.data;
 }
 
@@ -235,9 +190,8 @@ export async function deleteFinancialStatement(ids: number[]): Promise<{ message
 export async function fetchCorporateTaxDetails(
   companyId?: number
 ): Promise<CorporateTaxDetailResponse[]> {
-  const res = await axios.get<CorporateTaxDetailResponse[]>(`${BASE}/tab/CorporateTaxDetail`, {
+  const res = await adminHttp.get<CorporateTaxDetailResponse[]>(`${BASE}/tab/CorporateTaxDetail`, {
     params: companyId ? { company_id: companyId } : {},
-    ...authHeader(),
   })
   return res.data
 }
@@ -246,12 +200,9 @@ export async function fetchCorporateTaxDetails(
 export async function createCorporateTaxDetail(
   payload: CorporateTaxDetailRequest
 ): Promise<CorporateTaxDetailResponse> {
-  const res = await axios.post<CorporateTaxDetailResponse>(
+  const res = await adminHttp.post<CorporateTaxDetailResponse>(
     `${BASE}/tab/CorporateTaxDetail/create`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
@@ -261,23 +212,15 @@ export async function updateCorporateTaxDetail(
   id: number,
   payload: CorporateTaxDetailRequest
 ): Promise<CorporateTaxDetailResponse> {
-  const res = await axios.patch<CorporateTaxDetailResponse>(
+  const res = await adminHttp.patch<CorporateTaxDetailResponse>(
     `${BASE}/tab/CorporateTaxDetail/patch/${id}`,
-    payload,
-    {
-      ...authHeader(),
-    }
+    payload
   );
   return res.data
 }
 
 export async function deleteCorporateTaxDetail(ids: number[]): Promise<{ message: string }> {
   const query = ids.map(id => `ids=${id}`).join('&');
-  const res = await axios.delete<{ message: string }>(
-    `${BASE}/tab/CorporateTaxDetail/delete/bulk?${query}`,
-    {
-      ...authHeader(),
-    }
-  );
+  const res = await adminHttp.delete<{ message: string }>(`${BASE}/tab/CorporateTaxDetail/delete/bulk?${query}`);
   return res.data;
 }

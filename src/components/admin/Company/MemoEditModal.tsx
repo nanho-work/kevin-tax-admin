@@ -3,6 +3,7 @@
 import { Dialog } from '@headlessui/react';
 import { useState } from 'react';
 import { useEffect } from 'react';
+import { toast } from 'react-hot-toast'
 
 interface MemoEditModalProps {
     open: boolean;
@@ -27,7 +28,7 @@ export default function MemoEditModal({ open, onClose, title = '메모 수정', 
             onClose();
         } catch (err) {
             console.error('메모 저장 실패:', err);
-            alert('저장 실패');
+            toast.error('저장 실패');
         } finally {
             setLoading(false);
         }

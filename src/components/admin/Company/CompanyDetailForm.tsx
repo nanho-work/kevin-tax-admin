@@ -7,6 +7,7 @@ import { Search, Star } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import { fetchCompanyDetail } from '@/services/admin/company'
 import {
@@ -424,6 +425,7 @@ export default function CompanyDetailForm({
   updateCompanyAccountStatusFn = updateAdminCompanyAccountStatus,
 }: Props) {
   const router = useRouter()
+  const { confirm } = useConfirmDialog()
   const { id } = useParams()
   const companyId = Number(id)
   const isCreateMode = mode === 'create'
@@ -1101,7 +1103,14 @@ export default function CompanyDetailForm({
       }
       return
     }
-    if (!confirm(`${slot.label}를 삭제하시겠습니까?`)) return
+    const ok = await confirm({
+      title: '담당자 삭제',
+      description: `${slot.label}를 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setDeletingContactKey(slotKey)
       const res = await deleteCompanyContactFn(companyId, slot.contactId)
@@ -1164,8 +1173,13 @@ export default function CompanyDetailForm({
   }
 
   const handlePromoteByStar = async (slotKey: 'backup' | 'etc') => {
-    const confirmed = window.confirm('메인 담당자로 변경하시겠습니까?')
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '메인 담당자 변경',
+      description: '메인 담당자로 변경하시겠습니까?',
+      confirmText: '변경',
+      cancelText: '취소',
+    })
+    if (!ok) return
     await handlePromoteToMain(slotKey)
   }
 
@@ -1246,7 +1260,14 @@ export default function CompanyDetailForm({
       toast.error('문서 삭제 API가 아직 준비되지 않았습니다.')
       return
     }
-    if (!confirm('등록된 문서를 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '문서 삭제',
+      description: '등록된 문서를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setDeletingDocumentCode(docTypeCode)
       if (deleteDocumentFn) {
@@ -1409,7 +1430,14 @@ export default function CompanyDetailForm({
       toast.error('커스텀 문서 삭제 API가 아직 준비되지 않았습니다.')
       return
     }
-    if (!confirm('등록된 기타 관련 서류를 삭제하시겠습니까?\n삭제 시 휴지통으로 이동됩니다.')) return
+    const ok = await confirm({
+      title: '기타 문서 삭제',
+      description: '등록된 기타 관련 서류를 삭제하시겠습니까?\n삭제 시 휴지통으로 이동됩니다.',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await deleteCustomDocumentFn(companyId, documentId)
       toast.success('문서가 삭제되었습니다.')

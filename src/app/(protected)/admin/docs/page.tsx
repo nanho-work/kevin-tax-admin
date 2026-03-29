@@ -36,6 +36,7 @@ import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
 import Pagination from '@/components/common/Pagination'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import DocsContextMenu, { type DocsContextMenuItem } from '@/components/admin/docs/DocsContextMenu'
 import {
   completeAdminDocsEntryUpload,
@@ -557,6 +558,7 @@ function summarizeBulkMoveReasons(
 
 export default function AdminDocsPage() {
   const router = useRouter()
+  const { confirm, prompt } = useConfirmDialog()
   const iconGridRef = useRef<HTMLDivElement | null>(null)
   const iconCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -1021,8 +1023,15 @@ export default function AdminDocsPage() {
 
   const handleRenameSelectedFolder = async (folderId: number, currentName: string) => {
     if (actionLoading) return
-    const nextName = window.prompt('폴더 이름을 입력해 주세요.', currentName)
-    if (!nextName || !nextName.trim()) return
+    const nextName = await prompt({
+      title: '폴더 이름 변경',
+      description: '폴더 이름을 입력해 주세요.',
+      initialValue: currentName,
+      placeholder: '폴더 이름',
+      confirmText: '저장',
+      cancelText: '취소',
+    })
+    if (nextName == null || !nextName.trim()) return
     try {
       setActionLoading(true)
       await renameAdminDocsFolder(folderId, { name: nextName.trim() })
@@ -1038,7 +1047,14 @@ export default function AdminDocsPage() {
 
   const handleDeleteSelectedFolder = async (folderId: number, folderName: string) => {
     if (actionLoading) return
-    if (!window.confirm(`"${folderName}" 폴더를 삭제할까요?`)) return
+    const ok = await confirm({
+      title: '폴더 삭제',
+      description: `"${folderName}" 폴더를 삭제할까요?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
       await deleteAdminDocsFolder(folderId)
@@ -1158,8 +1174,15 @@ export default function AdminDocsPage() {
 
   const handleRenameFile = async (entryId: number, currentName: string) => {
     if (!entryId || actionLoading) return
-    const nextName = window.prompt('파일 이름을 입력해 주세요.', currentName)
-    if (!nextName || !nextName.trim()) return
+    const nextName = await prompt({
+      title: '파일 이름 변경',
+      description: '파일 이름을 입력해 주세요.',
+      initialValue: currentName,
+      placeholder: '파일 이름',
+      confirmText: '저장',
+      cancelText: '취소',
+    })
+    if (nextName == null || !nextName.trim()) return
     try {
       setActionLoading(true)
       await renameAdminDocsEntry(entryId, { name: nextName.trim() })
@@ -1175,7 +1198,14 @@ export default function AdminDocsPage() {
 
   const handleDeleteFile = async (entryId: number, name: string) => {
     if (!entryId || actionLoading) return
-    if (!window.confirm(`"${name}" 파일을 휴지통으로 이동할까요?`)) return
+    const ok = await confirm({
+      title: '파일 삭제',
+      description: `"${name}" 파일을 휴지통으로 이동할까요?`,
+      confirmText: '이동',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
       await deleteAdminDocsEntry(entryId)
@@ -1206,7 +1236,14 @@ export default function AdminDocsPage() {
 
   const handlePurgeTrashFile = async (entryId: number, name: string) => {
     if (!entryId || actionLoading) return
-    if (!window.confirm(`"${name}" 파일을 영구 삭제할까요?`)) return
+    const ok = await confirm({
+      title: '파일 영구삭제',
+      description: `"${name}" 파일을 영구 삭제할까요?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
       await purgeAdminDocsTrashEntry(entryId)
@@ -1239,7 +1276,14 @@ export default function AdminDocsPage() {
 
   const handlePurgeTrashFilesBulk = async () => {
     if (activePanel !== 'trash' || selectedFileEntryIds.length === 0 || actionLoading) return
-    if (!window.confirm(`선택된 ${selectedFileEntryIds.length}개 파일을 영구 삭제할까요?`)) return
+    const ok = await confirm({
+      title: '파일 일괄 영구삭제',
+      description: `선택된 ${selectedFileEntryIds.length}개 파일을 영구 삭제할까요?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setActionLoading(true)
       const res = await purgeAdminDocsTrashEntriesBulk({ entry_ids: selectedFileEntryIds })

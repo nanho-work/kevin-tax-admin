@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import {
   fetchAdminWorkPostDetail,
   getAdminWorkPostErrorMessage,
@@ -26,6 +27,7 @@ export default function AdminWorkPostDetailPage() {
   const params = useParams<{ postId: string }>()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { confirm } = useConfirmDialog()
   const postId = Number(params?.postId || '')
 
   const [loading, setLoading] = useState(false)
@@ -86,7 +88,14 @@ export default function AdminWorkPostDetailPage() {
   }
 
   const handleHide = async () => {
-    if (!window.confirm('이 게시글을 수신함에서 숨기시겠습니까?')) return
+    const ok = await confirm({
+      title: '게시글 숨김',
+      description: '이 게시글을 수신함에서 숨기시겠습니까?',
+      confirmText: '숨김',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setHiding(true)
       await setAdminWorkPostHidden(postId, true)

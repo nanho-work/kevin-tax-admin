@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import {
   createDepartment,
@@ -66,6 +67,7 @@ function filterAclCodes(items: PermissionCodeOut[]) {
 
 export default function ClientAclMatrixPage() {
   const { session } = useClientSessionContext()
+  const { confirm } = useConfirmDialog()
   const companyName = (session as any)?.client_company_name || `회사 ${session?.client_id ?? ''}`.trim()
   const ownerName = session?.name || '관리자'
   const [activeTab, setActiveTab] = useState<'org' | 'acl'>('org')
@@ -485,7 +487,14 @@ export default function ClientAclMatrixPage() {
   }
 
   const handleDeleteDepartment = async (departmentId: number) => {
-    if (!window.confirm('해당 부서를 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '부서 삭제',
+      description: '해당 부서를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await deleteDepartment(departmentId)
       toast.success('부서를 삭제했습니다.')
@@ -606,7 +615,14 @@ export default function ClientAclMatrixPage() {
   }
 
   const handleDeleteTeam = async (teamId: number) => {
-    if (!window.confirm('해당 팀을 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '팀 삭제',
+      description: '해당 팀을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await deleteTeam(teamId)
       toast.success('팀을 삭제했습니다.')
@@ -832,7 +848,14 @@ export default function ClientAclMatrixPage() {
   }
 
   const handleDeleteRole = async (roleId: number) => {
-    if (!window.confirm('해당 직급을 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '직급 삭제',
+      description: '해당 직급을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await deleteRole(roleId)
       toast.success('직급을 삭제했습니다.')

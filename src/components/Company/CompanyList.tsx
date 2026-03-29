@@ -9,10 +9,10 @@ import MemoEditModal from '@/components/Company/MemoEditModal';
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 
 async function updateCompany(id: number, data: Partial<CompanyTaxDetail>) {
   try {
-    console.log('전송할 데이터:', data);
     await apiUpdateCompany(id, data as CompanyUpdateRequest);
   } catch (error) {
     console.error('회사 정보 업데이트 실패:', error);
@@ -21,6 +21,7 @@ async function updateCompany(id: number, data: Partial<CompanyTaxDetail>) {
 }
 
 export default function CompanyList() {
+  const { confirm } = useConfirmDialog()
   const [companies, setCompanies] = useState<CompanyTaxDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
@@ -86,7 +87,14 @@ export default function CompanyList() {
       return;
     }
 
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const ok = await confirm({
+      title: '회사 삭제',
+      description: '선택한 회사를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       await Promise.all(selectedIds.map(id => deactivateCompany(id)));

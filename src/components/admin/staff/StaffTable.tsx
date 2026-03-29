@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { toast } from 'react-hot-toast'
 import { AdminOut } from '@/types/admin'
 import {
     getAdminStaffs, activateAdminStaff,
@@ -48,7 +49,7 @@ export default function StaffTable() {
             setStaffs(res.items)
             setTotal(res.total)
         } catch (err) {
-            alert('활성/비활성화 실패')
+            toast.error('활성/비활성화 실패')
             console.error('활성/비활성화 실패:', err)
         }
     }

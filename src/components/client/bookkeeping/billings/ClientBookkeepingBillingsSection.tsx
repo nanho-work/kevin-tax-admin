@@ -6,6 +6,7 @@ import { MoreHorizontal } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
 import Pagination from '@/components/common/Pagination'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
 import {
   bulkUpdateBillingInvoiceIssuedAt,
@@ -154,6 +155,7 @@ function formatYearMonthLabel(value: string) {
 
 export default function ClientBookkeepingBillingsSection() {
   const searchParams = useSearchParams()
+  const { confirm } = useConfirmDialog()
   const [rows, setRows] = useState<ClientBookkeepingBillingOut[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -534,7 +536,14 @@ export default function ClientBookkeepingBillingsSection() {
   }
 
   const handleDelete = async (row: ClientBookkeepingBillingOut) => {
-    if (!confirm(`${row.company_name || '해당 회사'}의 ${row.target_month} 청구 내역을 삭제하시겠습니까?`)) return
+    const ok = await confirm({
+      title: '청구 내역 삭제',
+      description: `${row.company_name || '해당 회사'}의 ${row.target_month} 청구 내역을 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setDeleteWorkingId(row.id)
       const result = await deleteBilling(row.id)

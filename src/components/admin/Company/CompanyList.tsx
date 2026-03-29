@@ -11,6 +11,7 @@ import type { PaginatedResponse } from '@/types/admin_campany';
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 
 interface Props {
   detailBasePath?: string;
@@ -54,6 +55,7 @@ export default function CompanyList({
   createLabel = '고객사등록',
   showAccountStatus = true,
 }: Props) {
+  const { confirm } = useConfirmDialog()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -214,7 +216,14 @@ export default function CompanyList({
       toast.error('삭제 기능이 제공되지 않습니다.')
       return
     }
-    if (!confirm('해당 회사를 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '회사 삭제',
+      description: '해당 회사를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       await deactivate(companyId)

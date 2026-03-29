@@ -54,10 +54,6 @@ export async function uploadViaAdapter<TResponse, TContext extends MultipartUplo
     url: adapter.url(context),
     data: form,
     ...requestConfig,
-    headers: {
-      ...(requestConfig.headers ?? {}),
-      'Content-Type': 'multipart/form-data',
-    },
   })
 
   if (adapter.responseMapper) {

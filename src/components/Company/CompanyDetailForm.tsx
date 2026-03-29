@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'react-hot-toast'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 import { fetchCompanyDetail, updateCompany } from '@/services/company'
 import { useParams } from 'next/navigation'
@@ -449,10 +450,10 @@ export default function CompanyDetailForm({ company }: Props) {
               } = form;
 
               const res = await updateCompany(companyId, payload);
-              alert(res.message);
+              toast.success(res.message);
               router.push('/admin/companies'); // navigate after success
             } catch (err: any) {
-              alert(err.response?.data?.detail || '수정 실패');
+              toast.error(err.response?.data?.detail || '수정 실패');
             }
           }}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"

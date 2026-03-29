@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import {
     fetchFinancialStatements,
     deleteFinancialStatement,
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function FinancialStatementTab({ selectedCompanyId }: Props) {
+    const { confirm } = useConfirmDialog()
     const [data, setData] = useState<FinancialStatementResponse[]>([]);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [editableRows, setEditableRows] = useState<
@@ -45,7 +47,14 @@ export default function FinancialStatementTab({ selectedCompanyId }: Props) {
     };
 
     const handleDelete = async (ids: number[]) => {
-        if (!confirm(`${ids.length}개 항목을 삭제하시겠습니까?`)) return;
+        const ok = await confirm({
+            title: '항목 삭제',
+            description: `${ids.length}개 항목을 삭제하시겠습니까?`,
+            confirmText: '삭제',
+            cancelText: '취소',
+            variant: 'danger',
+        })
+        if (!ok) return;
         try {
             await deleteFinancialStatement(ids);
             toast.success("삭제되었습니다.");
@@ -145,18 +154,7 @@ export default function FinancialStatementTab({ selectedCompanyId }: Props) {
                     </span>
                     <button
                         className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                        onClick={async () => {
-                            if (!confirm(`${selectedIds.length}개 항목을 삭제하시겠습니까?`)) return;
-                            try {
-                                await deleteFinancialStatement(selectedIds); // ✅ 단일 호출로 다중 삭제
-                                toast.success("법인세 항목이 삭제되었습니다.");
-                                await loadData();
-                                setSelectedIds([]);
-                            } catch (err) {
-                                console.error("일괄 삭제 실패", err);
-                                toast.error("삭제 중 오류가 발생했습니다.");
-                            }
-                        }}
+                        onClick={() => void handleDelete(selectedIds)}
                     >
                         선택 삭제
                     </button>

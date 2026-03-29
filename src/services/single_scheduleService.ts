@@ -1,5 +1,5 @@
 // ✅ 파일: services/singleTaxService.ts
-import axios from 'axios' // ✅ 쿠키 인증이 포함된 axios 인스턴스 사용
+import http, { getAccessToken } from '@/services/http'
 import { PaginatedResponse } from '@/types/pagination';
 import {
   SingleTaxCreate,
@@ -8,6 +8,11 @@ import {
 } from '@/types/single_schedule';
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`
+
+function authHeaders() {
+  const token = getAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 // 단발성 일정 목록 조회 (페이징)
 export const fetchSingleTaxes = async (
@@ -18,7 +23,7 @@ export const fetchSingleTaxes = async (
   const params: any = { page, limit };
   if (keyword) params.keyword = keyword;
 
-  const res = await axios.get(`${BASE}/tax-schedule/singletax`, { params });
+  const res = await http.get(`${BASE}/tax-schedule/singletax`, { params, headers: authHeaders() });
   return res.data;
 };
 
@@ -28,11 +33,8 @@ export const fetchSingleTaxes = async (
 export async function createSingleTax(
   payload: Omit<SingleTaxCreate, 'admin_id'>
 ): Promise<SingleTaxResponse> {
-  const token = localStorage.getItem('admin_access_token');
-  const res = await axios.post(`${BASE}/tax-schedule/singletax`, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const res = await http.post(`${BASE}/tax-schedule/singletax`, payload, {
+    headers: authHeaders(),
   });
   return res.data;
 }
@@ -42,14 +44,11 @@ export const updateSingleTaxStatus = async (
   taxId: number,
   payload: StatusUpdateRequest
 ): Promise<SingleTaxResponse> => {
-  const token = localStorage.getItem('admin_access_token');
-  const res = await axios.patch(
+  const res = await http.patch(
     `${BASE}/tax-schedule/singletax/${taxId}/status`,
     payload,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: authHeaders(),
     }
   );
   return res.data;

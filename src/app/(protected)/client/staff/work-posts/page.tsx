@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast'
 import FileDropzone from '@/components/common/FileDropzone'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import RichTextEditor from '@/components/editor/RichTextEditor'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
@@ -179,6 +180,7 @@ function getErrorDetail(error: unknown): string {
 
 export default function ClientWorkPostsPage() {
   const { session } = useClientSessionContext()
+  const { confirm } = useConfirmDialog()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -603,7 +605,14 @@ export default function ClientWorkPostsPage() {
       toast.error('수정/삭제 권한이 없습니다.')
       return
     }
-    if (!window.confirm('선택한 게시글을 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '게시글 삭제',
+      description: '선택한 게시글을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       setDeleting(true)
@@ -632,7 +641,14 @@ export default function ClientWorkPostsPage() {
       toast.error('수정/삭제 권한이 없습니다.')
       return
     }
-    if (!window.confirm('첨부파일을 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '첨부파일 삭제',
+      description: '첨부파일을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       setDeletingAttachmentId(attachmentId)

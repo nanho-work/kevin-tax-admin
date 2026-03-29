@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import useDebouncedSearch from '@/hooks/useDebouncedSearch'
 import { listClients } from '@/services/client/clientService'
 import { createClientAccount } from '@/services/client/clientManagementService'
 import type { ClientOut } from '@/types/Client'
@@ -43,24 +44,28 @@ export default function ClientAccountCreateSection() {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
-  useEffect(() => {
+  const loadCompanyOptions = useCallback(async () => {
     if (!isOptionOpen) return
-
-    const timer = setTimeout(async () => {
-      try {
-        setOptionLoading(true)
-        const items = await listClients({ q: companyQuery.trim() || undefined })
-        setCompanyOptions([...items].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko')))
-      } catch (err: any) {
-        setCompanyOptions([])
-        toast.error(statusMessage(err?.response?.status, 'list'))
-      } finally {
-        setOptionLoading(false)
-      }
-    }, 250)
-
-    return () => clearTimeout(timer)
+    try {
+      setOptionLoading(true)
+      const items = await listClients({ q: companyQuery.trim() || undefined })
+      setCompanyOptions([...items].sort((a, b) => a.company_name.localeCompare(b.company_name, 'ko')))
+    } catch (err: any) {
+      setCompanyOptions([])
+      toast.error(statusMessage(err?.response?.status, 'list'))
+    } finally {
+      setOptionLoading(false)
+    }
   }, [companyQuery, isOptionOpen])
+
+  const { runNow: runCompanySearch } = useDebouncedSearch({
+    value: companyQuery,
+    onSearch: loadCompanyOptions,
+    delay: 250,
+    minLength: 0,
+    enabled: isOptionOpen,
+    searchOnEmpty: true,
+  })
 
   const handleSubmit = async () => {
     if (!form.client_id || !form.login_id.trim() || !form.password.trim() || !form.name.trim()) {
@@ -109,7 +114,10 @@ export default function ClientAccountCreateSection() {
               className={inputClass}
               placeholder="클라이언트 업체 선택 (필수)"
               value={companyQuery}
-              onFocus={() => setIsOptionOpen(true)}
+              onFocus={() => {
+                setIsOptionOpen(true)
+                runCompanySearch()
+              }}
               onChange={(e) => {
                 setCompanyQuery(e.target.value)
                 setIsOptionOpen(true)

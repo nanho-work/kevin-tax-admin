@@ -32,7 +32,7 @@ export default function MailRuleList({ rules, deletingRuleId, onDeleteRule }: Ma
       {rules.map((rule) => (
         <div key={rule.id} className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm">
           <span>
-            {rule.name} · {getRuleMatchFieldLabel(rule.match_field)} {getRuleMatchOperatorLabel(rule.match_operator)} "{rule.match_value}"
+            {rule.name} · {getRuleMatchFieldLabel(rule.match_field)} {getRuleMatchOperatorLabel(rule.match_operator)} &quot;{rule.match_value}&quot;
           </span>
           <UiButton onClick={() => onDeleteRule(rule.id)} disabled={deletingRuleId === rule.id} variant="danger" size="xs">
             삭제

@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { toast } from 'react-hot-toast'
@@ -20,6 +20,7 @@ import {
   createTaskBoardItem,
   ensureTaskBoard,
   getTaskBoardErrorMessage,
+  listGlobalTaskTemplates,
   listTaskBoardItems,
   listTaskBoards,
   listTaskItemDocs,
@@ -41,7 +42,7 @@ import {
   type TaskExecutionMode,
 } from '@/services/workflowTaskBoard'
 
-type CompanyKind = '법인' | '개인'
+type CompanyKind = '법인' | '개인' | '미분류'
 type AddTab = 'template' | 'custom'
 type CustomColumn = { id: string; name: string }
 type ColumnCatalogItem = { id: string; name: string; templateId: number; sortOrder: number }
@@ -81,7 +82,7 @@ const STATUS_CLASS: Record<TaskItemStatus, string> = {
 function mapCompanyKindToLabel(kind: string): CompanyKind {
   if (kind === 'corporate') return '법인'
   if (kind === 'individual') return '개인'
-  return '개인'
+  return '미분류'
 }
 
 function mapReportCycleLabel(value?: 'monthly' | 'semiannual' | null) {
@@ -251,8 +252,38 @@ export default function WorkflowBoardPage() {
 
   const templateSourceCompanyId = useMemo(() => {
     if (selectedCompanyId) return selectedCompanyId
-    return listRows[0]?.company_id ?? null
+    const ids = listRows
+      .map((row) => Number(row.company_id))
+      .filter((id) => Number.isFinite(id))
+      .sort((a, b) => a - b)
+    return ids[0] ?? null
   }, [listRows, selectedCompanyId])
+
+  const loadAllRowsForColumnBootstrap = useCallback(async (): Promise<TaskBoardListItem[]> => {
+    const merged: TaskBoardListItem[] = []
+    const size = 100
+    let page = 1
+    let total = 0
+
+    do {
+      const res = await listTaskBoards(scope, {
+        attribution_month: attributionMonth,
+        report_month: reportMonth,
+        kind: 'all',
+        include_excluded: true,
+        incomplete_only: false,
+        page,
+        size,
+      })
+      const items = res.items || []
+      merged.push(...items)
+      total = Number(res.total || 0)
+      page += 1
+      if (items.length === 0) break
+    } while (merged.length < total)
+
+    return merged
+  }, [scope, attributionMonth, reportMonth])
 
   const assignees = useMemo<AssigneeOption[]>(() => {
     const map = new Map<number, string>()
@@ -459,12 +490,8 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const loadTemplateCatalog = async () => {
-      if (!templateSourceCompanyId) {
-        setColumnCatalog([])
-        return
-      }
       try {
-        const res = await listTaskTemplates(scope, templateSourceCompanyId, {
+        const res = await listGlobalTaskTemplates(scope, {
           includeInactive: false,
           templateKind: 'base',
         })
@@ -491,12 +518,8 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const loadProcessTemplateCatalog = async () => {
-      if (!templateSourceCompanyId) {
-        setProcessTemplateCatalog([])
-        return
-      }
       try {
-        const res = await listTaskTemplates(scope, templateSourceCompanyId, {
+        const res = await listGlobalTaskTemplates(scope, {
           includeInactive: false,
           templateKind: 'process',
         })
@@ -531,7 +554,6 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     const validIds = processTemplateCatalog.map((item) => item.id)
     setSelectedMajorTemplateIds((prev) => {
-      if (!prev.length) return validIds
       return prev.filter((id) => validIds.includes(id))
     })
     setPendingMajorSelection((prev) => prev.filter((id) => validIds.includes(id)))
@@ -540,40 +562,57 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const bootstrapColumnsFromSavedItems = async () => {
-      if (customColumns.length > 0) return
-      if (!columnCatalog.length || !listRowsApi.length) return
-      const rowsWithBoard = listRowsApi.filter((row) => row.board_id)
-      if (!rowsWithBoard.length) return
+      if (!columnCatalog.length && !processTemplateCatalog.length) return
+      const allRows = await loadAllRowsForColumnBootstrap()
+      if (cancelled) return
+      const rowsWithBoard = allRows.filter((row) => row.board_id)
+      if (!rowsWithBoard.length) {
+        if (cancelled) return
+        setCustomColumns([])
+        setSelectedMajorTemplateIds([])
+        return
+      }
 
-      const selectedTaskNormNames = new Set<string>()
+      const selectedBaseTaskNormNames = new Set<string>()
+      const selectedProcessTaskNormNames = new Set<string>()
       await Promise.all(
         rowsWithBoard.map(async (row) => {
           try {
             const res = await listTaskBoardItems(scope, row.company_id, Number(row.board_id))
             ;(res.items || []).forEach((item) => {
               const normName = normalizeText(item.task_name || '')
-              if (normName) selectedTaskNormNames.add(normName)
+              if (!normName) return
+              const kind = item.template_kind_snapshot ?? 'process'
+              if (kind === 'base') {
+                selectedBaseTaskNormNames.add(normName)
+              } else {
+                selectedProcessTaskNormNames.add(normName)
+              }
             })
           } catch {
             // noop
           }
         })
       )
-      if (cancelled || selectedTaskNormNames.size === 0) return
+
+      if (cancelled) return
 
       const nextColumns = columnCatalog
-        .filter((item) => selectedTaskNormNames.has(normalizeText(item.name)))
+        .filter((item) => selectedBaseTaskNormNames.has(normalizeText(item.name)))
         .map((item) => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name }))
+      setCustomColumns(nextColumns)
 
-      if (nextColumns.length > 0) {
-        setCustomColumns(nextColumns)
-      }
+      const nextMajorTemplateIds = processTemplateCatalog
+        .filter((item) => selectedProcessTaskNormNames.has(normalizeText(item.name)))
+        .sort((a, b) => (a.sortOrder === b.sortOrder ? a.name.localeCompare(b.name, 'ko') : a.sortOrder - b.sortOrder))
+        .map((item) => item.id)
+      setSelectedMajorTemplateIds(nextMajorTemplateIds)
     }
     void bootstrapColumnsFromSavedItems()
     return () => {
       cancelled = true
     }
-  }, [scope, listRowsApi, columnCatalog, customColumns.length])
+  }, [columnCatalog, processTemplateCatalog, loadAllRowsForColumnBootstrap])
 
   useEffect(() => {
     let cancelled = false
@@ -1617,7 +1656,7 @@ export default function WorkflowBoardPage() {
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-zinc-800">
                   {selectedListRow?.company_name || `업체 #${selectedCompanyId}`} ·{' '}
-                  {mapCompanyKindToLabel(selectedListRow?.company_kind || 'individual')} · 담당자 {selectedListRow?.assignee_name || '-'}
+                  {mapCompanyKindToLabel(selectedListRow?.company_kind || '')} · 담당자 {selectedListRow?.assignee_name || '-'}
                 </p>
                 <p className="text-xs text-zinc-500">귀속월 {attributionMonth} / 신고월 {reportMonth}</p>
               </div>

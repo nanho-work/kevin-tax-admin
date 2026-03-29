@@ -6,6 +6,7 @@ import { Paperclip } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import {
   fetchAdminWorkPostDetail,
   fetchAdminWorkPostInbox,
@@ -101,6 +102,7 @@ function formatBoardDate(value?: string | null): string {
 export default function AdminWorkPostsInboxPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { confirm } = useConfirmDialog()
 
   const sourceType = (searchParams.get('source_type') || '').toLowerCase()
   const sourceId = Number(searchParams.get('source_id') || searchParams.get('post_id') || '')
@@ -245,7 +247,14 @@ export default function AdminWorkPostsInboxPage() {
 
   const handleHide = async () => {
     if (!selectedPostId) return
-    if (!window.confirm('이 게시글을 수신함에서 숨기시겠습니까?')) return
+    const ok = await confirm({
+      title: '게시글 숨김',
+      description: '이 게시글을 수신함에서 숨기시겠습니까?',
+      confirmText: '숨김',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setHiding(true)
       await setAdminWorkPostHidden(selectedPostId, true)

@@ -9,7 +9,7 @@ import {
   adjustClientAnnualLeave,
   fetchClientAnnualLeaves,
   getClientAnnualLeaveErrorMessage,
-  useClientAnnualLeave,
+  useClientAnnualLeave as applyClientAnnualLeave,
 } from '@/services/client/clientAnnualLeaveService'
 import type { AdminOut } from '@/types/admin'
 import type { AnnualLeave } from '@/types/annualLeave'
@@ -341,7 +341,7 @@ export default function ClientAnnualLeaveManagementSection() {
     try {
       setWorking('submit')
       if (actionMode === 'use') {
-        await useClientAnnualLeave({
+        await applyClientAnnualLeave({
           admin_id: selectedRow.admin_id,
           days: parsedDays,
           occurred_on: actionForm.occurred_on || undefined,

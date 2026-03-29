@@ -9,6 +9,7 @@ import type { BlogPostResponse } from '@/types/blog';
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 export default function BlogList() {
@@ -26,6 +27,7 @@ export default function BlogList() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const { confirm } = useConfirmDialog()
   const categoryId = Number(searchParams.get('category') || 0) || undefined;
   const keywordId = Number(searchParams.get('keyword') || 0) || undefined;
 
@@ -57,7 +59,14 @@ export default function BlogList() {
   }, [categoryId, keywordId, page, pageSize, q]);
 
   const handleDelete = async (postId: number, title?: string) => {
-    if (!window.confirm(`정말 삭제하시겠습니까?\n\n제목: ${title ?? ''}`)) return;
+    const ok = await confirm({
+      title: '게시글 삭제',
+      description: `정말 삭제하시겠습니까?\n\n제목: ${title ?? ''}`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setDeletingId(postId);
       await blogService.deletePost(postId);

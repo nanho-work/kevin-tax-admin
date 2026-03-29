@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { ChatRoom } from "@/types/chat";
 import { getChatRoomList, createChatRoom } from "@/services/chatService";
+import { toast } from 'react-hot-toast'
 
 interface Props {
   selectedRoomId: number | null;
@@ -26,7 +27,10 @@ export default function ChatRoomList({ selectedRoomId, onSelectRoom }: Props) {
   }, []);
 
   const handleCreateRoom = async () => {
-    if (!title.trim()) return alert("대화방명을 입력해주세요.");
+    if (!title.trim()) {
+      toast.error('대화방명을 입력해주세요.')
+      return
+    }
 
     const room = await createChatRoom({
       title,

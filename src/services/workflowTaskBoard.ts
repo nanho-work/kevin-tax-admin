@@ -525,6 +525,23 @@ export async function listTaskTemplates(
   return res.data
 }
 
+export async function listGlobalTaskTemplates(
+  scope: TaskBoardScope,
+  options: boolean | TaskTemplateListOptions = false
+): Promise<TaskTemplateListResponse> {
+  const http = getHttp(scope)
+  const base = getBase(scope)
+  const includeInactive = typeof options === 'boolean' ? options : (options.includeInactive ?? false)
+  const templateKind = typeof options === 'boolean' ? undefined : options.templateKind
+  const res = await http.get<TaskTemplateListResponse>(`${base}/task-templates`, {
+    params: {
+      include_inactive: includeInactive,
+      template_kind: templateKind,
+    },
+  })
+  return res.data
+}
+
 export async function createTaskTemplate(
   scope: TaskBoardScope,
   companyId: number,

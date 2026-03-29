@@ -9,6 +9,7 @@ import { deactivateClientAccount, listClientAccounts } from '@/services/client/c
 import type { ClientAccountOut } from '@/types/clientAccount'
 import { inputClass, statusMessage } from './constants'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 
 function getRankOrder(row: ClientAccountOut): number | null {
   if (typeof row.rank_order === 'number') return row.rank_order
@@ -17,6 +18,7 @@ function getRankOrder(row: ClientAccountOut): number | null {
 }
 
 export default function ClientAccountListSection() {
+  const { confirm } = useConfirmDialog()
   const [rows, setRows] = useState<ClientAccountOut[]>([])
   const [clientNameMap, setClientNameMap] = useState<Record<number, string>>({})
   const { session } = useClientSessionContext()
@@ -46,7 +48,14 @@ export default function ClientAccountListSection() {
   }
 
   const handleDeactivate = async (id: number) => {
-    if (!confirm('해당 계정을 비활성화하시겠습니까? (실제 삭제되지 않음)')) return
+    const ok = await confirm({
+      title: '계정 비활성화',
+      description: '해당 계정을 비활성화하시겠습니까? (실제 삭제되지 않음)',
+      confirmText: '비활성화',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       setWorkingId(id)

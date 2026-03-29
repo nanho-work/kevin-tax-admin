@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import {
   deleteClientWorkPost,
@@ -41,6 +42,7 @@ export default function ClientWorkPostDetailPage() {
   const params = useParams<{ postId: string }>()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { confirm } = useConfirmDialog()
   const { session } = useClientSessionContext()
   const postId = Number(params?.postId || '')
 
@@ -105,7 +107,14 @@ export default function ClientWorkPostDetailPage() {
       toast.error('수정/삭제 권한이 없습니다.')
       return
     }
-    if (!window.confirm('이 게시글을 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '게시글 삭제',
+      description: '이 게시글을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       setDeleting(true)
       await deleteClientWorkPost(postId)

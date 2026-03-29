@@ -1,6 +1,7 @@
 'use client';
 
 import { deleteRole } from '@/services/client/roleService';
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { toast } from 'react-hot-toast';
 
 function statusMessage(status?: number): string {
@@ -20,9 +21,17 @@ export default function RoleDeleteButton({
   onSuccess: () => void;
   disabled?: boolean;
 }) {
+  const { confirm } = useConfirmDialog()
   const handleDelete = async () => {
     if (disabled) return;
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const ok = await confirm({
+      title: '직급 삭제',
+      description: '정말 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return;
 
     try {
       await deleteRole(roleId);

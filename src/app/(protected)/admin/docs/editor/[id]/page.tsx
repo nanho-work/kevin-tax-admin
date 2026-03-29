@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Download, PaintBucket, Square, Type } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import {
   acquireAdminSheetLock,
   acquireAdminSheetRowLock,
@@ -163,6 +164,7 @@ function toInlineCellStyle(style: SheetCellStyleValue | undefined): CSSPropertie
 export default function AdminDocsExcelEditorPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const { confirm, prompt } = useConfirmDialog()
   const entryId = useMemo(() => Number(params?.id || 0), [params?.id])
 
   const [loading, setLoading] = useState(true)
@@ -646,8 +648,14 @@ export default function AdminDocsExcelEditorPage() {
 
   const handleDeleteRow = async (rowId: number) => {
     if (!sheetId || readOnlyMode || actionLoading) return
-    const confirmed = window.confirm('이 행을 삭제하시겠습니까?')
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '행 삭제',
+      description: '이 행을 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     const rowLockToken = await ensureRowLock(rowId)
     if (!rowLockToken) return
     try {
@@ -704,7 +712,7 @@ export default function AdminDocsExcelEditorPage() {
     return columns[activeColumnIndex]
   }, [activeColumnIndex, columns])
 
-  const resolveColumnIndexForAction = useCallback((actionLabel: string, preferredIndex?: number | null) => {
+  const resolveColumnIndexForAction = useCallback(async (actionLabel: string, preferredIndex?: number | null) => {
     if (columns.length === 0) {
       toast.error('컬럼이 없습니다.')
       return null
@@ -715,11 +723,16 @@ export default function AdminDocsExcelEditorPage() {
     if (activeColumnIndex != null && activeColumnIndex >= 0 && activeColumnIndex < columns.length) {
       return activeColumnIndex
     }
-    const picked = window.prompt(
-      `${actionLabel}\n대상 컬럼명을 입력하세요.\n${columns.join(', ')}`,
-      columns[0] || ''
-    )
-    const name = (picked || '').trim()
+    const picked = await prompt({
+      title: actionLabel,
+      description: `대상 컬럼명을 입력하세요.\n${columns.join(', ')}`,
+      initialValue: columns[0] || '',
+      placeholder: '컬럼명',
+      confirmText: '선택',
+      cancelText: '취소',
+    })
+    if (picked == null) return null
+    const name = picked.trim()
     if (!name) return null
     const index = columns.findIndex((column) => column === name)
     if (index < 0) {
@@ -727,7 +740,7 @@ export default function AdminDocsExcelEditorPage() {
       return null
     }
     return index
-  }, [activeColumnIndex, columns])
+  }, [activeColumnIndex, columns, prompt])
 
   const applyColumnsPatch = useCallback(
     async (
@@ -776,7 +789,14 @@ export default function AdminDocsExcelEditorPage() {
 
   const handleAddColumn = async (afterIndex?: number | null) => {
     if (readOnlyMode || actionLoading) return
-    const name = (window.prompt('추가할 컬럼명을 입력하세요.') || '').trim()
+    const input = await prompt({
+      title: '컬럼 추가',
+      description: '추가할 컬럼명을 입력하세요.',
+      placeholder: '컬럼명',
+      confirmText: '추가',
+      cancelText: '취소',
+    })
+    const name = (input || '').trim()
     if (!name) return
     if (columns.includes(name)) {
       toast.error('이미 존재하는 컬럼명입니다.')
@@ -798,11 +818,19 @@ export default function AdminDocsExcelEditorPage() {
 
   const handleRenameColumn = async (targetIndex?: number | null) => {
     if (readOnlyMode || actionLoading) return
-    const index = resolveColumnIndexForAction('컬럼명 변경', targetIndex)
+    const index = await resolveColumnIndexForAction('컬럼명 변경', targetIndex)
     if (index == null) return
     const fromColumn = columns[index]
     if (!fromColumn) return
-    const toColumn = (window.prompt('새 컬럼명을 입력하세요.', fromColumn) || '').trim()
+    const input = await prompt({
+      title: '컬럼명 변경',
+      description: '새 컬럼명을 입력하세요.',
+      initialValue: fromColumn,
+      placeholder: '새 컬럼명',
+      confirmText: '저장',
+      cancelText: '취소',
+    })
+    const toColumn = (input || '').trim()
     if (!toColumn || toColumn === fromColumn) return
     if (columns.includes(toColumn)) {
       toast.error('이미 존재하는 컬럼명입니다.')
@@ -821,7 +849,7 @@ export default function AdminDocsExcelEditorPage() {
 
   const handleRemoveColumn = async (targetIndex?: number | null) => {
     if (readOnlyMode || actionLoading) return
-    const index = resolveColumnIndexForAction('컬럼 삭제', targetIndex)
+    const index = await resolveColumnIndexForAction('컬럼 삭제', targetIndex)
     if (index == null) return
     const targetColumn = columns[index]
     if (!targetColumn) return
@@ -829,7 +857,14 @@ export default function AdminDocsExcelEditorPage() {
       toast.error('최소 1개 이상의 컬럼이 필요합니다.')
       return
     }
-    if (!window.confirm(`컬럼 "${targetColumn}"을 삭제하시겠습니까?`)) return
+    const ok = await confirm({
+      title: '컬럼 삭제',
+      description: `컬럼 "${targetColumn}"을 삭제하시겠습니까?`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     const nextColumns = columns.filter((column) => column !== targetColumn)
     const applied = await applyColumnsPatch(
       {
@@ -843,7 +878,7 @@ export default function AdminDocsExcelEditorPage() {
 
   const handleMoveColumn = async (direction: 'left' | 'right', targetIndex?: number | null) => {
     if (readOnlyMode || actionLoading) return
-    const index = resolveColumnIndexForAction(
+    const index = await resolveColumnIndexForAction(
       direction === 'left' ? '컬럼 왼쪽 이동' : '컬럼 오른쪽 이동',
       targetIndex
     )

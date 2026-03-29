@@ -18,6 +18,7 @@ import '@tiptap/extension-table';
 import '@tiptap/extension-table-row';
 import '@tiptap/extension-table-header';
 import '@tiptap/extension-table-cell';
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -29,6 +30,7 @@ interface ToolbarProps {
 const Separator = () => <span className="mx-2 h-5 w-px bg-gray-300" />;
 
 export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, showImageButton = true, sticky }) => {
+  const { prompt } = useConfirmDialog()
   if (!editor) return null;
 
   const setHeading = (level: 0 | 1 | 2 | 3) => {
@@ -300,12 +302,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onImageUpload, showIma
       {/* 링크 / 이미지 */}
       <button
         type="button"
-        onClick={() => {
-          const url = window.prompt('링크 URL을 입력하세요');
-          if (!url) {
+        onClick={async () => {
+          const url = await prompt({
+            title: '링크 설정',
+            description: '링크 URL을 입력하세요.',
+            placeholder: 'https://example.com',
+            confirmText: '적용',
+            cancelText: '취소',
+          })
+          if (url == null) return
+          if (!url.trim()) {
             editor.chain().focus().unsetLink().run();
           } else {
-            editor.chain().focus().setLink({ href: url }).run();
+            editor.chain().focus().setLink({ href: url.trim() }).run();
           }
         }}
         className={cls(editor.isActive('link'))}

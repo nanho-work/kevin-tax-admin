@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiSearchInput from '@/components/common/UiSearchInput'
 import UiButton from '@/components/common/UiButton'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTime, formatKSTDateTimeMinute } from '@/utils/dateTime'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
 import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
@@ -76,6 +77,7 @@ export function MailInboxPage({
 }: MailInboxPageProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { confirm } = useConfirmDialog()
   const {
     bulkMoveMailMessagesToFolder,
     blockSpamDomain,
@@ -740,9 +742,13 @@ export function MailInboxPage({
       toast.error('발신자 도메인을 확인할 수 없습니다.')
       return
     }
-    const applyToExisting = window.confirm(
-      `도메인 "${domain}"을 스팸으로 등록합니다.\n기존 메일도 스팸함으로 이동할까요?\n(확인=예, 취소=아니오)`
-    )
+    const applyToExisting = await confirm({
+      title: '도메인 스팸 등록',
+      description: `도메인 "${domain}"을 스팸으로 등록합니다.\n기존 메일도 스팸함으로 이동할까요?`,
+      confirmText: '이동',
+      cancelText: '규칙만 등록',
+      variant: 'danger',
+    })
     try {
       await blockSpamDomain({
         domain,
@@ -777,7 +783,14 @@ export function MailInboxPage({
   }
 
   const handlePurgeMessage = async (messageId: number) => {
-    if (!window.confirm('완전삭제한 메일은 복구할 수 없습니다. 삭제할까요?')) return
+    const ok = await confirm({
+      title: '메일 완전삭제',
+      description: '완전삭제한 메일은 복구할 수 없습니다. 삭제할까요?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await purgeMailMessage(messageId, scopedMailAccountId)
       toast.success('메일을 완전 삭제했습니다.')
@@ -1014,7 +1027,14 @@ export function MailInboxPage({
 
   const handleBulkPurge = async () => {
     if (selectedMessageIds.length === 0) return
-    if (!window.confirm('선택한 메일을 완전삭제할까요? 삭제 후 복구할 수 없습니다.')) return
+    const ok = await confirm({
+      title: '메일 일괄 완전삭제',
+      description: '선택한 메일을 완전삭제할까요? 삭제 후 복구할 수 없습니다.',
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     const targetIds = [...selectedMessageIds]
     const results = await Promise.allSettled(targetIds.map((id) => purgeMailMessage(id, scopedMailAccountId)))
     const successCount = results.filter((result) => result.status === 'fulfilled').length

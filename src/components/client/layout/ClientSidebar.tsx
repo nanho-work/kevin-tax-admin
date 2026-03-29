@@ -27,6 +27,7 @@ import {
   updateMailFolder,
 } from '@/services/client/clientMailService'
 import { fetchClientStaffSignupRequests } from '@/services/client/clientStaffSignupRequestService'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
@@ -159,6 +160,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     return Number.isFinite(raw) && raw > 0 ? raw : null
   }, [searchParams])
   const { session, loading } = useClientSessionContext()
+  const { confirm } = useConfirmDialog()
   const canManageClients = getClientRoleRank(session) === 0
   const shouldHideSecondSidebar = activeRailSection === 'board'
   const collapsedQuickMenus = [
@@ -530,7 +532,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   }
 
   const handleDeleteFolder = async (accountId: number, folderId: number, folderName: string) => {
-    if (!window.confirm(`"${folderName}" 폴더를 삭제할까요?\n폴더 내 메일은 받은메일함으로 이동됩니다.`)) return
+    const ok = await confirm({
+      title: '폴더 삭제',
+      description: `"${folderName}" 폴더를 삭제할까요?\n폴더 내 메일은 받은메일함으로 이동됩니다.`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     const key = `${accountId}-${folderId}`
     try {
       setFolderDeleteLoadingKey(key)

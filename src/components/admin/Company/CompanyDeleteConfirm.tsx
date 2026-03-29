@@ -3,6 +3,7 @@
 import { useState, Fragment } from 'react'
 import { Dialog as HeadlessDialog, Transition } from '@headlessui/react'
 import UiButton from '@/components/common/UiButton'
+import { toast } from 'react-hot-toast'
 
 interface CompanyDeleteConfirmProps {
   companyId: number
@@ -83,7 +84,7 @@ export default function CompanyDeleteConfirm({
       onClose()
     } catch (err) {
       console.error('삭제 실패:', err)
-      alert('삭제에 실패했습니다.')
+      toast.error('삭제에 실패했습니다.')
     } finally {
       setLoading(false)
     }

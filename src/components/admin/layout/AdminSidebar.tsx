@@ -26,6 +26,7 @@ import {
   updateMailFolder,
 } from '@/services/admin/mailService'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { getAdminRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
@@ -149,6 +150,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const searchParams = useSearchParams()
   const router = useRouter()
   const { session, loading: sessionLoading } = useAdminSessionContext()
+  const { confirm } = useConfirmDialog()
 
   const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
@@ -496,7 +498,14 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   }
 
   const handleDeleteFolder = async (accountId: number, folderId: number, folderName: string) => {
-    if (!window.confirm(`"${folderName}" 폴더를 삭제할까요?\n폴더 내 메일은 받은메일함으로 이동됩니다.`)) return
+    const ok = await confirm({
+      title: '폴더 삭제',
+      description: `"${folderName}" 폴더를 삭제할까요?\n폴더 내 메일은 받은메일함으로 이동됩니다.`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      variant: 'danger',
+    })
+    if (!ok) return
     const key = `${accountId}-${folderId}`
     try {
       setFolderDeleteLoadingKey(key)
