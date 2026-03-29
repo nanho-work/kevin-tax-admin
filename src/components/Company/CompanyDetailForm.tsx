@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
 import { fetchCompanyDetail, updateCompany } from '@/services/company'
 import { useParams } from 'next/navigation'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 interface Props {
   company: CompanyDetailResponse
@@ -453,7 +454,7 @@ export default function CompanyDetailForm({ company }: Props) {
               toast.success(res.message);
               router.push('/admin/companies'); // navigate after success
             } catch (err: any) {
-              toast.error(err.response?.data?.detail || '수정 실패');
+              toast.error(getApiErrorMessage(err, '수정 실패'));
             }
           }}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"

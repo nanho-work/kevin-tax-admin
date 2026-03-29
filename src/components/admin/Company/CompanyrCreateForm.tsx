@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 import { createCompany } from '@/services/admin/company'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 import type { CompanyCreateRequest } from '@/types/admin_campany'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -105,7 +106,7 @@ export default function CompanyCreateForm() {
       }
     } catch (err: any) {
       const detail = err?.response?.data?.detail
-      setError(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || '등록 실패')
+      setError(getApiErrorMessageFromDetail(detail, '등록 실패'))
     }
   }
 

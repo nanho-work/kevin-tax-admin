@@ -336,11 +336,11 @@ function buildActorKeySet(members: Array<{ member_type: string; member_id: numbe
   )
 }
 
-function buildWsUrl(portalType: PortalType, token: string) {
+function buildWsUrl(portalType: PortalType) {
   const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim()
-  if (!apiBase || !token) return ''
+  if (!apiBase) return ''
   const wsBase = apiBase.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://')
-  return `${wsBase}/ws/${portalType}/chats?token=${encodeURIComponent(token)}`
+  return `${wsBase}/ws/${portalType}/chats`
 }
 
 function normalizeIncomingMessage(raw: any): WorkChatMessage | null {
@@ -2628,12 +2628,12 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
         setWsCloseInfo({ code: 4401, reason: 'token_missing' })
         return
       }
-      const wsUrl = buildWsUrl(portalType, latestToken)
+      const wsUrl = buildWsUrl(portalType)
       if (!wsUrl) return
 
       setWsCloseInfo(null)
       setWsConnecting(true)
-      const ws = new WebSocket(wsUrl)
+      const ws = new WebSocket(wsUrl, [`bearer.${latestToken}`, 'chat.v1'])
       wsRef.current = ws
       subscribedRoomIdsRef.current = new Set()
 

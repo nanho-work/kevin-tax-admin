@@ -3,6 +3,7 @@
 import { deleteTeam } from '@/services/teamService';
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { toast } from 'react-hot-toast'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 export default function TeamDeleteButton({ teamId, onSuccess }: { teamId: number; onSuccess: () => void }) {
   const { confirm } = useConfirmDialog()
@@ -19,7 +20,7 @@ export default function TeamDeleteButton({ teamId, onSuccess }: { teamId: number
       await deleteTeam(teamId);
       onSuccess();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '삭제 실패');
+      toast.error(getApiErrorMessage(err, '삭제 실패'));
     }
   };
 

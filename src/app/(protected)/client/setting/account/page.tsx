@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { changeClientPassword } from '@/services/client/clientAuthService'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -85,13 +86,7 @@ export default function ClientSettingAccountPage() {
       setConfirmPassword('')
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      const message =
-        typeof detail === 'string'
-          ? detail
-          : Array.isArray(detail) && detail[0]?.msg
-            ? detail[0].msg
-            : '비밀번호 변경에 실패했습니다.'
-      toast.error(message)
+      toast.error(getApiErrorMessageFromDetail(detail, '비밀번호 변경에 실패했습니다.'))
     } finally {
       setSaving(false)
     }

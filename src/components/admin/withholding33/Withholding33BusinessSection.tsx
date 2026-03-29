@@ -19,6 +19,7 @@ import UiSearchInput from '@/components/common/UiSearchInput'
 import UiButton from '@/components/common/UiButton'
 import { uiInputClass } from '@/styles/uiClasses'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 function toMonthInput(value: string) {
   if (!value) return ''
@@ -274,8 +275,8 @@ export default function Withholding33BusinessSection() {
     } catch (err: any) {
       const code = err?.response?.status
       const detailMsg = err?.response?.data?.detail
-      if (code === 409) toast.error(typeof detailMsg === 'string' ? detailMsg : '허용되지 않는 상태 전이입니다.')
-      else if (code === 422) toast.error(typeof detailMsg === 'string' ? detailMsg : '입력값을 확인해 주세요.')
+      if (code === 409) toast.error(getApiErrorMessageFromDetail(detailMsg, '허용되지 않는 상태 전이입니다.'))
+      else if (code === 422) toast.error(getApiErrorMessageFromDetail(detailMsg, '입력값을 확인해 주세요.'))
       else if (code === 404) toast.error('대상을 찾을 수 없습니다.')
       else toast.error('검토 저장에 실패했습니다.')
     } finally {

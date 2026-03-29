@@ -1,5 +1,6 @@
-import type { AxiosError } from 'axios'
+import axios from 'axios'
 import { clientHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   ApprovalAttachmentAction,
   ApprovalAttachmentDownloadResponse,
@@ -13,22 +14,18 @@ import type {
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/approvals/documents/`
 
-type ApiErrorPayload = {
-  detail?: string | null
-}
-
 export function getClientApprovalDocumentErrorMessage(error: unknown) {
-  const axiosError = error as AxiosError<ApiErrorPayload>
-  const status = axiosError?.response?.status
-  const detail = axiosError?.response?.data?.detail
+  if (!axios.isAxiosError(error)) return '결재 문서 처리 중 오류가 발생했습니다.'
+  const status = error.response?.status
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
 
-  if (status === 400) return detail || '처리할 수 없는 결재 문서입니다.'
+  if (status === 400) return getApiErrorMessageFromDetail(detail, '처리할 수 없는 결재 문서입니다.')
   if (status === 401) return '로그인이 만료되었습니다.'
-  if (status === 403) return detail || '현재 결재 단계의 결재자가 아닙니다.'
-  if (status === 404) return detail || '문서를 찾을 수 없습니다.'
-  if (status === 409) return detail || '승인 완료 문서는 수정할 수 없습니다.'
-  if (status === 422) return detail || '결재선 입력값을 확인해 주세요.'
-  return detail || '결재 문서 처리 중 오류가 발생했습니다.'
+  if (status === 403) return getApiErrorMessageFromDetail(detail, '현재 결재 단계의 결재자가 아닙니다.')
+  if (status === 404) return getApiErrorMessageFromDetail(detail, '문서를 찾을 수 없습니다.')
+  if (status === 409) return getApiErrorMessageFromDetail(detail, '승인 완료 문서는 수정할 수 없습니다.')
+  if (status === 422) return getApiErrorMessageFromDetail(detail, '결재선 입력값을 확인해 주세요.')
+  return getApiErrorMessageFromDetail(detail, '결재 문서 처리 중 오류가 발생했습니다.')
 }
 
 export async function fetchClientApprovalDocuments(params: {

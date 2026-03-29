@@ -11,6 +11,7 @@ import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 export default function BlogList() {
   const pathname = usePathname();
@@ -52,7 +53,7 @@ export default function BlogList() {
         setPageSize(respPageSize);
       }
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || e?.message || '불러오기에 실패했습니다.');
+      setErr(getApiErrorMessage(e, e?.message || '불러오기에 실패했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -77,7 +78,7 @@ export default function BlogList() {
         await loadPosts(nextPage);
       }
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || e?.message || '삭제 중 오류가 발생했습니다.');
+      toast.error(getApiErrorMessage(e, e?.message || '삭제 중 오류가 발생했습니다.'));
     } finally {
       setDeletingId(null);
     }

@@ -1525,7 +1525,7 @@ export default function CompanyDetailForm({
                         toast.success('등록이 완료되었습니다.')
                         router.push(listPath)
                       } catch (err: any) {
-                        toast.error(err?.response?.data?.detail || '등록 실패')
+                        toast.error(extractApiDetail(err) || '등록 실패')
                       } finally {
                         setSaving(false)
                       }
@@ -1572,7 +1572,7 @@ export default function CompanyDetailForm({
                               setVisibleContactSlotKeys(['main'])
                             }
                           } catch (err: any) {
-                            toast.error(err.response?.data?.detail || '수정 실패')
+                            toast.error(extractApiDetail(err) || '수정 실패')
                           } finally {
                             setSaving(false)
                           }

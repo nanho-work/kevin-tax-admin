@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { searchKakaoAddress, type KakaoAddressItem } from '@/services/address/kakaoAddressService'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 interface Props {
   open: boolean
@@ -42,7 +43,7 @@ export default function KakaoAddressSearchModal({ open, onClose, onSelect }: Pro
       }
     } catch (e: any) {
       const detail = e?.response?.data?.detail
-      setError(typeof detail === 'string' && detail.trim() ? detail : '주소 검색에 실패했습니다.')
+      setError(getApiErrorMessageFromDetail(detail, '주소 검색에 실패했습니다.'))
       setItems([])
     } finally {
       setLoading(false)
@@ -137,4 +138,3 @@ export default function KakaoAddressSearchModal({ open, onClose, onSelect }: Pro
     </div>
   )
 }
-

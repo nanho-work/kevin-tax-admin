@@ -1,5 +1,6 @@
-import type { AxiosError } from 'axios'
+import axios from 'axios'
 import { clientHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   AnnualLeaveAdjustRequest,
   AnnualLeaveAdjustResponse,
@@ -13,20 +14,16 @@ import type {
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/annual-leaves/`
 
-type ApiErrorPayload = {
-  detail?: string | null
-}
-
 export function getClientAnnualLeaveErrorMessage(error: unknown) {
-  const axiosError = error as AxiosError<ApiErrorPayload>
-  const status = axiosError?.response?.status
-  const detail = axiosError?.response?.data?.detail
+  if (!axios.isAxiosError(error)) return '연차 처리 중 오류가 발생했습니다'
+  const status = error.response?.status
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
 
-  if (status === 400) return detail || '잔여 연차가 부족합니다'
+  if (status === 400) return getApiErrorMessageFromDetail(detail, '잔여 연차가 부족합니다')
   if (status === 401) return '로그인이 만료되었습니다'
   if (status === 403) return '권한이 없습니다'
-  if (status === 404) return detail || '대상 직원이 없습니다'
-  return detail || '연차 처리 중 오류가 발생했습니다'
+  if (status === 404) return getApiErrorMessageFromDetail(detail, '대상 직원이 없습니다')
+  return getApiErrorMessageFromDetail(detail, '연차 처리 중 오류가 발생했습니다')
 }
 
 export async function fetchClientAnnualLeaves(params: AnnualLeaveListParams = {}) {

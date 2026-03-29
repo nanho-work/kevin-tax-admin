@@ -30,6 +30,7 @@ import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { filterAdminVisibleMailAccounts } from '@/utils/mailAccountScope'
 import { getAdminRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 type MenuChild = { label: string; href: string }
 type MenuSection = {
@@ -439,7 +440,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       handleCancelFolderCreate()
     } catch (error) {
       const detail = (error as any)?.response?.data?.detail
-      setFolderCreateError(typeof detail === 'string' && detail.trim() ? detail : '폴더 생성에 실패했습니다.')
+      setFolderCreateError(getApiErrorMessageFromDetail(detail, '폴더 생성에 실패했습니다.'))
     } finally {
       setFolderCreateLoading(false)
     }

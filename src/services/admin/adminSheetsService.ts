@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { adminHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   AdminSheetDocument,
   AdminSheetColumnWidthsPatchPayload,
@@ -41,17 +42,15 @@ function parseFilenameFromDisposition(disposition: string | undefined, fallback:
 }
 
 type ApiErrorPayload = {
-  detail?: string | { code?: string; message?: string } | null
+  detail?: string | { code?: string; message?: string; request_id?: string } | null
 }
 
 export function getAdminSheetsErrorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return '시트 처리 중 오류가 발생했습니다.'
   const status = error.response?.status
   const detail = (error.response?.data as ApiErrorPayload | undefined)?.detail
-  if (typeof detail === 'string' && detail.trim()) return detail
-  if (detail && typeof detail === 'object' && typeof detail.message === 'string' && detail.message.trim()) {
-    return detail.message
-  }
+  const parsed = getApiErrorMessageFromDetail(detail, '')
+  if (parsed) return parsed
 
   if (status === 400) return '요청 값을 확인해 주세요.'
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'

@@ -13,6 +13,7 @@ import {
 import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import type { AnnualLeaveCancelStatus, AnnualLeaveRequest, AnnualLeaveRequestStatus } from '@/types/annualLeaveRequest'
 import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -109,7 +110,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       setItems(res.items || [])
       setTotal(res.total || 0)
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '휴가 신청 내역을 불러오지 못했습니다.')
+      toast.error(getApiErrorMessage(error, '휴가 신청 내역을 불러오지 못했습니다.'))
       setItems([])
       setTotal(0)
     } finally {
@@ -135,7 +136,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       setRemainingDays(normalized)
     } catch (error: any) {
       setRemainingDays(null)
-      setRemainingError(error?.response?.data?.detail || '잔여 휴가를 불러오지 못했습니다.')
+      setRemainingError(getApiErrorMessage(error, '잔여 휴가를 불러오지 못했습니다.'))
     } finally {
       setRemainingLoading(false)
     }
@@ -211,7 +212,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       await loadRemainingDays()
       await onSubmitted?.()
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '휴가 신청 등록에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '휴가 신청 등록에 실패했습니다.'))
     } finally {
       setSubmitting(false)
     }
@@ -224,7 +225,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       await loadRequests(page, listTab)
       await onSubmitted?.()
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '휴가 신청 취소에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '휴가 신청 취소에 실패했습니다.'))
     }
   }
 
@@ -250,7 +251,7 @@ export default function AdminLeaveRequestPanel({ mode = 'page', onClose, onSubmi
       await loadRequests(page, listTab)
       await onSubmitted?.()
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '승인취소 요청 등록에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '승인취소 요청 등록에 실패했습니다.'))
     } finally {
       setCancelRequestSubmitting(false)
     }

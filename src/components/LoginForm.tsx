@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
 import type { LoginRequest } from '@/types/admin'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 export default function LoginForm() {
   const router = useRouter()
@@ -31,7 +32,7 @@ export default function LoginForm() {
 
       router.push('/dashboard')
     } catch (err: any) {
-      setErrorMessage(err?.response?.data?.detail || '로그인에 실패했습니다.')
+      setErrorMessage(getApiErrorMessage(err, '로그인에 실패했습니다.'))
     } finally {
       setLoading(false)
     }

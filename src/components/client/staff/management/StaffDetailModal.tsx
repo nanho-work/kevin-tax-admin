@@ -41,6 +41,7 @@ import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
@@ -53,12 +54,7 @@ interface Props {
 
 function getErrorMessage(error: any, fallback: string) {
   const detail = error?.response?.data?.detail
-  if (typeof detail === 'string' && detail.trim().length > 0) return detail
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0]
-    if (typeof first?.msg === 'string') return first.msg
-  }
-  return fallback
+  return getApiErrorMessageFromDetail(detail, fallback)
 }
 
 function isNotFoundError(error: any) {

@@ -26,6 +26,7 @@ import type {
 } from '@/types/clientBookkeeping'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
 import TemplateDownloadButton from '@/components/client/templates/TemplateDownloadButton'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -492,7 +493,8 @@ export default function ClientBookkeepingContractsSection() {
       await loadContracts()
     } catch (error) {
       const detail = (error as any)?.response?.data?.detail
-      if (typeof detail === 'string' && detail.includes('계약 기간이 중복됩니다')) {
+      const message = getApiErrorMessageFromDetail(detail, '')
+      if (message.includes('계약 기간이 중복됩니다')) {
         toast.error('같은 회사의 계약 기간이 중복됩니다.')
       } else {
         toast.error(getClientBookkeepingErrorMessage(error))

@@ -24,6 +24,7 @@ import type { PermissionCodeOut } from '@/types/clientPermission'
 import type { DepartmentOut } from '@/types/department'
 import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { getRoleRank } from '@/utils/roleRank'
 
 type StaffPermissionRow = {
@@ -53,12 +54,7 @@ function hasChanges(row: StaffPermissionRow, codes: PermissionCodeOut[]) {
 
 function getErrorMessage(error: any, fallback: string) {
   const detail = error?.response?.data?.detail
-  if (typeof detail === 'string' && detail.trim().length > 0) return detail
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0]
-    if (typeof first?.msg === 'string') return first.msg
-  }
-  return fallback
+  return getApiErrorMessageFromDetail(detail, fallback)
 }
 
 function filterAclCodes(items: PermissionCodeOut[]) {

@@ -164,6 +164,7 @@ export type DocsEntryPreviewUrlResponse = {
 export type DocsTrashEntryItem = {
   entry_id: number
   folder_id: number
+  scope?: DocsScope | null
   folder_name: string
   name: string
   extension: string | null

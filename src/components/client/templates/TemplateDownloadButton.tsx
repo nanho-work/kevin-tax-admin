@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { getClientTemplateDownloadUrlByCode } from '@/services/client/clientTemplateService'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 type Props = {
   code: string
@@ -24,7 +25,7 @@ export default function TemplateDownloadButton({
       window.open(res.download_url, '_blank', 'noopener,noreferrer')
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '양식 다운로드 중 오류가 발생했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '양식 다운로드 중 오류가 발생했습니다.'))
     } finally {
       setLoading(false)
     }
@@ -36,4 +37,3 @@ export default function TemplateDownloadButton({
     </button>
   )
 }
-

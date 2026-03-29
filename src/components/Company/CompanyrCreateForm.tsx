@@ -5,6 +5,7 @@ import type React from 'react';
 import { createCompany } from '@/services/company';
 import type { CompanyCreateRequest } from '@/types/admin_campany';
 import { useRouter } from 'next/navigation';
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -160,9 +161,7 @@ export default function CompanyCreateForm() {
             router.push('/companies'); // 등록 후 회사 목록으로 이동
         } catch (err: any) {
             const detail = err?.response?.data?.detail;
-            const errorMsg = Array.isArray(detail)
-                ? detail.map((d: any) => d.msg).join(', ')
-                : detail || '등록 실패';
+            const errorMsg = getApiErrorMessageFromDetail(detail, '등록 실패');
             setError(errorMsg);
         }
     };

@@ -13,6 +13,7 @@ import TemplateDownloadButton from '@/components/client/templates/TemplateDownlo
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const ALLOWED_EXCEL_EXTENSIONS = ['.xls', '.xlsx', '.xlsm', '.xltx', '.xltm']
 
@@ -54,7 +55,7 @@ export default function ClientTemplateManagementSection() {
       setRows(res.items || [])
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '템플릿 목록을 불러오지 못했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '템플릿 목록을 불러오지 못했습니다.'))
       setRows([])
     } finally {
       setLoading(false)
@@ -90,7 +91,7 @@ export default function ClientTemplateManagementSection() {
       await loadTemplates()
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '템플릿 업로드 중 오류가 발생했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '템플릿 업로드 중 오류가 발생했습니다.'))
     } finally {
       setUploadingCode(null)
     }
@@ -124,7 +125,7 @@ export default function ClientTemplateManagementSection() {
       await loadTemplates()
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '템플릿 코드 등록 중 오류가 발생했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '템플릿 코드 등록 중 오류가 발생했습니다.'))
     } finally {
       setSavingTemplate(false)
     }
@@ -162,7 +163,7 @@ export default function ClientTemplateManagementSection() {
       await loadTemplates()
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '템플릿 코드 수정 중 오류가 발생했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '템플릿 코드 수정 중 오류가 발생했습니다.'))
     } finally {
       setSavingTemplate(false)
     }

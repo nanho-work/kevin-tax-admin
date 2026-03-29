@@ -3,6 +3,7 @@
 import { deleteDepartment } from '@/services/client/departmentService';
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { toast } from 'react-hot-toast'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 export default function DepartmentDeleteButton({ departmentId, onSuccess }: { departmentId: number; onSuccess: () => void }) {
   const { confirm } = useConfirmDialog()
@@ -19,7 +20,7 @@ export default function DepartmentDeleteButton({ departmentId, onSuccess }: { de
       await deleteDepartment(departmentId);
       onSuccess();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '삭제 실패');
+      toast.error(getApiErrorMessage(err, '삭제 실패'));
     }
   };
 

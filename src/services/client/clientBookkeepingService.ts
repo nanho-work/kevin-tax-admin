@@ -1,6 +1,7 @@
-import type { AxiosError } from 'axios'
+import axios from 'axios'
 import { clientHttp } from '@/services/http'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {
   ClientBookkeepingBillingCreateRequest,
   ClientBookkeepingBillingListFilters,
@@ -69,28 +70,16 @@ const uploadBookkeepingDebitsAdapter = createMultipartUploadAdapter<
   }),
 })
 
-type ApiErrorDetailItem = {
-  msg?: string
-}
-
-type ApiErrorPayload = {
-  detail?: string | ApiErrorDetailItem[] | null
-}
-
 function extractDetail(error: unknown): string | undefined {
-  const axiosError = error as AxiosError<ApiErrorPayload>
-  const detail = axiosError?.response?.data?.detail
-  if (typeof detail === 'string' && detail.trim()) return detail
-  if (Array.isArray(detail)) {
-    const first = detail[0]?.msg
-    if (typeof first === 'string' && first.trim()) return first
-  }
-  return undefined
+  if (!axios.isAxiosError(error)) return undefined
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+  const message = getApiErrorMessageFromDetail(detail, '')
+  return message || undefined
 }
 
 export function getClientBookkeepingErrorMessage(error: unknown): string {
-  const axiosError = error as AxiosError<ApiErrorPayload>
-  const status = axiosError?.response?.status
+  if (!axios.isAxiosError(error)) return '서버 요청 처리 중 오류가 발생했습니다.'
+  const status = error.response?.status
   const detail = extractDetail(error)
   if (status === 400) return detail || '요청값이 올바르지 않습니다.'
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'

@@ -10,6 +10,7 @@ import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
 import type { DepartmentOut } from '@/types/department'
 import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 type Props = {
     title?: string
@@ -164,13 +165,7 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
             onSuccess?.()
         } catch (err: any) {
             const detail = err?.response?.data?.detail
-            const messageText =
-              typeof detail === 'string'
-                ? detail
-                : Array.isArray(detail)
-                  ? detail.map((item: any) => item?.msg).filter(Boolean).join(', ')
-                  : '직원 등록에 실패했습니다.'
-            setMessage({ type: 'error', text: messageText })
+            setMessage({ type: 'error', text: getApiErrorMessageFromDetail(detail, '직원 등록에 실패했습니다.') })
         } finally {
             setSubmitting(false)
         }

@@ -32,6 +32,7 @@ import { useClientSessionContext } from '@/contexts/ClientSessionContext'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
 import { STAFF_SIGNUP_COUNTS_REFRESH_EVENT } from '@/utils/staffSignupEvents'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const menus = [
   { label: '대시보드', href: '/client/dashboard' },
@@ -473,7 +474,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       handleCancelFolderCreate()
     } catch (error) {
       const detail = (error as any)?.response?.data?.detail
-      setFolderCreateError(typeof detail === 'string' && detail.trim() ? detail : '폴더 생성에 실패했습니다.')
+      setFolderCreateError(getApiErrorMessageFromDetail(detail, '폴더 생성에 실패했습니다.'))
     } finally {
       setFolderCreateLoading(false)
     }

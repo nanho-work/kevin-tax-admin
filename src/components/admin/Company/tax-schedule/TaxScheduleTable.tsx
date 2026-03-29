@@ -7,6 +7,7 @@ import { fetchTaxSchedules, updateTaxScheduleStatus } from '@/services/admin/tax
 import { TaxSchedule } from '@/types/taxSchedule'
 import { toast } from 'react-hot-toast'
 import { formatKSTDate } from '@/utils/dateTime'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 type TaxColumnKey = 'VAT' | 'WITHHOLDING' | 'INCOME_TAX'
 
@@ -131,7 +132,7 @@ export default function TaxScheduleTable() {
       setSchedules((prev) => prev.map((item) => (item.id === cell.id ? { ...item, status: updated.status } : item)))
       toast.success(nextStatus === 'COMPLETED' ? '마감 처리되었습니다.' : '예정으로 변경되었습니다.')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '상태 변경에 실패했습니다.')
+      toast.error(getApiErrorMessage(err, '상태 변경에 실패했습니다.'))
     } finally {
       setUpdatingKey(null)
     }

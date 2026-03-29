@@ -1,10 +1,11 @@
 import axios from 'axios'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 export function getCommonMailErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status
     const detail = (error.response?.data as any)?.detail
-    const normalizedDetail = typeof detail === 'string' ? detail.trim() : ''
+    const normalizedDetail = getApiErrorMessageFromDetail(detail, '').trim()
     const detailLooksTechnical =
       /traceback|sql|stack|exception|axios|internal server error/i.test(normalizedDetail) ||
       normalizedDetail.length > 160

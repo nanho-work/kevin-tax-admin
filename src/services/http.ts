@@ -13,6 +13,34 @@ let pendingClientQueue: Array<(token: string | null) => void> = []
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean }
 
+function createRequestId(): string {
+  const randomUUID =
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.crypto !== 'undefined' &&
+    typeof globalThis.crypto.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : null
+  if (randomUUID) return randomUUID
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function ensureRequestIdHeader(config: InternalAxiosRequestConfig) {
+  config.headers = config.headers || {}
+  const headers = config.headers as any
+  const hasRequestId =
+    typeof headers?.get === 'function'
+      ? Boolean(headers.get('X-Request-ID') || headers.get('x-request-id'))
+      : Boolean(headers?.['X-Request-ID'] || headers?.['x-request-id'])
+  if (hasRequestId) return
+
+  const requestId = createRequestId()
+  if (typeof headers?.set === 'function') {
+    headers.set('X-Request-ID', requestId)
+    return
+  }
+  headers['X-Request-ID'] = requestId
+}
+
 function processClientQueue(token: string | null) {
   pendingClientQueue.forEach((resolve) => resolve(token))
   pendingClientQueue = []
@@ -139,6 +167,7 @@ export const adminHttp = axios.create({
 })
 
 adminHttp.interceptors.request.use((config) => {
+  ensureRequestIdHeader(config)
   const token = getAdminAccessToken()
   if (token) {
     config.headers = config.headers || {}
@@ -171,6 +200,7 @@ export const clientHttp = axios.create({
 })
 
 clientHttp.interceptors.request.use((config) => {
+  ensureRequestIdHeader(config)
   const token = getClientAccessToken()
   if (token) {
     config.headers = config.headers || {}

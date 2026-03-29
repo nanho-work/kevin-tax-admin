@@ -28,6 +28,7 @@ import type { AnnualLeave } from '@/types/annualLeave'
 import type { AnnualLeaveRequest } from '@/types/annualLeaveRequest'
 import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 type ViewMode = 'all' | 'single'
 type LeaveDayType = 'full' | 'half'
@@ -1015,7 +1016,7 @@ export default function ClientStaffAttendanceSection() {
       setPolicyVersion((prev) => prev + 1)
       toast.success('캘린더 적용일을 저장했습니다.')
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '캘린더 저장에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '캘린더 저장에 실패했습니다.'))
     } finally {
       setCalendarSaving(false)
     }
@@ -1033,7 +1034,7 @@ export default function ClientStaffAttendanceSection() {
       setPolicyVersion((prev) => prev + 1)
       toast.success('캘린더 오버라이드를 삭제했습니다.')
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '캘린더 삭제에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '캘린더 삭제에 실패했습니다.'))
     } finally {
       setCalendarSaving(false)
     }

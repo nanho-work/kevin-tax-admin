@@ -32,6 +32,7 @@ import type {
   AdminSensitiveProfile,
 } from '@/types/adminSensitiveProfile'
 import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const DOC_TYPES: Array<{ code: PersonalDocumentDocType; label: string }> = [
   { code: 'id_card', label: '신분증' },
@@ -401,13 +402,7 @@ export default function AdminPersonalDocumentPage() {
       return true
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      const message =
-        typeof detail === 'string'
-          ? detail
-          : Array.isArray(detail) && detail[0]?.msg
-            ? detail[0].msg
-            : '비밀번호 변경에 실패했습니다.'
-      toast.error(message)
+      toast.error(getApiErrorMessageFromDetail(detail, '비밀번호 변경에 실패했습니다.'))
       return false
     } finally {
       setSavingPassword(false)
@@ -438,8 +433,7 @@ export default function AdminPersonalDocumentPage() {
       })
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      const message = typeof detail === 'string' ? detail : '프로필 이미지 저장에 실패했습니다.'
-      toast.error(message)
+      toast.error(getApiErrorMessageFromDetail(detail, '프로필 이미지 저장에 실패했습니다.'))
     } finally {
       setIsOptimizingImage(false)
     }
@@ -462,8 +456,7 @@ export default function AdminPersonalDocumentPage() {
       })
     } catch (error: any) {
       const detail = error?.response?.data?.detail
-      const message = typeof detail === 'string' ? detail : '프로필 이미지 삭제에 실패했습니다.'
-      toast.error(message)
+      toast.error(getApiErrorMessageFromDetail(detail, '프로필 이미지 삭제에 실패했습니다.'))
     }
   }
 

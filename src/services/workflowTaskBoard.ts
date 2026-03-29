@@ -1,5 +1,6 @@
 import type { AxiosError } from 'axios'
 import { adminHttp, clientHttp } from '@/services/http'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 export type TaskBoardScope = 'admin' | 'client'
 export type TaskBoardKind = 'all' | 'corporate' | 'individual'
@@ -337,7 +338,7 @@ export interface TaskItemFileUploadBulkOut {
 }
 
 interface ApiErrorPayload {
-  detail?: string | { code?: string; message?: string } | Array<{ msg?: string; type?: string }> | null
+  detail?: string | { code?: string; message?: string; request_id?: string } | Array<{ msg?: string; type?: string }> | null
 }
 
 function getHttp(scope: TaskBoardScope) {
@@ -352,11 +353,6 @@ function getBase(scope: TaskBoardScope) {
 export function getTaskBoardErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<ApiErrorPayload>
   const detail = axiosError.response?.data?.detail
-  if (typeof detail === 'string' && detail.trim()) return detail
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0]
-    if (first && typeof first.msg === 'string' && first.msg.trim()) return first.msg
-  }
   if (detail && !Array.isArray(detail) && typeof detail === 'object') {
     const code = typeof detail.code === 'string' ? detail.code.trim() : ''
     const message = typeof detail.message === 'string' ? detail.message.trim() : ''
@@ -366,9 +362,11 @@ export function getTaskBoardErrorMessage(error: unknown): string {
     if (code.includes('TEMPLATE_DUPLICATE') || message.includes('이미 등록된 업무 템플릿')) {
       return '이미 등록된 업무 템플릿입니다.'
     }
-    if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
-    if (typeof detail.code === 'string' && detail.code.trim()) return detail.code
+    const parsed = getApiErrorMessageFromDetail(detail, '')
+    if (parsed) return parsed
   }
+  const parsed = getApiErrorMessageFromDetail(detail, '')
+  if (parsed) return parsed
   const status = axiosError.response?.status
   if (status === 401) return '로그인이 만료되었습니다.'
   if (status === 403) return '권한이 없습니다.'

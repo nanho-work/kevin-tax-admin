@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
+import { getApiErrorMessage } from '@/utils/apiError'
 
 // 서비스 & 타입 임포트
 import { blogService } from '@/services/blogService'
@@ -88,7 +89,7 @@ export default function BlogCreateForm() {
       toast.success('키워드가 추가되었습니다.')
     } catch (error: any) {
       console.error('키워드 생성 실패:', error)
-      toast.error(error?.response?.data?.detail || '키워드 추가에 실패했습니다.')
+      toast.error(getApiErrorMessage(error, '키워드 추가에 실패했습니다.'))
     } finally {
       setCreatingKeyword(false)
     }
@@ -159,7 +160,7 @@ export default function BlogCreateForm() {
       router.push(created.slug ? `/client/client-management/blog/${created.slug}` : '/client/client-management/blog/list')
     } catch (err: any) {
       console.error('생성 실패:', err)
-      toast.error(err?.response?.data?.detail || err?.message || '생성 중 오류가 발생했습니다.')
+      toast.error(getApiErrorMessage(err, err?.message || '생성 중 오류가 발생했습니다.'))
     } finally {
       setSaving(false)
     }

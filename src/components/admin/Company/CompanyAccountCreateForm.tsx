@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast'
 import { fetchCompanyTaxList } from '@/services/admin/company'
 import { createCompanyAccount } from '@/services/admin/companyAccountService'
 import type { CompanyTaxDetail } from '@/types/admin_campany'
+import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -119,7 +120,7 @@ export default function CompanyAccountCreateForm({
       }
     } catch (err: any) {
       const detail = err?.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : '등록에 실패했습니다.')
+      toast.error(getApiErrorMessageFromDetail(detail, '등록에 실패했습니다.'))
     } finally {
       setSaving(false)
     }
