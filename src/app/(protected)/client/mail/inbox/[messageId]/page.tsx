@@ -4,8 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import { toast } from 'react-hot-toast'
+import MailAttachmentComposer from '@/components/common/mail/MailAttachmentComposer'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
+import { useMailAttachmentFiles } from '@/hooks/useMailAttachmentFiles'
 import { formatKSTDateTimeKorean } from '@/utils/dateTime'
+import { uploadMailAttachmentsAndCollectKeys } from '@/utils/mailAttachmentUpload'
 import { isInlineMailAttachment, sanitizeMailBodyHtml } from '@/utils/mailBodyHtml'
 import { emitMailCountsRefresh } from '@/utils/mailSidebarEvents'
 import { fetchClientCompanyTaxList } from '@/services/client/company'
@@ -25,6 +28,7 @@ import {
   sendMailForward,
   sendMailReply,
   saveMailAttachmentsToCompany,
+  uploadMailComposeAttachment,
   updateMailMessageRead,
 } from '@/services/client/clientMailService'
 import type { MailForwardDraftResponse, MailMessageDetail, MailReplyDraftResponse } from '@/types/adminMail'
@@ -127,6 +131,13 @@ export default function ClientMailMessageDetailPage() {
   const [selectedAttachment, setSelectedAttachment] = useState<MailMessageDetail['attachments'][number] | null>(null)
   const [autoImportIfMissing, setAutoImportIfMissing] = useState(true)
   const [companySaveTitle, setCompanySaveTitle] = useState('')
+  const composerAttachmentInputRef = useRef<HTMLInputElement | null>(null)
+  const {
+    attachmentFiles,
+    appendAttachmentFiles,
+    removeAttachmentFile,
+    clearAttachmentFiles,
+  } = useMailAttachmentFiles()
 
   const backHref = useMemo(() => {
     const params = new URLSearchParams(searchParams.toString())
@@ -225,6 +236,7 @@ export default function ClientMailMessageDetailPage() {
       setAttachmentMode('attachment')
       setSecureLinkExpireDays(7)
       setSecureLinkMaxDownloadCount(5)
+      clearAttachmentFiles()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
@@ -250,6 +262,7 @@ export default function ClientMailMessageDetailPage() {
       setAttachmentMode('attachment')
       setSecureLinkExpireDays(7)
       setSecureLinkMaxDownloadCount(5)
+      clearAttachmentFiles()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
@@ -269,14 +282,19 @@ export default function ClientMailMessageDetailPage() {
     }
     try {
       setSending(true)
+      const uploadedAttachmentS3Keys = await uploadMailAttachmentsAndCollectKeys({
+        files: attachmentFiles,
+        uploadFile: uploadMailComposeAttachment,
+        getErrorMessage: getClientMailErrorMessage,
+      })
       if (composeMode === 'reply') {
         await sendMailReply(detail.id, {
           mode: 'reply',
           subject: subject.trim(),
           body_text: bodyText.trim() || undefined,
-          additional_to_emails: parseEmails(toRaw),
           additional_cc_emails: parseEmails(ccRaw),
           additional_bcc_emails: parseEmails(bccRaw),
+          attachment_s3_keys: uploadedAttachmentS3Keys.length > 0 ? uploadedAttachmentS3Keys : undefined,
           attachment_mode: attachmentMode,
           secure_link_expire_days: attachmentMode === 'secure_link' ? secureLinkExpireDays : undefined,
           secure_link_max_download_count: attachmentMode === 'secure_link' ? secureLinkMaxDownloadCount : undefined,
@@ -285,9 +303,14 @@ export default function ClientMailMessageDetailPage() {
       }
       if (composeMode === 'forward') {
         const forwardAttachmentKeys =
-          forwardDraft?.attachment_s3_keys ||
-          forwardDraft?.available_attachment_s3_keys ||
-          []
+          includeOriginalAttachments
+            ? (
+                forwardDraft?.attachment_s3_keys ||
+                forwardDraft?.available_attachment_s3_keys ||
+                []
+              )
+            : []
+        const mergedAttachmentKeys = Array.from(new Set([...forwardAttachmentKeys, ...uploadedAttachmentS3Keys]))
         await sendMailForward(detail.id, {
           subject: subject.trim(),
           body_text: bodyText.trim() || undefined,
@@ -296,7 +319,7 @@ export default function ClientMailMessageDetailPage() {
           bcc_emails: parseEmails(bccRaw),
           include_original_body: includeOriginalBody,
           include_original_attachments: includeOriginalAttachments,
-          attachment_s3_keys: forwardAttachmentKeys,
+          attachment_s3_keys: mergedAttachmentKeys.length > 0 ? mergedAttachmentKeys : undefined,
           attachment_mode: attachmentMode,
           secure_link_expire_days: attachmentMode === 'secure_link' ? secureLinkExpireDays : undefined,
           secure_link_max_download_count: attachmentMode === 'secure_link' ? secureLinkMaxDownloadCount : undefined,
@@ -315,6 +338,7 @@ export default function ClientMailMessageDetailPage() {
       setAttachmentMode('attachment')
       setSecureLinkExpireDays(7)
       setSecureLinkMaxDownloadCount(5)
+      clearAttachmentFiles()
     } catch (error) {
       toast.error(getClientMailErrorMessage(error))
     } finally {
@@ -676,7 +700,7 @@ export default function ClientMailMessageDetailPage() {
         >
           {backLabel}
         </button>
-        {detail ? (
+        {detail && !composeMode ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -751,6 +775,11 @@ export default function ClientMailMessageDetailPage() {
             )}
           </div>
         ) : null}
+        {detail && composeMode ? (
+          <div className="rounded border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+            {composeMode === 'reply' ? '답장 작성 중' : '전달 작성 중'}
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
@@ -797,12 +826,14 @@ export default function ClientMailMessageDetailPage() {
                 </button>
               </div>
               <div className="space-y-2">
-                <input
-                  value={toRaw}
-                  onChange={(e) => setToRaw(e.target.value)}
-                  placeholder={composeMode === 'reply' ? '추가 받는사람 (콤마 구분)' : '받는사람 (콤마 구분)'}
-                  className="h-9 w-full rounded border border-zinc-300 px-2 text-sm"
-                />
+                {composeMode === 'forward' ? (
+                  <input
+                    value={toRaw}
+                    onChange={(e) => setToRaw(e.target.value)}
+                    placeholder="받는사람 (콤마 구분)"
+                    className="h-9 w-full rounded border border-zinc-300 px-2 text-sm"
+                  />
+                ) : null}
                 <input
                   value={ccRaw}
                   onChange={(e) => setCcRaw(e.target.value)}
@@ -827,6 +858,17 @@ export default function ClientMailMessageDetailPage() {
                   onChange={(e) => setBodyText(e.target.value)}
                   placeholder="본문"
                   className="w-full rounded border border-zinc-300 px-2 py-2 text-sm"
+                />
+                <MailAttachmentComposer
+                  files={attachmentFiles}
+                  inputRef={composerAttachmentInputRef}
+                  onFilesDrop={appendAttachmentFiles}
+                  onInputChange={(e) => {
+                    appendAttachmentFiles(e.target.files)
+                    e.target.value = ''
+                  }}
+                  onRemoveFile={removeAttachmentFile}
+                  disabled={sending}
                 />
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <select

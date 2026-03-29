@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import AdminLeaveRequestPanel from '@/components/admin/staff/AdminLeaveRequestPanel'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
+import { getAdminDashboardChecklistCalendarSummary } from '@/services/admin/dashboardChecklistService'
 import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { fetchMyAnnualLeaveRequests } from '@/services/admin/annualLeaveRequestService'
 import type { AttendanceLog } from '@/types/attendanceLog'
@@ -172,6 +173,7 @@ export default function AdminAttendancePage() {
     consumed: 0,
     remaining: 0,
   })
+  const [checklistDayCounts, setChecklistDayCounts] = useState<Record<string, number>>({})
   const monthInputRef = useRef<HTMLInputElement | null>(null)
   const selectedYear = useMemo(() => Number(selectedMonth.split('-')[0]), [selectedMonth])
 
@@ -251,6 +253,46 @@ export default function AdminAttendancePage() {
 
     fetchLogs()
   }, [selectedMonth, selectedYear, sessionAccountId, attendanceForbidden])
+
+  useEffect(() => {
+    if (typeof sessionAccountId !== 'number' || attendanceForbidden) {
+      setChecklistDayCounts({})
+      return
+    }
+
+    const [yearText, monthText] = selectedMonth.split('-')
+    const year = Number(yearText)
+    const month = Number(monthText)
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      setChecklistDayCounts({})
+      return
+    }
+
+    let active = true
+    const fetchChecklistCalendarSummary = async () => {
+      try {
+        const items = await getAdminDashboardChecklistCalendarSummary(year, month)
+        if (!active) return
+        const nextMap = items.reduce<Record<string, number>>((acc, item) => {
+          const count = Number(item.total_count || 0)
+          if (count > 0) {
+            acc[item.work_date] = count
+          }
+          return acc
+        }, {})
+        setChecklistDayCounts(nextMap)
+      } catch (error) {
+        if (!active) return
+        setChecklistDayCounts({})
+        console.error('체크리스트 달력 집계 조회 실패:', error)
+      }
+    }
+
+    void fetchChecklistCalendarSummary()
+    return () => {
+      active = false
+    }
+  }, [selectedMonth, sessionAccountId, attendanceForbidden])
 
   const logMap = useMemo(() => {
     return logs.reduce<Record<string, AttendanceLog>>((acc, log) => {
@@ -487,15 +529,26 @@ export default function AdminAttendancePage() {
               const dateText = toDateText(cell.date)
               const log = logMap[dateText]
               const leaves = leaveMap[dateText] || []
+              const checklistCount = checklistDayCounts[dateText] || 0
               const isToday = dateText === new Date().toISOString().slice(0, 10)
 
               return (
                 <div key={cell.key} className="min-h-[128px] border-b border-r border-neutral-200 px-2 py-2">
                   <div className="flex items-center justify-between">
                     <span className={`text-sm font-medium ${isToday ? 'text-neutral-900' : 'text-neutral-700'}`}>{cell.date.getDate()}</span>
-                    {isToday ? (
-                      <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-medium text-white">오늘</span>
-                    ) : null}
+                    <div className="flex items-center gap-1">
+                      {checklistCount > 0 ? (
+                        <span
+                          title={`체크리스트 ${checklistCount}건`}
+                          className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-100 px-1 text-[10px] font-bold leading-none text-emerald-700 animate-pulse"
+                        >
+                          ✓
+                        </span>
+                      ) : null}
+                      {isToday ? (
+                        <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-medium text-white">오늘</span>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="mt-2 space-y-1">
                     {!log && leaves.length === 0 ? (

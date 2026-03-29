@@ -1605,80 +1605,56 @@ export default function AdminDocsPage() {
             ))}
           </div>
         </div>
-        <div className="inline-flex items-center rounded-md border border-zinc-300 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode('icon')}
-            title="아이콘형 보기"
-            className={`inline-flex h-7 items-center gap-1 rounded text-xs ${
-              viewMode === 'icon' ? 'bg-sky-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
-            } ${viewMode === 'icon' ? 'px-2' : 'px-1.5'}`}
-          >
-            <Grid2X2 className="h-3.5 w-3.5" />
-            {viewMode === 'icon' ? '아이콘형' : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            title="리스트형 보기"
-            className={`inline-flex h-7 items-center gap-1 rounded text-xs ${
-              viewMode === 'list' ? 'bg-sky-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
-            } ${viewMode === 'list' ? 'px-2' : 'px-1.5'}`}
-          >
-            <List className="h-3.5 w-3.5" />
-            {viewMode === 'list' ? '리스트형' : null}
-          </button>
-        </div>
-      </div>
-
-      {storageUsage ? (
-        <div className="mb-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-          <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="text-zinc-700">
-                저장공간 {formatStorageSize(storageUsage.used_total_bytes)} / {formatStorageSize(storageUsage.quota_bytes)}
-              </p>
+        <div className="flex items-center gap-2">
+          {storageUsage ? (
+            <div
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-2.5 text-[11px] ${
+                storageUsage.hard_warn_95
+                  ? 'border-rose-300 bg-rose-50 text-rose-700'
+                  : storageUsage.soft_warn_80
+                    ? 'border-amber-300 bg-amber-50 text-amber-700'
+                    : 'border-zinc-300 bg-zinc-50 text-zinc-700'
+              }`}
+              title={`저장공간 ${formatStorageSize(storageUsage.used_total_bytes)} / ${formatStorageSize(storageUsage.quota_bytes)} · 남은 용량 ${formatStorageSize(storageUsage.available_bytes)}`}
+            >
+              <span className="font-medium">저장공간</span>
+              <span>
+                {formatStorageSize(storageUsage.used_total_bytes)} / {formatStorageSize(storageUsage.quota_bytes)}
+              </span>
+              <span className="text-zinc-500">{toUsagePercent(storageUsage.usage_rate).toFixed(1)}%</span>
               {(storageUsage.plan_name || storageUsage.plan_code) ? (
-                <span className="inline-flex shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                <span className="inline-flex shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
                   {(storageUsage.plan_name || storageUsage.plan_code || '').toString().toUpperCase()}
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-2">
-              <p
-                className={`font-medium ${
-                  storageUsage.hard_warn_95
-                    ? 'text-rose-600'
-                    : storageUsage.soft_warn_80
-                      ? 'text-amber-600'
-                      : 'text-zinc-600'
-                }`}
-              >
-                남은 용량 {formatStorageSize(storageUsage.available_bytes)}
-              </p>
-              <span className="shrink-0 text-zinc-500">{toUsagePercent(storageUsage.usage_rate).toFixed(1)}%</span>
-            </div>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded bg-zinc-200">
-            <div
-              className={`h-full transition-all ${
-                storageUsage.hard_warn_95
-                  ? 'bg-rose-500'
-                  : storageUsage.soft_warn_80
-                    ? 'bg-amber-500'
-                    : 'bg-sky-500'
-              }`}
-              style={{ width: `${toUsagePercent(storageUsage.usage_rate)}%` }}
-            />
-          </div>
-          {storageUsage.hard_warn_95 ? (
-            <p className="mt-1 text-[11px] text-rose-600">저장공간 사용량이 95%를 초과했습니다. 정리가 필요합니다.</p>
           ) : null}
-          {!storageUsage.hard_warn_95 && storageUsage.soft_warn_80 ? (
-            <p className="mt-1 text-[11px] text-amber-700">저장공간 사용량이 80%를 초과했습니다.</p>
-          ) : null}
+          <div className="inline-flex items-center rounded-md border border-zinc-300 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('icon')}
+              title="아이콘형 보기"
+              className={`inline-flex h-7 items-center gap-1 rounded text-xs ${
+                viewMode === 'icon' ? 'bg-sky-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+              } ${viewMode === 'icon' ? 'px-2' : 'px-1.5'}`}
+            >
+              <Grid2X2 className="h-3.5 w-3.5" />
+              {viewMode === 'icon' ? '아이콘형' : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              title="리스트형 보기"
+              className={`inline-flex h-7 items-center gap-1 rounded text-xs ${
+                viewMode === 'list' ? 'bg-sky-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+              } ${viewMode === 'list' ? 'px-2' : 'px-1.5'}`}
+            >
+              <List className="h-3.5 w-3.5" />
+              {viewMode === 'list' ? '리스트형' : null}
+            </button>
+          </div>
         </div>
-      ) : null}
+      </div>
 
       <div className="grid h-[calc(100vh-180px)] min-h-[560px] grid-cols-1 overflow-hidden rounded-xl border border-zinc-200 lg:grid-cols-[280px_1fr]">
         <aside className="overflow-y-auto border-r border-zinc-200 bg-zinc-50/70 p-3">

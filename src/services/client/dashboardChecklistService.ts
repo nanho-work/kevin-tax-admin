@@ -2,10 +2,12 @@ import {
   carryOverDashboardChecklist,
   createDashboardChecklistItem,
   deleteDashboardChecklistItem,
+  getDashboardChecklistCalendarSummary,
   getDashboardChecklistByDate,
   patchDashboardChecklistItem,
 } from '@/services/dashboardChecklistService'
 import type {
+  DashboardChecklistCalendarSummaryItem,
   DashboardChecklistCarryOverRequest,
   DashboardChecklistCarryOverResponse,
   DashboardChecklistDeleteResponse,
@@ -17,6 +19,13 @@ import type {
 
 export async function getClientDashboardChecklistByDate(workDate: string): Promise<DashboardChecklistOut> {
   return getDashboardChecklistByDate('client', workDate)
+}
+
+export async function getClientDashboardChecklistCalendarSummary(
+  year: number,
+  month: number
+): Promise<DashboardChecklistCalendarSummaryItem[]> {
+  return getDashboardChecklistCalendarSummary('client', year, month)
 }
 
 export async function createClientDashboardChecklistItem(

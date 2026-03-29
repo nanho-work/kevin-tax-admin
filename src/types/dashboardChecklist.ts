@@ -55,3 +55,8 @@ export interface DashboardChecklistCarryOverResponse {
   moved_count: number
 }
 
+export interface DashboardChecklistCalendarSummaryItem {
+  work_date: string
+  total_count: number
+  done_count: number
+}

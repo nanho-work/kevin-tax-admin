@@ -424,21 +424,6 @@ export default function AdminMyDocumentsPage() {
 
   return (
     <section className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">{viewMode === 'pending' ? '결재 대기 문서 수' : '이번 페이지 문서 수'}</p>
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">{items.length}</p>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">{viewMode === 'pending' ? '처리 가능 문서' : '취소 가능 문서'}</p>
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">{draftOrPendingCount}</p>
-        </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">선택 상태</p>
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">{status ? getStatusMeta(status).label : '전체'}</p>
-        </div>
-      </div>
-
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[280px_220px_minmax(0,1fr)_auto]">
           <div className="inline-flex h-10 overflow-hidden rounded-md border border-zinc-300 bg-zinc-50">
@@ -465,7 +450,24 @@ export default function AdminMyDocumentsPage() {
             <option value="rejected">반려</option>
             {viewMode === 'mine' ? <option value="canceled">취소</option> : null}
           </select>
-          <div aria-hidden="true" />
+          <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto whitespace-nowrap">
+            <div className="inline-flex h-10 min-w-[110px] flex-col justify-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5">
+              <p className="text-[10px] leading-none text-zinc-500">
+                {viewMode === 'pending' ? '결재 대기 문서' : '이번 페이지 문서'}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-none text-zinc-900">{items.length}</p>
+            </div>
+            <div className="inline-flex h-10 min-w-[110px] flex-col justify-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5">
+              <p className="text-[10px] leading-none text-zinc-500">
+                {viewMode === 'pending' ? '처리 가능 문서' : '취소 가능 문서'}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-none text-zinc-900">{draftOrPendingCount}</p>
+            </div>
+            <div className="inline-flex h-10 min-w-[110px] flex-col justify-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5">
+              <p className="text-[10px] leading-none text-zinc-500">선택 상태</p>
+              <p className="mt-1 text-sm font-semibold leading-none text-zinc-900">{status ? getStatusMeta(status).label : '전체'}</p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => router.push('/admin/staff/documents/new')}

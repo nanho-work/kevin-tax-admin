@@ -1553,7 +1553,7 @@ export default function AdminDashboardWidgets() {
       {!loading && !error && visibleItems.length > 0 ? (
         <section
           ref={gridRef}
-          className={`relative grid grid-cols-12 gap-4 auto-rows-[84px] ${editMode ? 'outline outline-1 outline-dashed outline-zinc-300 p-1' : ''}`}
+          className={`relative grid grid-cols-12 gap-4 auto-rows-[84px] ${editMode ? 'outline outline-[1px] outline-dashed outline-zinc-300 p-1' : ''}`}
           onDragOver={(event) => {
             if (!editMode) return
             event.preventDefault()
