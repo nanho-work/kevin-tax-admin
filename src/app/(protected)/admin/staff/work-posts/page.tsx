@@ -21,6 +21,7 @@ import type {
   WorkPostType,
 } from '@/types/workPost'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { enforceAnchorOpenInNewTab } from '@/utils/htmlLinks'
 
 type BoardTabKey = 'notice' | 'library' | 'qna' | 'workflow' | 'forms' | 'free'
 
@@ -135,6 +136,10 @@ export default function AdminWorkPostsInboxPage() {
   const selectedInboxItem = useMemo(
     () => items.find((item) => item.post_id === selectedPostId) || null,
     [items, selectedPostId]
+  )
+  const selectedPostBodyHtml = useMemo(
+    () => enforceAnchorOpenInNewTab(selectedPost?.body_html || ''),
+    [selectedPost?.body_html]
   )
 
   const totalPages = Math.max(1, Math.ceil(total / size))
@@ -495,7 +500,7 @@ export default function AdminWorkPostsInboxPage() {
 
                 <div
                   className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800"
-                  dangerouslySetInnerHTML={{ __html: selectedPost.body_html }}
+                  dangerouslySetInnerHTML={{ __html: selectedPostBodyHtml }}
                 />
 
                 <div>

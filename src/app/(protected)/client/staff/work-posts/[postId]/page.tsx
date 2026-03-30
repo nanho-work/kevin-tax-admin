@@ -15,6 +15,7 @@ import {
 } from '@/services/client/clientWorkPostService'
 import type { WorkPostDetail, WorkPostReceipt } from '@/types/workPost'
 import { getClientRoleRank } from '@/utils/roleRank'
+import { enforceAnchorOpenInNewTab } from '@/utils/htmlLinks'
 
 const postTypeLabelMap = {
   notice: '공지사항',
@@ -67,6 +68,11 @@ export default function ClientWorkPostDetailPage() {
       Number(post.created_by_id || 0) === Number(session.account_id || 0)
     )
   }, [post, session])
+
+  const renderedBodyHtml = useMemo(
+    () => enforceAnchorOpenInNewTab(post?.body_html || ''),
+    [post?.body_html]
+  )
 
   useEffect(() => {
     if (!Number.isFinite(postId) || postId <= 0) return
@@ -150,7 +156,7 @@ export default function ClientWorkPostDetailPage() {
 
             <div
               className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800"
-              dangerouslySetInnerHTML={{ __html: post.body_html }}
+              dangerouslySetInnerHTML={{ __html: renderedBodyHtml }}
             />
 
             <div>

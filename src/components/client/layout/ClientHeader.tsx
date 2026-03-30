@@ -28,6 +28,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/mail/compose')) return { parent: '메일', child: '메일작성' }
   if (pathname.startsWith('/client/mail/accounts')) return { parent: '메일', child: '설정' }
   if (pathname.startsWith('/client/mail')) return { parent: '메일' }
+  if (pathname.startsWith('/client/companies/bulk')) return { parent: '업무(고객사)', child: '고객사 일괄등록' }
   if (pathname.startsWith('/client/companies/new')) return { parent: '업무(고객사)', child: '고객사등록' }
   if (pathname.startsWith('/client/companies/')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
   if (pathname.startsWith('/client/companies')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
@@ -54,6 +55,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/client-management/create')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 등록' }
   if (pathname.startsWith('/client/client-management/list')) return { parent: '클라이언트 관리', child: '클라이언트(관리자) 목록' }
   if (pathname.startsWith('/client/client-management/templates')) return { parent: '클라이언트 관리', child: '샘플양식 업로드' }
+  if (pathname.startsWith('/client/client-management/expense-rate-base')) return { parent: '클라이언트 관리', child: '기준 단순 경비율 등록' }
   if (pathname.startsWith('/client/client-management/consent-terms')) return { parent: '클라이언트 관리', child: '동의약관 관리' }
   if (pathname.startsWith('/client/client-management/mail-ops-dashboard')) return { parent: '클라이언트 관리', child: '메일운영대시보드' }
   if (pathname.startsWith('/client/client-management/gpt')) return { parent: '클라이언트 관리', child: 'GPT' }

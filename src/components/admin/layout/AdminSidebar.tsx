@@ -77,6 +77,7 @@ const menuSections: MenuSection[] = [
     children: [
       { label: '업무보드', href: '/admin/workflow/board' },
       { label: '업무자료함', href: '/admin/workflow/board/materials' },
+      { label: '컨설트 툴', href: '/admin/workflow/consult' },
       { label: '기본관리', href: '/admin/companies' },
       { label: '원천세관리', href: '/admin/company-withholding/business' },
       { label: '고객사 일정', href: '/admin/tax-schedule' },

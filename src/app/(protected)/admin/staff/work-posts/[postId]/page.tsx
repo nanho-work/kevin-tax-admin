@@ -14,6 +14,7 @@ import {
 } from '@/services/admin/workPostService'
 import type { WorkPostDetail, WorkPostReceiptStatus } from '@/types/workPost'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { enforceAnchorOpenInNewTab } from '@/utils/htmlLinks'
 
 const postTypeLabelMap = {
   notice: '공지사항',
@@ -41,6 +42,11 @@ export default function AdminWorkPostDetailPage() {
     if (postType === 'notice' || postType === 'task') q.set('post_type', postType)
     return `/admin/staff/work-posts${q.toString() ? `?${q.toString()}` : ''}`
   }, [searchParams])
+
+  const renderedBodyHtml = useMemo(
+    () => enforceAnchorOpenInNewTab(post?.body_html || ''),
+    [post?.body_html]
+  )
 
   const loadDetail = async () => {
     if (!Number.isFinite(postId) || postId <= 0) return
@@ -151,7 +157,7 @@ export default function AdminWorkPostDetailPage() {
 
             <div
               className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800"
-              dangerouslySetInnerHTML={{ __html: post.body_html }}
+              dangerouslySetInnerHTML={{ __html: renderedBodyHtml }}
             />
 
             <div>

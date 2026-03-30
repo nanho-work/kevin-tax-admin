@@ -46,6 +46,7 @@ import type {
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { enforceAnchorOpenInNewTab } from '@/utils/htmlLinks'
 
 const inputClass =
   'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
@@ -252,6 +253,10 @@ export default function ClientWorkPostsPage() {
       return acc
     }, {})
   }, [selectedReceipts])
+  const selectedPostBodyHtml = useMemo(
+    () => enforceAnchorOpenInNewTab(selectedPost?.body_html || ''),
+    [selectedPost?.body_html]
+  )
 
   const teamOptionMap = useMemo(() => {
     return new Map(teams.map((team) => [team.id, team.name]))
@@ -879,7 +884,7 @@ export default function ClientWorkPostsPage() {
                   <p className="text-xs font-medium text-zinc-500">본문</p>
                   <div
                     className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800"
-                    dangerouslySetInnerHTML={{ __html: selectedPost.body_html }}
+                    dangerouslySetInnerHTML={{ __html: selectedPostBodyHtml }}
                   />
                 </div>
 

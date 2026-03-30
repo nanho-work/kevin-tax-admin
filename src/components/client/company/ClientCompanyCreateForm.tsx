@@ -1,10 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type React from 'react'
 import { useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
-import { createClientPortalCompany } from '@/services/client/company'
+import FileDropzone from '@/components/common/FileDropzone'
+import {
+  commitClientCompanyBulkUpload,
+  createClientPortalCompany,
+  previewClientCompanyBulkUpload,
+  type ClientCompanyBulkCommitResponse,
+  type ClientCompanyBulkPreviewResponse,
+} from '@/services/client/company'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
 import type { CompanyCreateRequest } from '@/types/admin_campany'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
@@ -47,6 +54,7 @@ const inputClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
 const selectClass =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+const ALLOWED_BULK_EXTENSIONS = ['.xlsx', '.xls', '.csv']
 
 function formatBusinessRegistrationNumber(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 10)
@@ -58,8 +66,22 @@ function formatBusinessRegistrationNumber(value: string) {
   return `${p1}-${p2}-${p3}`
 }
 
+function isAllowedBulkFile(name: string) {
+  const lower = name.toLowerCase()
+  return ALLOWED_BULK_EXTENSIONS.some((ext) => lower.endsWith(ext))
+}
+
+function formatBulkStatus(status: string) {
+  if (status === 'valid') return '검증완료'
+  if (status === 'invalid') return '검증실패'
+  if (status === 'created') return '등록완료'
+  if (status === 'failed') return '등록실패'
+  return status
+}
+
 export default function ClientCompanyCreateForm() {
   const router = useRouter()
+  const bulkFileInputRef = useRef<HTMLInputElement | null>(null)
   const [form, setForm] = useState<CompanyCreateRequest>({
     category: '',
     company_name: '',
@@ -74,6 +96,11 @@ export default function ClientCompanyCreateForm() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [addressSearchOpen, setAddressSearchOpen] = useState(false)
+  const [bulkFile, setBulkFile] = useState<File | null>(null)
+  const [bulkPreview, setBulkPreview] = useState<ClientCompanyBulkPreviewResponse | null>(null)
+  const [bulkCommitResult, setBulkCommitResult] = useState<ClientCompanyBulkCommitResponse | null>(null)
+  const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false)
+  const [bulkCommitLoading, setBulkCommitLoading] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -101,6 +128,68 @@ export default function ClientCompanyCreateForm() {
     }
   }
 
+  const handleBulkFileSelect = (file: File | null) => {
+    if (!file) return
+    if (!isAllowedBulkFile(file.name)) {
+      setError('엑셀/CSV 파일(.xlsx, .xls, .csv)만 업로드할 수 있습니다.')
+      return
+    }
+    setError('')
+    setBulkFile(file)
+    setBulkPreview(null)
+    setBulkCommitResult(null)
+  }
+
+  const handleBulkDrop = (files: FileList) => {
+    handleBulkFileSelect(files?.[0] || null)
+  }
+
+  const handleBulkPreview = async () => {
+    if (!bulkFile) {
+      setError('일괄등록 파일을 먼저 선택해 주세요.')
+      return
+    }
+    setError('')
+    setBulkPreviewLoading(true)
+    try {
+      const preview = await previewClientCompanyBulkUpload(bulkFile)
+      setBulkPreview(preview)
+      setBulkCommitResult(null)
+    } catch (err: any) {
+      setError(getApiErrorMessageFromDetail(err?.response?.data?.detail, '일괄등록 프리뷰 실패'))
+      setBulkPreview(null)
+    } finally {
+      setBulkPreviewLoading(false)
+    }
+  }
+
+  const handleBulkCommit = async () => {
+    if (!bulkFile) {
+      setError('일괄등록 파일을 먼저 선택해 주세요.')
+      return
+    }
+    if (!bulkPreview) {
+      setError('프리뷰 검증을 먼저 진행해 주세요.')
+      return
+    }
+    setError('')
+    setBulkCommitLoading(true)
+    try {
+      const result = await commitClientCompanyBulkUpload(bulkFile)
+      setBulkCommitResult(result)
+      setSuccess(`일괄등록 완료: ${result.created_count}건 등록, ${result.failed_count}건 실패`)
+      if (result.created_count > 0) {
+        setBulkFile(null)
+        setBulkPreview(null)
+      }
+    } catch (err: any) {
+      setError(getApiErrorMessageFromDetail(err?.response?.data?.detail, '일괄등록 커밋 실패'))
+      setBulkCommitResult(null)
+    } finally {
+      setBulkCommitLoading(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -115,6 +204,131 @@ export default function ClientCompanyCreateForm() {
             {success || error}
           </div>
         )}
+
+        <Section title="엑셀 일괄 등록" description="헤더 자동 탐지로 고객사를 한번에 검증/등록합니다.">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <FileDropzone
+              onFilesDrop={handleBulkDrop}
+              onClick={() => bulkFileInputRef.current?.click()}
+              className="h-10"
+              idleClassName="rounded-lg border border-zinc-300 bg-white"
+              activeClassName="rounded-lg border border-sky-300 bg-sky-50"
+              disabled={bulkPreviewLoading || bulkCommitLoading}
+            >
+              <button
+                type="button"
+                disabled={bulkPreviewLoading || bulkCommitLoading}
+                className="h-full rounded-lg px-4 text-sm font-medium text-zinc-700"
+              >
+                파일 선택/드롭
+              </button>
+            </FileDropzone>
+            <input
+              ref={bulkFileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={(event) => {
+                handleBulkFileSelect(event.target.files?.[0] || null)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleBulkPreview()}
+              disabled={!bulkFile || bulkPreviewLoading || bulkCommitLoading}
+              className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bulkPreviewLoading ? '검증 중...' : '프리뷰 검증'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleBulkCommit()}
+              disabled={!bulkFile || !bulkPreview || bulkPreviewLoading || bulkCommitLoading}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bulkCommitLoading ? '등록 중...' : '등록 확정'}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            선택 파일: {bulkFile?.name || '없음'} (지원: .xlsx, .xls, .csv)
+          </p>
+
+          {bulkPreview ? (
+            <div className="mt-4 rounded-lg border border-zinc-200">
+              <div className="grid grid-cols-3 border-b border-zinc-200 bg-zinc-50 text-xs text-zinc-700">
+                <div className="px-3 py-2">전체 {bulkPreview.total_rows}행</div>
+                <div className="px-3 py-2 text-emerald-700">유효 {bulkPreview.valid_rows}행</div>
+                <div className="px-3 py-2 text-rose-700">오류 {bulkPreview.invalid_rows}행</div>
+              </div>
+              <div className="max-h-64 overflow-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-2 py-2 text-center">행</th>
+                      <th className="px-2 py-2 text-center">회사명</th>
+                      <th className="px-2 py-2 text-center">대표자명</th>
+                      <th className="px-2 py-2 text-center">사업자번호</th>
+                      <th className="px-2 py-2 text-center">상태</th>
+                      <th className="px-2 py-2 text-center">사유</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {bulkPreview.rows.map((row) => (
+                      <tr key={`preview-${row.row_no}`}>
+                        <td className="px-2 py-2 text-center">{row.row_no}</td>
+                        <td className="px-2 py-2 text-center">{row.company_name || '-'}</td>
+                        <td className="px-2 py-2 text-center">{row.owner_name || '-'}</td>
+                        <td className="px-2 py-2 text-center">{row.registration_number || '-'}</td>
+                        <td className={`px-2 py-2 text-center font-medium ${row.status === 'valid' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {formatBulkStatus(row.status)}
+                        </td>
+                        <td className="px-2 py-2 text-center">{row.reason || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {bulkCommitResult ? (
+            <div className="mt-4 rounded-lg border border-zinc-200">
+              <div className="grid grid-cols-3 border-b border-zinc-200 bg-zinc-50 text-xs text-zinc-700">
+                <div className="px-3 py-2">전체 {bulkCommitResult.total_rows}행</div>
+                <div className="px-3 py-2 text-emerald-700">등록 {bulkCommitResult.created_count}행</div>
+                <div className="px-3 py-2 text-rose-700">실패 {bulkCommitResult.failed_count}행</div>
+              </div>
+              <div className="max-h-64 overflow-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 text-zinc-600">
+                    <tr>
+                      <th className="px-2 py-2 text-center">행</th>
+                      <th className="px-2 py-2 text-center">회사명</th>
+                      <th className="px-2 py-2 text-center">대표자명</th>
+                      <th className="px-2 py-2 text-center">사업자번호</th>
+                      <th className="px-2 py-2 text-center">상태</th>
+                      <th className="px-2 py-2 text-center">사유</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {bulkCommitResult.rows.map((row) => (
+                      <tr key={`commit-${row.row_no}`}>
+                        <td className="px-2 py-2 text-center">{row.row_no}</td>
+                        <td className="px-2 py-2 text-center">{row.company_name || '-'}</td>
+                        <td className="px-2 py-2 text-center">{row.owner_name || '-'}</td>
+                        <td className="px-2 py-2 text-center">{row.registration_number || '-'}</td>
+                        <td className={`px-2 py-2 text-center font-medium ${row.status === 'created' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {formatBulkStatus(row.status)}
+                        </td>
+                        <td className="px-2 py-2 text-center">{row.reason || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </Section>
 
         <Section title="기본 정보" description="회사 기본 식별 정보를 입력합니다.">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -1,4 +1,5 @@
 import DOMPurify from 'isomorphic-dompurify'
+import { enforceAnchorOpenInNewTab } from '@/utils/htmlLinks'
 
 const UNSUPPORTED_IMG_SRC_PATTERN =
   /<img\b[^>]*\bsrc\s*=\s*(['"])\s*(?:cid:|about:blank|file:|javascript:|x-apple-data-detectors:)[^'"]*\1[^>]*>/gi
@@ -60,9 +61,11 @@ export function sanitizeMailBodyHtml(rawHtml: string, attachments: MailAttachmen
     USE_PROFILES: { html: true },
   })
 
-  return sanitized
-    .replace(UNSUPPORTED_IMG_SRC_PATTERN, '')
-    .replace(IMG_WITHOUT_SRC_PATTERN, '')
+  return enforceAnchorOpenInNewTab(
+    sanitized
+      .replace(UNSUPPORTED_IMG_SRC_PATTERN, '')
+      .replace(IMG_WITHOUT_SRC_PATTERN, '')
+  )
 }
 
 export function isInlineMailAttachment(attachment: MailAttachmentLike): boolean {

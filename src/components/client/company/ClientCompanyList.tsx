@@ -12,7 +12,10 @@ export default function ClientCompanyList() {
       disableDelete={false}
       pageSize={12}
       createHref="/client/companies/new"
-      createLabel="고객사등록"
+      createActions={[
+        { href: '/client/companies/new', label: '고객사 단건등록' },
+        { href: '/client/companies/bulk', label: '고객사 일괄등록' },
+      ]}
       showAccountStatus={false}
     />
   )

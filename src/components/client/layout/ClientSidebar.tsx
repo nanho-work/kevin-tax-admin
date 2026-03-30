@@ -34,10 +34,6 @@ import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
 import { STAFF_SIGNUP_COUNTS_REFRESH_EVENT } from '@/utils/staffSignupEvents'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
-const menus = [
-  { label: '대시보드', href: '/client/dashboard' },
-]
-
 const mailMenus = [
   { label: '메일쓰기', href: '/client/mail/compose' },
   { label: '메일설정', href: '/client/mail/accounts' },
@@ -69,6 +65,7 @@ const clientManagementMenus = [
   { label: '클라이언트(관리자) 등록', href: '/client/client-management/create' },
   { label: '클라이언트(관리자) 목록', href: '/client/client-management/list' },
   { label: '샘플양식 업로드', href: '/client/client-management/templates' },
+  { label: '기준 단순 경비율 등록', href: '/client/client-management/expense-rate-base' },
   { label: '동의약관 관리', href: '/client/client-management/consent-terms' },
   { label: '메일운영대시보드', href: '/client/client-management/mail-ops-dashboard' },
   { label: '블로그 목록', href: '/client/client-management/blog/list' },
@@ -163,7 +160,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const { session, loading } = useClientSessionContext()
   const { confirm } = useConfirmDialog()
   const canManageClients = getClientRoleRank(session) === 0
-  const shouldHideSecondSidebar = activeRailSection === 'board'
+  const shouldHideSecondSidebar = activeRailSection === 'dashboard' || activeRailSection === 'board'
   const collapsedQuickMenus = [
     {
       key: 'dashboard',
@@ -694,26 +691,6 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
         </div>
         <div className="flex flex-col gap-1">
-        {activeRailSection === 'dashboard'
-          ? menus.map((menu) => {
-              const active = pathname === menu.href
-              return (
-                <Link key={menu.href} href={menu.href}>
-                  <div
-                    className={`rounded-lg px-3 py-2 text-sm transition ${
-                      active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <LayoutDashboard className="h-4 w-4" />
-                      <span>{menu.label}</span>
-                    </span>
-                  </div>
-                </Link>
-              )
-            })
-          : null}
-
         {activeRailSection === 'mail' ? (
         <div className="rounded-lg bg-white">
           <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">

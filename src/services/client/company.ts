@@ -29,9 +29,53 @@ const uploadClientCompanyCustomDocumentAdapter = createMultipartUploadAdapter<
   buildFields: ({ title }) => ({ title }),
 })
 
+const previewClientCompanyBulkUploadAdapter = createMultipartUploadAdapter<
+  ClientCompanyBulkPreviewResponse,
+  { file: File }
+>({
+  url: () => `${BASE}/bulk/preview`,
+})
+
+const commitClientCompanyBulkUploadAdapter = createMultipartUploadAdapter<
+  ClientCompanyBulkCommitResponse,
+  { file: File }
+>({
+  url: () => `${BASE}/bulk/commit`,
+})
+
 export interface ClientCompanyDocumentPreviewResponse {
   file_name: string
   preview_url: string
+}
+
+export interface ClientCompanyBulkRowResult {
+  row_no: number
+  status: 'valid' | 'invalid' | 'created' | 'failed'
+  reason?: string | null
+  company_id?: number | null
+  company_name?: string | null
+  owner_name?: string | null
+  registration_number?: string | null
+  category?: string | null
+  industry_type?: string | null
+  business_type?: string | null
+  postal_code?: string | null
+  address1?: string | null
+  address2?: string | null
+}
+
+export interface ClientCompanyBulkPreviewResponse {
+  total_rows: number
+  valid_rows: number
+  invalid_rows: number
+  rows: ClientCompanyBulkRowResult[]
+}
+
+export interface ClientCompanyBulkCommitResponse {
+  total_rows: number
+  created_count: number
+  failed_count: number
+  rows: ClientCompanyBulkRowResult[]
 }
 
 export interface ClientCompanyCustomDocumentOut {
@@ -240,6 +284,14 @@ export async function deactivateClientCompany(company_id: number): Promise<{ mes
 export async function createClientPortalCompany(payload: CompanyCreateRequest): Promise<CompanySimpleResponse> {
   const res = await clientHttp.post<CompanySimpleResponse>(`${BASE}/create`, payload)
   return res.data
+}
+
+export async function previewClientCompanyBulkUpload(file: File): Promise<ClientCompanyBulkPreviewResponse> {
+  return uploadViaAdapter(clientHttp, previewClientCompanyBulkUploadAdapter, { file })
+}
+
+export async function commitClientCompanyBulkUpload(file: File): Promise<ClientCompanyBulkCommitResponse> {
+  return uploadViaAdapter(clientHttp, commitClientCompanyBulkUploadAdapter, { file })
 }
 
 export async function fetchClientCompanyDetail(company_id: number): Promise<CompanyDetailResponse> {

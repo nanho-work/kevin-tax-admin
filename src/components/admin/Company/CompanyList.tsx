@@ -27,6 +27,7 @@ interface Props {
   pageSize?: number;
   createHref?: string;
   createLabel?: string;
+  createActions?: Array<{ href: string; label: string }>;
   showAccountStatus?: boolean;
 }
 
@@ -53,6 +54,7 @@ export default function CompanyList({
   pageSize = 12,
   createHref,
   createLabel = '고객사등록',
+  createActions,
   showAccountStatus = true,
 }: Props) {
   const { confirm } = useConfirmDialog()
@@ -249,12 +251,24 @@ export default function CompanyList({
           <div className="mb-4 flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-white p-3">
             <div className="flex items-center gap-2">
               {createHref ? (
-                <Link
-                  href={createHref}
-                  className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-                >
-                  {createLabel}
-                </Link>
+                createActions && createActions.length > 0 ? (
+                  createActions.map((action) => (
+                    <Link
+                      key={`${action.href}:${action.label}`}
+                      href={action.href}
+                      className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                      {action.label}
+                    </Link>
+                  ))
+                ) : (
+                  <Link
+                    href={createHref}
+                    className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    {createLabel}
+                  </Link>
+                )
               ) : null}
               <div className="text-sm text-zinc-500">총 {totalCount}개</div>
             </div>

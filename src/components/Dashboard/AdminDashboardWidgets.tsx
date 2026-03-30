@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Briefcase, CalendarCheck2, CheckSquare, FileText, ListTodo, Mail, NotebookPen, Settings, Trash2 } from 'lucide-react'
+import { Bell, Briefcase, CalendarCheck2, CheckSquare, FileText, GripVertical, ListTodo, Mail, NotebookPen, Trash2 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import {
@@ -99,7 +99,7 @@ const EXCLUDED_WIDGET_KEYS = new Set(['mail_ops_summary', 'tax_schedule_due'])
 const GRID_COLS = 12
 const ROW_HEIGHT = 84
 const GRID_GAP = 16
-const CARD_BASE_CLASS = 'rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm'
+const CARD_BASE_CLASS = 'rounded-md border border-zinc-200 bg-white px-4 py-3 shadow-sm'
 const ADMIN_LOCAL_LAYOUT_STORAGE_KEY = 'admin-dashboard-unmanaged-layout-v1'
 const ADMIN_LOCAL_FALLBACK_WIDGETS: DashboardWidgetCatalogItem[] = [
   {
@@ -364,7 +364,7 @@ function getWidgetHeaderIcon(widgetKey: string) {
     case 'checklist_widget':
       return ListTodo
     default:
-      return Settings
+      return GripVertical
   }
 }
 
@@ -850,8 +850,14 @@ export default function AdminDashboardWidgets() {
     return () => observer.disconnect()
   }, [layout, editMode])
 
-  const handleDropToCell = useCallback((payload: DragPayload, targetX: number, targetY: number) => {
-    setDraftItems((prev) => {
+  const buildDroppedItems = useCallback(
+    (
+      sourceItems: DashboardUserLayoutItem[],
+      payload: DragPayload,
+      targetX: number,
+      targetY: number
+    ): DashboardUserLayoutItem[] => {
+      const prev = sourceItems
       const existingIndex = prev.findIndex((item) => item.widget_key === payload.widgetKey)
       const catalogMeta = catalogByKey.get(payload.widgetKey)
 
@@ -891,8 +897,50 @@ export default function AdminDashboardWidgets() {
       moved.grid_y = Math.max(0, targetY)
 
       return normalizeSortOrder(resolveCollisions(baseItems, moved.widget_key))
-    })
-  }, [catalogByKey])
+    },
+    [catalogByKey]
+  )
+
+  const handleDropToCell = useCallback((payload: DragPayload, targetX: number, targetY: number) => {
+    setDraftItems((prev) => buildDroppedItems(prev, payload, targetX, targetY))
+  }, [buildDroppedItems])
+
+  const handlePersistLayoutItems = useCallback(
+    async (items: DashboardUserLayoutItem[], silent: boolean) => {
+      if (items.length === 0) return
+      setSaving(true)
+      try {
+        const normalizedItems = normalizeSortOrder(items)
+        writeLocalUnmanagedLayout(buildLocalUnmanagedLayout(normalizedItems))
+        await saveAdminDashboardWidgetLayout(
+          {
+            replace_all: true,
+            items: normalizedItems
+              .filter((item) => item.widget_id > 0)
+              .map((item, index) => ({
+                widget_key: item.widget_key,
+                grid_x: item.grid_x,
+                grid_y: item.grid_y,
+                grid_w: item.grid_w,
+                grid_h: item.grid_h,
+                visible: true,
+                sort_order: index,
+                config_json: item.config_json ?? {},
+              })),
+          },
+          deviceType
+        )
+        setLayout((prev) => (prev ? { ...prev, items: normalizedItems } : prev))
+        setDraftItems(normalizedItems)
+        if (!silent) toast.success('대시보드 레이아웃을 저장했습니다.')
+      } catch {
+        toast.error(silent ? '위젯 위치 저장에 실패했습니다.' : '레이아웃 저장에 실패했습니다.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [deviceType]
+  )
 
   const handleGridDrop = useCallback((event: React.DragEvent<HTMLElement>) => {
     event.preventDefault()
@@ -918,47 +966,30 @@ export default function AdminDashboardWidgets() {
     const targetX = clamp(rawX, 0, GRID_COLS - 1)
     const targetY = Math.max(0, rawY)
 
+    if (!editMode) {
+      const sourceItems = (layout?.items || [])
+        .filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
+        .sort((a, b) => (a.sort_order - b.sort_order) || a.widget_id - b.widget_id)
+      if (sourceItems.length === 0) return
+      if (payload.source !== 'existing') return
+      const nextItems = buildDroppedItems(sourceItems, payload, targetX, targetY)
+      setLayout((prev) => (prev ? { ...prev, items: nextItems } : prev))
+      setDraftItems(nextItems)
+      void handlePersistLayoutItems(nextItems, true)
+      return
+    }
     handleDropToCell(payload, targetX, targetY)
-  }, [handleDropToCell])
+  }, [buildDroppedItems, editMode, handleDropToCell, handlePersistLayoutItems, layout?.items])
 
   const handleSaveLayout = useCallback(async () => {
     if (draftItems.length === 0) {
       toast.error('최소 1개 이상의 위젯이 필요합니다.')
       return
     }
-
-    setSaving(true)
-    try {
-      const normalizedItems = normalizeSortOrder(draftItems)
-      writeLocalUnmanagedLayout(buildLocalUnmanagedLayout(normalizedItems))
-
-      await saveAdminDashboardWidgetLayout(
-        {
-          replace_all: true,
-          items: normalizedItems
-            .filter((item) => item.widget_id > 0)
-            .map((item, index) => ({
-              widget_key: item.widget_key,
-              grid_x: item.grid_x,
-              grid_y: item.grid_y,
-              grid_w: item.grid_w,
-              grid_h: item.grid_h,
-              visible: true,
-              sort_order: index,
-              config_json: item.config_json ?? {},
-            })),
-        },
-        deviceType
-      )
-      toast.success('대시보드 레이아웃을 저장했습니다.')
-      setEditMode(false)
-      await loadDashboard()
-    } catch {
-      toast.error('레이아웃 저장에 실패했습니다.')
-    } finally {
-      setSaving(false)
-    }
-  }, [deviceType, draftItems, loadDashboard])
+    await handlePersistLayoutItems(draftItems, false)
+    setEditMode(false)
+    await loadDashboard()
+  }, [draftItems, handlePersistLayoutItems, loadDashboard])
 
   const handleHeaderToggleWidget = useCallback((widgetKey: string) => {
     const applyToggle = (items: DashboardUserLayoutItem[]) => {
@@ -993,19 +1024,19 @@ export default function AdminDashboardWidgets() {
       return sanitizeLayoutItems(applyPreferredWidgetSizes([...items, appended]))
     }
 
-    if (!editMode) return
-    setDraftItems((prev) => applyToggle(prev))
-  }, [catalogByKey, editMode])
-
-  const handleSettingsToggle = useCallback(async () => {
-    if (saving) return
-    if (!editMode) {
-      setDraftItems(layout?.items.filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key)) || [])
-      setEditMode(true)
+    if (editMode) {
+      setDraftItems((prev) => applyToggle(prev))
       return
     }
-    await handleSaveLayout()
-  }, [editMode, handleSaveLayout, layout?.items, saving])
+
+    const sourceItems = (layout?.items || [])
+      .filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
+      .sort((a, b) => (a.sort_order - b.sort_order) || a.widget_id - b.widget_id)
+    const nextItems = applyToggle(sourceItems)
+    setLayout((prev) => (prev ? { ...prev, items: nextItems } : prev))
+    setDraftItems(nextItems)
+    void handlePersistLayoutItems(nextItems, true)
+  }, [catalogByKey, editMode, handlePersistLayoutItems, layout?.items])
 
   const renderWidgetBody = useCallback(
     (item: DashboardUserLayoutItem) => {
@@ -1496,10 +1527,95 @@ export default function AdminDashboardWidgets() {
 
   return (
     <main className="space-y-3">
-      <div className="flex items-center justify-between px-1 py-1">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-zinc-900">대시보드</h1>
-          <div className="flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-1 py-1">
+      <div className="relative pr-12">
+        {loading ? (
+          <div className="px-1 py-8 text-center text-sm text-zinc-500">
+            위젯 레이아웃을 불러오는 중입니다.
+          </div>
+        ) : null}
+
+        {!loading && error ? (
+          <div className="px-1 py-4 text-sm text-rose-700">{error}</div>
+        ) : null}
+
+        {!loading && !error && visibleItems.length === 0 ? (
+          <div className="px-1 py-8 text-center text-sm text-zinc-500">
+            표시할 위젯이 없습니다.
+          </div>
+        ) : null}
+
+        {!loading && !error && visibleItems.length > 0 ? (
+          <section
+            ref={gridRef}
+            className={`relative grid grid-cols-12 gap-4 auto-rows-[84px] ${editMode ? 'outline outline-[1px] outline-dashed outline-zinc-300 p-1' : ''}`}
+            onDragOver={(event) => {
+              event.preventDefault()
+            }}
+            onDrop={(event) => {
+              handleGridDrop(event)
+            }}
+            style={{
+              minHeight: rowCount * ROW_HEIGHT + (rowCount - 1) * GRID_GAP,
+              backgroundImage: editMode
+                ? 'linear-gradient(to right, rgba(161,161,170,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(161,161,170,0.18) 1px, transparent 1px)'
+                : 'none',
+              backgroundSize: editMode ? `calc((100% - ${GRID_GAP * (GRID_COLS - 1)}px) / ${GRID_COLS}) ${ROW_HEIGHT + GRID_GAP}px` : 'auto',
+            }}
+          >
+            {visibleItems.map((item) => (
+              <article
+                key={item.widget_id}
+                className={`${CARD_BASE_CLASS} relative group ${editMode ? 'cursor-grab border-indigo-200' : ''}`}
+                style={{
+                  gridColumn: `${item.grid_x + 1} / span ${item.grid_w}`,
+                  gridRow: `${item.grid_y + 1} / span ${item.grid_h}`,
+                }}
+              >
+                {!editMode ? (
+                  <button
+                    type="button"
+                    draggable={!saving}
+                    onDragStart={(event) => {
+                      const payload: DragPayload = { widgetKey: item.widget_key, source: 'existing' }
+                      event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
+                      event.dataTransfer.effectAllowed = 'move'
+                      const card = (event.currentTarget as HTMLElement).closest('article')
+                      if (card) {
+                        event.dataTransfer.setDragImage(card, 24, 16)
+                      }
+                    }}
+                    className="absolute left-2 top-2 z-10 inline-flex h-5 w-5 cursor-grab items-center justify-center rounded border border-zinc-200 bg-white/90 text-zinc-500 opacity-0 transition hover:bg-zinc-100 group-hover:opacity-100"
+                    title="위젯 위치 이동"
+                  >
+                    <GripVertical className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+                {editMode ? (
+                  <div
+                    className="mb-2 flex cursor-grab select-none items-center gap-1"
+                    draggable={!saving}
+                    onDragStart={(event) => {
+                      const payload: DragPayload = { widgetKey: item.widget_key, source: 'existing' }
+                      event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
+                      event.dataTransfer.effectAllowed = 'move'
+                      const card = (event.currentTarget as HTMLElement).closest('article')
+                      if (card) {
+                        event.dataTransfer.setDragImage(card, 24, 16)
+                      }
+                    }}
+                  >
+                    <GripVertical className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                    <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
+                  </div>
+                ) : null}
+                {renderWidgetBody(item)}
+              </article>
+            ))}
+          </section>
+        ) : null}
+
+        <aside className="absolute right-0 top-0">
+          <div className="flex flex-col items-center gap-1 rounded-md border border-zinc-200 bg-white px-1 py-1">
             {headerToggleItems.map((row) => {
               const active = visibleItems.some((item) => item.widget_key === row.widget_key)
               const Icon = getWidgetHeaderIcon(row.widget_key)
@@ -1507,9 +1623,9 @@ export default function AdminDashboardWidgets() {
                 <button
                   key={row.widget_key}
                   type="button"
-                  disabled={saving || !editMode}
+                  disabled={saving}
                   onClick={() => void handleHeaderToggleWidget(row.widget_key)}
-                  title={`${row.title} ${active ? '끄기' : '켜기'}`}
+                  title={`${row.title} ${active ? '숨기기' : '표시'}`}
                   className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition ${
                     active
                       ? 'border-sky-200 bg-sky-100 text-sky-700'
@@ -1521,81 +1637,8 @@ export default function AdminDashboardWidgets() {
               )
             })}
           </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => void handleSettingsToggle()}
-          disabled={saving}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-md border ${editMode ? 'border-indigo-300 text-indigo-700' : 'border-zinc-300 text-zinc-700'} disabled:cursor-not-allowed disabled:opacity-60`}
-          aria-label="대시보드 편집 설정"
-          title={editMode ? (saving ? '저장 중...' : '편집 저장') : '편집 시작'}
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        </aside>
       </div>
-
-      {loading ? (
-        <div className="px-1 py-8 text-center text-sm text-zinc-500">
-          위젯 레이아웃을 불러오는 중입니다.
-        </div>
-      ) : null}
-
-      {!loading && error ? (
-        <div className="px-1 py-4 text-sm text-rose-700">{error}</div>
-      ) : null}
-
-      {!loading && !error && visibleItems.length === 0 ? (
-        <div className="px-1 py-8 text-center text-sm text-zinc-500">
-          표시할 위젯이 없습니다.
-        </div>
-      ) : null}
-
-      {!loading && !error && visibleItems.length > 0 ? (
-        <section
-          ref={gridRef}
-          className={`relative grid grid-cols-12 gap-4 auto-rows-[84px] ${editMode ? 'outline outline-[1px] outline-dashed outline-zinc-300 p-1' : ''}`}
-          onDragOver={(event) => {
-            if (!editMode) return
-            event.preventDefault()
-          }}
-          onDrop={(event) => {
-            if (!editMode) return
-            handleGridDrop(event)
-          }}
-          style={{
-            minHeight: rowCount * ROW_HEIGHT + (rowCount - 1) * GRID_GAP,
-            backgroundImage: editMode
-              ? 'linear-gradient(to right, rgba(161,161,170,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(161,161,170,0.18) 1px, transparent 1px)'
-              : 'none',
-            backgroundSize: editMode ? `calc((100% - ${GRID_GAP * (GRID_COLS - 1)}px) / ${GRID_COLS}) ${ROW_HEIGHT + GRID_GAP}px` : 'auto',
-          }}
-        >
-          {visibleItems.map((item) => (
-            <article
-              key={item.widget_id}
-              draggable={editMode}
-              onDragStart={(event) => {
-                if (!editMode) return
-                const payload: DragPayload = { widgetKey: item.widget_key, source: 'existing' }
-                event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
-                event.dataTransfer.effectAllowed = 'move'
-              }}
-              className={`${CARD_BASE_CLASS} ${editMode ? 'cursor-grab border-indigo-200' : ''}`}
-              style={{
-                gridColumn: `${item.grid_x + 1} / span ${item.grid_w}`,
-                gridRow: `${item.grid_y + 1} / span ${item.grid_h}`,
-              }}
-            >
-              {editMode ? (
-                <div className="mb-2 flex items-center">
-                  <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
-                </div>
-              ) : null}
-              {renderWidgetBody(item)}
-            </article>
-          ))}
-        </section>
-      ) : null}
     </main>
   )
 }

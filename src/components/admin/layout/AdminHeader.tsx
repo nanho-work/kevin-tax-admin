@@ -58,6 +58,7 @@ const Header = () => {
         : '업무 > 기본관리 > 상세'
     }
     if (pathname.startsWith('/admin/companies')) return '업무 > 기본관리'
+    if (pathname.startsWith('/admin/workflow/consult')) return '업무 > 컨설트 툴'
     if (pathname.startsWith('/admin/workflow/board/materials')) return '업무 > 업무보드 > 업무자료함'
     if (pathname.startsWith('/admin/workflow/board')) return '업무 > 업무보드'
     if (pathname.startsWith('/admin/company-withholding')) return '업무 > 원천세관리'
