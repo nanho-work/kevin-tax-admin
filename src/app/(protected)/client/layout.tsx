@@ -18,10 +18,12 @@ function ProtectedClientShell({
   const { loading, session } = useClientSessionContext()
   const [mounted, setMounted] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const isDashboardRoute = pathname.startsWith('/client/dashboard')
   const isBoardRoute =
     pathname.startsWith('/client/workflow/board') ||
     (pathname.startsWith('/client/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task')
-  const effectiveCollapsed = isSidebarCollapsed || isBoardRoute
+  const isSingleRailRoute = isBoardRoute || isDashboardRoute
+  const effectiveCollapsed = isSidebarCollapsed || isSingleRailRoute
 
   useEffect(() => {
     setMounted(true)
@@ -53,7 +55,7 @@ function ProtectedClientShell({
         <ClientSidebar
           collapsed={effectiveCollapsed}
           onToggleCollapse={() =>
-            setIsSidebarCollapsed((prev) => (isBoardRoute ? false : !prev))
+            setIsSidebarCollapsed((prev) => (isSingleRailRoute ? false : !prev))
           }
         />
       </div>
