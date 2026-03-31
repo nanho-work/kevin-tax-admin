@@ -1,5 +1,6 @@
 import { clientHttp } from '@/services/http'
 import type {
+  DashboardAttendanceSummaryResponse,
   DashboardDeviceType,
   DashboardLayoutPresetListResponse,
   DashboardUserLayoutActionResponse,
@@ -51,5 +52,10 @@ export async function resetClientDashboardWidgetLayout(
   const res = await clientHttp.post<DashboardUserLayoutActionResponse>(`${BASE}/layout/reset`, payload, {
     params: { device_type: deviceType },
   })
+  return res.data
+}
+
+export async function getClientDashboardAttendanceSummary(): Promise<DashboardAttendanceSummaryResponse> {
+  const res = await clientHttp.get<DashboardAttendanceSummaryResponse>(`${BASE}/attendance-summary`)
   return res.data
 }

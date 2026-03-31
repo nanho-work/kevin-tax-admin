@@ -93,3 +93,33 @@ export interface DashboardUserLayoutActionResponse {
   created_count: number
   deleted_count: number
 }
+
+export interface DashboardAttendanceSummaryResponse {
+  profile: {
+    name: string | null
+    position: string | null
+    profile_image_url: string | null
+  }
+  attendance: {
+    work_date: string | null
+    is_clocked_in: boolean
+    is_clocked_out: boolean
+    clock_in_at: string | null
+    clock_out_at: string | null
+    can_clock_in: boolean
+    can_clock_out: boolean
+  }
+  leave: {
+    remaining_days: number
+    next_leave: {
+      request_id: number
+      start_date: string
+      end_date: string
+      d_day: number
+    } | null
+  }
+  meta: {
+    now: string
+    timezone: string
+  }
+}

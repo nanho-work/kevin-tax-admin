@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check } from 'lucide-react'
 import AdminLeaveRequestPanel from '@/components/admin/staff/AdminLeaveRequestPanel'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
@@ -542,7 +543,7 @@ export default function AdminAttendancePage() {
                           title={`체크리스트 ${checklistCount}건`}
                           className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-100 px-1 text-[10px] font-bold leading-none text-emerald-700 animate-pulse"
                         >
-                          ✓
+                          <Check className="h-3 w-3" aria-hidden="true" />
                         </span>
                       ) : null}
                       {isToday ? (

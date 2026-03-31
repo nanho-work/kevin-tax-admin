@@ -1,5 +1,6 @@
 import { adminHttp } from '@/services/http'
 import type {
+  DashboardAttendanceSummaryResponse,
   DashboardDeviceType,
   DashboardLayoutPresetListResponse,
   DashboardUserLayoutActionResponse,
@@ -51,5 +52,10 @@ export async function resetAdminDashboardWidgetLayout(
   const res = await adminHttp.post<DashboardUserLayoutActionResponse>(`${BASE}/layout/reset`, payload, {
     params: { device_type: deviceType },
   })
+  return res.data
+}
+
+export async function getAdminDashboardAttendanceSummary(): Promise<DashboardAttendanceSummaryResponse> {
+  const res = await adminHttp.get<DashboardAttendanceSummaryResponse>(`${BASE}/attendance-summary`)
   return res.data
 }

@@ -6,6 +6,7 @@ import { Bell, Briefcase, CalendarCheck2, CheckSquare, FileText, GripVertical, L
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import {
+  getAdminDashboardAttendanceSummary,
   getAdminDashboardWidgetCatalog,
   getAdminDashboardWidgetLayout,
   saveAdminDashboardWidgetLayout,
@@ -19,8 +20,6 @@ import {
 } from '@/services/admin/dashboardChecklistService'
 import type { DashboardChecklistItemOut } from '@/types/dashboardChecklist'
 import { getAdminDashboardNote, patchAdminDashboardNote } from '@/services/admin/dashboardNoteService'
-import { getAttendanceLogs } from '@/services/admin/attendanceLogService'
-import { fetchAnnualLeaves } from '@/services/admin/annualLeaveService'
 import { fetchMyApprovalDocuments } from '@/services/admin/approvalDocumentService'
 import { listMailAccounts, listMailMessages } from '@/services/admin/mailService'
 import { fetchAdminNotificationUnreadCount } from '@/services/admin/notificationService'
@@ -33,18 +32,26 @@ import type {
   DashboardWidgetCatalogItem,
 } from '@/types/dashboardWidget'
 import type { WorkPostInboxItem } from '@/types/workPost'
-import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { formatKSTDate, formatKSTDateTime, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
 type AdminWidgetData = {
   my_attendance?: {
+    workDate: string | null
+    isClockedIn: boolean
+    isClockedOut: boolean
     checkIn: string | null
     checkOut: string | null
-    date: string | null
+    canClockIn: boolean
+    canClockOut: boolean
   }
   my_leave_balance?: {
-    granted: number
-    consumed: number
     remaining: number
+    nextLeave: {
+      requestId: number
+      startDate: string
+      endDate: string
+      dDay: number
+    } | null
   }
   approval_pending?: number
   mail_unread?: number
@@ -546,34 +553,42 @@ export default function AdminDashboardWidgets() {
     const nextData: AdminWidgetData = {}
     const jobs: Array<Promise<void>> = []
 
-    if (keys.has('my_attendance')) {
+    if (keys.has('my_attendance') || keys.has('my_leave_balance')) {
       jobs.push(
-        getAttendanceLogs({ offset: 0, limit: 1, date_to: getKstDateString() })
+        getAdminDashboardAttendanceSummary()
           .then((res) => {
-            const row = res.items?.[0]
             nextData.my_attendance = {
-              checkIn: row?.check_in ?? null,
-              checkOut: row?.check_out ?? null,
-              date: row?.date ?? null,
+              workDate: res.attendance?.work_date ?? null,
+              isClockedIn: Boolean(res.attendance?.is_clocked_in),
+              isClockedOut: Boolean(res.attendance?.is_clocked_out),
+              checkIn: res.attendance?.clock_in_at ?? null,
+              checkOut: res.attendance?.clock_out_at ?? null,
+              canClockIn: Boolean(res.attendance?.can_clock_in),
+              canClockOut: Boolean(res.attendance?.can_clock_out),
+            }
+            nextData.my_leave_balance = {
+              remaining: Number(res.leave?.remaining_days || 0),
+              nextLeave: res.leave?.next_leave
+                ? {
+                    requestId: Number(res.leave.next_leave.request_id),
+                    startDate: res.leave.next_leave.start_date,
+                    endDate: res.leave.next_leave.end_date,
+                    dDay: Number(res.leave.next_leave.d_day),
+                  }
+                : null,
             }
           })
           .catch(() => {
-            nextData.my_attendance = { checkIn: null, checkOut: null, date: null }
-          })
-      )
-    }
-
-    if (keys.has('my_leave_balance')) {
-      jobs.push(
-        fetchAnnualLeaves({ offset: 0, limit: 100 })
-          .then((res) => {
-            const granted = (res.items || []).reduce((acc, item) => acc + (Number(item.granted_days) || 0), 0)
-            const consumed = (res.items || []).reduce((acc, item) => acc + (Number(item.consumed_days) || 0), 0)
-            const remaining = (res.items || []).reduce((acc, item) => acc + (Number(item.remaining_days) || 0), 0)
-            nextData.my_leave_balance = { granted, consumed, remaining }
-          })
-          .catch(() => {
-            nextData.my_leave_balance = { granted: 0, consumed: 0, remaining: 0 }
+            nextData.my_attendance = {
+              workDate: null,
+              isClockedIn: false,
+              isClockedOut: false,
+              checkIn: null,
+              checkOut: null,
+              canClockIn: false,
+              canClockOut: false,
+            }
+            nextData.my_leave_balance = { remaining: 0, nextLeave: null }
           })
       )
     }
@@ -1047,10 +1062,13 @@ export default function AdminDashboardWidgets() {
             <div className="h-full">
               <p className="text-xs font-medium text-zinc-500">오늘 출퇴근</p>
               <div className="mt-2 space-y-1 text-sm text-zinc-800">
-                <p>출근: {formatKSTDateTimeAssumeUTC(data?.checkIn, '-')}</p>
-                <p>퇴근: {formatKSTDateTimeAssumeUTC(data?.checkOut, '-')}</p>
+                <p>출근: {formatKSTDateTime(data?.checkIn, '-')}</p>
+                <p>퇴근: {formatKSTDateTime(data?.checkOut, '-')}</p>
               </div>
-              <p className="mt-2 text-xs text-zinc-500">기준일: {data?.date || getKstDateString()}</p>
+              <p className="mt-2 text-xs text-zinc-500">기준일: {data?.workDate || getKstDateString()}</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                상태: {data?.isClockedOut ? '퇴근 완료' : data?.isClockedIn ? '출근 중' : '출근 전'}
+              </p>
             </div>
           )
         }
@@ -1058,21 +1076,26 @@ export default function AdminDashboardWidgets() {
           const data = widgetData.my_leave_balance
           return (
             <div className="h-full">
-              <p className="text-xs font-medium text-zinc-500">내 연차 요약</p>
-              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-md bg-zinc-50 px-2 py-2">
-                  <p className="text-[11px] text-zinc-500">부여</p>
-                  <p className="text-lg font-semibold text-zinc-900">{Number(data?.granted || 0).toLocaleString('ko-KR')}</p>
-                </div>
-                <div className="rounded-md bg-zinc-50 px-2 py-2">
-                  <p className="text-[11px] text-zinc-500">사용</p>
-                  <p className="text-lg font-semibold text-zinc-900">{Number(data?.consumed || 0).toLocaleString('ko-KR')}</p>
-                </div>
+              <p className="text-xs font-medium text-zinc-500">내 연차</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
                 <div className="rounded-md bg-zinc-50 px-2 py-2">
                   <p className="text-[11px] text-zinc-500">잔여</p>
-                  <p className="text-lg font-semibold text-sky-700">{Number(data?.remaining || 0).toLocaleString('ko-KR')}</p>
+                  <p className="text-lg font-semibold text-sky-700">{Number(data?.remaining || 0).toLocaleString('ko-KR')}일</p>
+                </div>
+                <div className="rounded-md bg-zinc-50 px-2 py-2">
+                  <p className="text-[11px] text-zinc-500">다음 휴가</p>
+                  {data?.nextLeave ? (
+                    <p className="text-sm font-semibold text-zinc-900">D-{data.nextLeave.dDay}</p>
+                  ) : (
+                    <p className="text-sm font-semibold text-zinc-400">-</p>
+                  )}
                 </div>
               </div>
+              {data?.nextLeave ? (
+                <p className="mt-2 text-xs text-zinc-500">
+                  {formatKSTDate(data.nextLeave.startDate)} ~ {formatKSTDate(data.nextLeave.endDate)}
+                </p>
+              ) : null}
             </div>
           )
         }
