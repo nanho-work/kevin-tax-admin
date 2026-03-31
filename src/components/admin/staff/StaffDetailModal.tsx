@@ -16,6 +16,7 @@ import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
 import { gsap } from 'gsap'
+import ProfileImageCropModal from '@/components/common/ProfileImageCropModal'
 
 type StaffRole = NonNullable<UpdateStaffRequest['role_id']>
 
@@ -31,6 +32,9 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
   const [roles, setRoles] = useState<RoleOut[]>([])
   const [departments, setDepartments] = useState<DepartmentOut[]>([])
   const [teams, setTeams] = useState<TeamOut[]>([])
+  const [cropOpen, setCropOpen] = useState(false)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropFileName, setCropFileName] = useState<string>('')
 
   const [form, setForm] = useState({
     name: staff.name || '',
@@ -84,8 +88,6 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
     }
     loadOptions()
   }, [])
-
-  console.log('초기 데이터:', staff);
 
   const handleSubmit = async () => {
     try {
@@ -243,12 +245,15 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
           <input
             type="file"
             accept="image/*"
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                profile_image: e.target.files?.[0] || null
-              }))
-            }
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null
+              e.currentTarget.value = ''
+              if (!file) return
+              const objectUrl = URL.createObjectURL(file)
+              setCropSrc(objectUrl)
+              setCropFileName(file.name)
+              setCropOpen(true)
+            }}
             className="mt-1"
           />
         </div>
@@ -273,6 +278,28 @@ export default function StaffDetailModal({ staff, onClose }: Props) {
           </button>
         </div>
       </div>
+      <ProfileImageCropModal
+        open={cropOpen}
+        imageSrc={cropSrc}
+        fileName={cropFileName}
+        onClose={() => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc)
+          setCropOpen(false)
+          setCropSrc(null)
+          setCropFileName('')
+        }}
+        onApply={({ file, previewUrl }) => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc)
+          setForm((prev) => ({
+            ...prev,
+            profile_image: file,
+            profile_image_url: previewUrl,
+          }))
+          setCropOpen(false)
+          setCropSrc(null)
+          setCropFileName('')
+        }}
+      />
     </div>
   )
 }

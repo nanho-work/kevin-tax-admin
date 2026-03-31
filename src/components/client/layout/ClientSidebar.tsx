@@ -7,7 +7,9 @@ import {
   Briefcase,
   Building2,
   ClipboardList,
+  FileCheck2,
   FileText,
+  FolderOpen,
   LayoutDashboard,
   Mail,
   Mails,
@@ -42,21 +44,24 @@ const mailMenus = [
 const companyManagementMenus = [
   { label: '고객사 일정', href: '/client/schedule' },
   { label: '고객사 기본사항', href: '/client/companies' },
+  { label: '업무보드', href: '/client/workflow/board' },
+  { label: '업무자료함', href: '/client/workflow/board/materials' },
 ]
 
 const staffManagementMenus = [
   { label: '직원목록/검색', href: '/client/staff' },
   { label: '직원가입신청', href: '/client/staff/signup-requests' },
   { label: '직원 근태/휴가 관리', href: '/client/staff/leave' },
-  { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
-  { label: '업무지시', href: '/client/staff/work-posts?post_type=task' },
   { label: '초기비밀번호 재설정/잠금해제', href: '/client/staff/account-security' },
+]
+
+const approvalsMenus = [
+  { label: '업무지시', href: '/client/staff/work-posts?post_type=task' },
+  { label: '결재 문서 승인', href: '/client/staff/approvals/documents' },
 ]
 
 const boardMenus = [
   { label: '공지사항', href: '/client/staff/work-posts?post_type=notice' },
-  { label: '업무보드', href: '/client/workflow/board' },
-  { label: '업무자료함', href: '/client/workflow/board/materials' },
 ]
 
 const clientManagementMenus = [
@@ -128,12 +133,18 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const searchParams = useSearchParams()
   const router = useRouter()
   const hasMailPath = pathname.startsWith('/client/mail')
-  const hasCompanyManagementPath = pathname.startsWith('/client/companies') || pathname.startsWith('/client/schedule')
+  const hasCompanyManagementPath =
+    pathname.startsWith('/client/companies') ||
+    pathname.startsWith('/client/schedule') ||
+    pathname.startsWith('/client/workflow/board')
   const isWorkPostPath = pathname.startsWith('/client/staff/work-posts')
   const workPostType = (searchParams.get('post_type') || '').toLowerCase()
-  const hasWorkflowBoardPath = pathname.startsWith('/client/workflow/board')
-  const hasBoardPath = hasWorkflowBoardPath || (isWorkPostPath && workPostType !== 'task')
-  const hasStaffManagementPath = pathname.startsWith('/client/staff') && (!isWorkPostPath || workPostType === 'task')
+  const hasTaskPostPath = isWorkPostPath && workPostType === 'task'
+  const hasBoardPath = isWorkPostPath && workPostType !== 'task'
+  const hasDocsPath = pathname.startsWith('/client/docs')
+  const hasApprovalPath = pathname.startsWith('/client/staff/approvals')
+  const hasStaffManagementPath =
+    pathname.startsWith('/client/staff') && !hasApprovalPath && !hasTaskPostPath && (!isWorkPostPath || workPostType === 'task')
   const hasClientManagementPath = pathname.startsWith('/client/client-management')
   const hasBookkeepingPath = pathname.startsWith('/client/bookkeeping')
   const hasSettingPath = pathname.startsWith('/client/setting')
@@ -152,7 +163,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const [folderDeleteLoadingKey, setFolderDeleteLoadingKey] = useState<string | null>(null)
   const [folderActionMenuKey, setFolderActionMenuKey] = useState<string | null>(null)
   const [pendingSignupCount, setPendingSignupCount] = useState(0)
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'mail' | 'company' | 'staff' | 'board' | 'bookkeeping' | 'setting' | 'client-management'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'mail' | 'company' | 'staff' | 'approvals' | 'board' | 'docs' | 'bookkeeping' | 'setting' | 'client-management'>('dashboard')
   const selectedMailAccountId = useMemo(() => {
     const raw = Number(searchParams.get('account_id') || '')
     return Number.isFinite(raw) && raw > 0 ? raw : null
@@ -160,7 +171,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   const { session, loading } = useClientSessionContext()
   const { confirm } = useConfirmDialog()
   const canManageClients = getClientRoleRank(session) === 0
-  const shouldHideSecondSidebar = activeRailSection === 'dashboard' || activeRailSection === 'board'
+  const shouldHideSecondSidebar = activeRailSection === 'dashboard' || activeRailSection === 'board' || activeRailSection === 'docs'
   const collapsedQuickMenus = [
     {
       key: 'dashboard',
@@ -191,11 +202,25 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       active: hasStaffManagementPath,
     },
     {
+      key: 'approvals',
+      label: '전자결재',
+      href: '/client/staff/approvals/documents',
+      icon: FileCheck2,
+      active: hasApprovalPath,
+    },
+    {
       key: 'board',
       label: '게시판',
-      href: '/client/workflow/board',
+      href: '/client/staff/work-posts?post_type=notice',
       icon: ClipboardList,
       active: hasBoardPath,
+    },
+    {
+      key: 'docs',
+      label: '문서함',
+      href: '/client/docs',
+      icon: FolderOpen,
+      active: hasDocsPath,
     },
     {
       key: 'bookkeeping',
@@ -225,7 +250,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'board' | 'bookkeeping' | 'setting' | 'client-management'
+    const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'approvals' | 'board' | 'docs' | 'bookkeeping' | 'setting' | 'client-management'
 
     // 같은 아이콘 재클릭:
     // - 2단 열림 상태면 닫기(페이지 유지)
@@ -268,14 +293,16 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
   useEffect(() => {
     if (hasMailPath) setActiveRailSection('mail')
+    else if (hasApprovalPath || hasTaskPostPath) setActiveRailSection('approvals')
     else if (hasBoardPath) setActiveRailSection('board')
+    else if (hasDocsPath) setActiveRailSection('docs')
     else if (hasStaffManagementPath) setActiveRailSection('staff')
     else if (hasCompanyManagementPath) setActiveRailSection('company')
     else if (hasBookkeepingPath) setActiveRailSection('bookkeeping')
     else if (hasSettingPath) setActiveRailSection('setting')
     else if (hasClientManagementPath && canManageClients) setActiveRailSection('client-management')
     else setActiveRailSection('dashboard')
-  }, [canManageClients, hasBoardPath, hasBookkeepingPath, hasClientManagementPath, hasCompanyManagementPath, hasMailPath, hasSettingPath, hasStaffManagementPath])
+  }, [canManageClients, hasApprovalPath, hasTaskPostPath, hasBoardPath, hasBookkeepingPath, hasClientManagementPath, hasCompanyManagementPath, hasDocsPath, hasMailPath, hasSettingPath, hasStaffManagementPath])
 
   useEffect(() => {
     if (!selectedMailAccountId) return
@@ -985,6 +1012,33 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                           </span>
                         ) : null}
                       </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+        </div>
+        ) : null}
+
+        {activeRailSection === 'approvals' ? (
+        <div className="order-1 pt-2 rounded-lg bg-white">
+          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+            <span className="inline-flex items-center gap-2">
+              <FileCheck2 className="h-4 w-4" />
+              <span>전자결재</span>
+            </span>
+          </div>
+          <div className="space-y-1 px-2 py-2">
+              {approvalsMenus.map((menu) => {
+                const active = pathname === menu.href
+                return (
+                  <Link key={menu.href} href={menu.href}>
+                    <div
+                      className={`rounded-md px-3 py-2 text-xs transition ${
+                        active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
+                      }`}
+                    >
+                      {menu.label}
                     </div>
                   </Link>
                 )

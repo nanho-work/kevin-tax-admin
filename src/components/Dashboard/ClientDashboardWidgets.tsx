@@ -6,10 +6,12 @@ import { Bell, CalendarCheck2, CheckSquare, FileText, GripVertical, ListTodo, Ma
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import {
+  getClientDashboardAttendanceSummary,
   getClientDashboardWidgetCatalog,
   getClientDashboardWidgetLayout,
   saveClientDashboardWidgetLayout,
 } from '@/services/client/clientDashboardWidgetService'
+import { checkInClient, checkOutClient } from '@/services/client/clientAttendanceService'
 import {
   carryOverClientDashboardChecklist,
   createClientDashboardChecklistItem,
@@ -32,6 +34,8 @@ import type {
   DashboardUserLayoutResponse,
   DashboardWidgetCatalogItem,
 } from '@/types/dashboardWidget'
+import { formatKSTDate, formatKSTDateTime } from '@/utils/dateTime'
+import { resolveApiAssetUrl } from '@/utils/url'
 
 type StaffWeeklySummary = {
   adminId: number
@@ -40,6 +44,34 @@ type StaffWeeklySummary = {
 }
 
 type ClientWidgetData = {
+  attendance_summary_profile?: {
+    name: string | null
+    position: string | null
+    profileImageUrl: string | null
+  }
+  attendance_summary_meta?: {
+    now: string | null
+    timezone: string | null
+  }
+  my_attendance?: {
+    workDate: string | null
+    isClockedIn: boolean
+    isClockedOut: boolean
+    checkIn: string | null
+    checkOut: string | null
+    canClockIn: boolean
+    canClockOut: boolean
+  }
+  my_leave_balance?: {
+    granted: number
+    remaining: number
+    nextLeave: {
+      requestId: number
+      startDate: string
+      endDate: string
+      dDay: number
+    } | null
+  }
   staff_leave_pending?: number
   approval_pending?: number
   mail_unread?: number
@@ -87,6 +119,8 @@ type ChecklistItem = {
 
 const EXCLUDED_WIDGET_KEYS = new Set(['mail_ops_summary', 'tax_schedule_due'])
 const HEADER_WIDGET_ORDER = [
+  'my_attendance',
+  'my_leave_balance',
   'staff_leave_pending',
   'approval_pending',
   'mail_unread',
@@ -109,11 +143,11 @@ const CLIENT_LOCAL_FALLBACK_WIDGETS: DashboardWidgetCatalogItem[] = [
     title: '메모장',
     description: '개인 메모를 기록합니다',
     required_permission_code: null,
-    default_w: 2,
+    default_w: 3,
     default_h: 4,
-    min_w: 2,
+    min_w: 3,
     min_h: 4,
-    max_w: 2,
+    max_w: 3,
     max_h: 4,
     supports_mobile: true,
   },
@@ -268,6 +302,34 @@ function sanitizeLayoutItems(items: DashboardUserLayoutItem[]): DashboardUserLay
   return normalizeSortOrder(resolveCollisions(normalized, '__bootstrap__'))
 }
 
+function applyPreferredWidgetSizes(items: DashboardUserLayoutItem[]): DashboardUserLayoutItem[] {
+  return items.map((item) => {
+    if (item.widget_key === 'my_attendance') {
+      return {
+        ...item,
+        grid_w: 3,
+        grid_h: 2,
+        min_w: Math.max(3, item.min_w),
+        min_h: Math.max(2, item.min_h),
+        max_w: 3,
+        max_h: 2,
+      }
+    }
+    if (item.widget_key === 'memo_widget') {
+      return {
+        ...item,
+        grid_w: 3,
+        grid_h: 4,
+        min_w: Math.max(3, item.min_w),
+        min_h: Math.max(4, item.min_h),
+        max_w: 3,
+        max_h: 4,
+      }
+    }
+    return item
+  })
+}
+
 function renderSimpleCountCard(title: string, count?: number, subtitle?: string) {
   return (
     <div className="h-full">
@@ -280,6 +342,10 @@ function renderSimpleCountCard(title: string, count?: number, subtitle?: string)
 
 function getWidgetHeaderIcon(widgetKey: string) {
   switch (widgetKey) {
+    case 'my_attendance':
+      return CalendarCheck2
+    case 'my_leave_balance':
+      return CalendarCheck2
     case 'staff_leave_pending':
       return CalendarCheck2
     case 'approval_pending':
@@ -346,6 +412,8 @@ export default function ClientDashboardWidgets() {
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
   const [checklistCollapsedDone, setChecklistCollapsedDone] = useState(false)
   const [checklistDraftText, setChecklistDraftText] = useState('')
+  const [isAttendanceProfileImageBroken, setIsAttendanceProfileImageBroken] = useState(false)
+  const [attendanceSubmitting, setAttendanceSubmitting] = useState<'check-in' | 'check-out' | null>(null)
   const gridRef = useRef<HTMLElement | null>(null)
   const mailWidgetListWrapRef = useRef<HTMLDivElement | null>(null)
   const checklistInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
@@ -442,6 +510,10 @@ export default function ClientDashboardWidgets() {
     void loadChecklistByDate()
   }, [loadChecklistByDate])
 
+  useEffect(() => {
+    setIsAttendanceProfileImageBroken(false)
+  }, [widgetData.attendance_summary_profile?.profileImageUrl])
+
   const visibleItems = useMemo(() => {
     if (!layout) return [] as DashboardUserLayoutItem[]
     return layout.items
@@ -476,6 +548,69 @@ export default function ClientDashboardWidgets() {
     const keys = new Set(items.map((item) => item.widget_key))
     const nextData: ClientWidgetData = {}
     const jobs: Array<Promise<void>> = []
+
+    if (keys.has('my_attendance') || keys.has('my_leave_balance')) {
+      jobs.push(
+        getClientDashboardAttendanceSummary()
+          .then((res) => {
+            nextData.attendance_summary_profile = {
+              name: res.profile?.name ?? null,
+              position: res.profile?.position ?? null,
+              profileImageUrl: res.profile?.profile_image_url ?? null,
+            }
+            nextData.attendance_summary_meta = {
+              now: res.meta?.now ?? null,
+              timezone: res.meta?.timezone ?? null,
+            }
+            nextData.my_attendance = {
+              workDate: res.attendance?.work_date ?? null,
+              isClockedIn: Boolean(res.attendance?.is_clocked_in),
+              isClockedOut: Boolean(res.attendance?.is_clocked_out),
+              checkIn: res.attendance?.clock_in_at ?? null,
+              checkOut: res.attendance?.clock_out_at ?? null,
+              canClockIn: Boolean(res.attendance?.can_clock_in),
+              canClockOut: Boolean(res.attendance?.can_clock_out),
+            }
+            nextData.my_leave_balance = {
+              granted: Number(res.leave?.granted_days || 0),
+              remaining: Number(res.leave?.remaining_days || 0),
+              nextLeave: res.leave?.next_leave
+                ? {
+                    requestId: Number(res.leave.next_leave.request_id),
+                    startDate: res.leave.next_leave.start_date,
+                    endDate: res.leave.next_leave.end_date,
+                    dDay: Number(res.leave.next_leave.d_day),
+                  }
+                : null,
+            }
+          })
+          .catch(() => {
+            nextData.attendance_summary_profile = {
+              name: null,
+              position: null,
+              profileImageUrl: null,
+            }
+            nextData.attendance_summary_meta = {
+              now: null,
+              timezone: null,
+            }
+            nextData.my_attendance = {
+              workDate: null,
+              isClockedIn: false,
+              isClockedOut: false,
+              checkIn: null,
+              checkOut: null,
+              canClockIn: false,
+              canClockOut: false,
+            }
+            nextData.my_leave_balance = {
+              granted: 0,
+              remaining: 0,
+              nextLeave: null,
+            }
+          })
+      )
+    }
 
     if (keys.has('staff_leave_pending')) {
       jobs.push(
@@ -648,6 +783,74 @@ export default function ClientDashboardWidgets() {
     setWidgetData(nextData)
   }, [])
 
+  const refreshAttendanceSummary = useCallback(async () => {
+    try {
+      const res = await getClientDashboardAttendanceSummary()
+      setWidgetData((prev) => ({
+        ...prev,
+        attendance_summary_profile: {
+          name: res.profile?.name ?? null,
+          position: res.profile?.position ?? null,
+          profileImageUrl: res.profile?.profile_image_url ?? null,
+        },
+        attendance_summary_meta: {
+          now: res.meta?.now ?? null,
+          timezone: res.meta?.timezone ?? null,
+        },
+        my_attendance: {
+          workDate: res.attendance?.work_date ?? null,
+          isClockedIn: Boolean(res.attendance?.is_clocked_in),
+          isClockedOut: Boolean(res.attendance?.is_clocked_out),
+          checkIn: res.attendance?.clock_in_at ?? null,
+          checkOut: res.attendance?.clock_out_at ?? null,
+          canClockIn: Boolean(res.attendance?.can_clock_in),
+          canClockOut: Boolean(res.attendance?.can_clock_out),
+        },
+        my_leave_balance: {
+          granted: Number(res.leave?.granted_days || 0),
+          remaining: Number(res.leave?.remaining_days || 0),
+          nextLeave: res.leave?.next_leave
+            ? {
+                requestId: Number(res.leave.next_leave.request_id),
+                startDate: res.leave.next_leave.start_date,
+                endDate: res.leave.next_leave.end_date,
+                dDay: Number(res.leave.next_leave.d_day),
+              }
+            : null,
+        },
+      }))
+    } catch {
+      // keep previous state
+    }
+  }, [])
+
+  const handleAttendanceAction = useCallback(
+    async (action: 'check-in' | 'check-out') => {
+      if (attendanceSubmitting) return
+      setAttendanceSubmitting(action)
+      try {
+        if (action === 'check-in') {
+          await checkInClient()
+          toast.success('출근 처리되었습니다.')
+        } else {
+          await checkOutClient()
+          toast.success('퇴근 처리되었습니다.')
+        }
+        await refreshAttendanceSummary()
+      } catch (error: any) {
+        const detail = error?.response?.data?.detail
+        const message =
+          typeof detail === 'string'
+            ? detail
+            : detail?.message || '근태 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+        toast.error(message)
+      } finally {
+        setAttendanceSubmitting(null)
+      }
+    },
+    [attendanceSubmitting, refreshAttendanceSummary]
+  )
+
   const loadDashboard = useCallback(async () => {
     setError(null)
     const [layoutRes, catalogRes] = await Promise.all([
@@ -691,7 +894,9 @@ export default function ClientDashboardWidgets() {
       ]
     }
 
-    const sanitizedItems = sanitizeLayoutItems(applyLocalUnmanagedLayout(mergedItems))
+    const sanitizedItems = sanitizeLayoutItems(
+      applyPreferredWidgetSizes(applyLocalUnmanagedLayout(mergedItems))
+    )
 
     setLayout({ ...layoutRes, items: sanitizedItems })
     setCatalog(filteredCatalog)
@@ -839,7 +1044,7 @@ export default function ClientDashboardWidgets() {
     const applyToggle = (items: DashboardUserLayoutItem[]) => {
       const exists = items.some((item) => item.widget_key === widgetKey)
       if (exists) {
-        return sanitizeLayoutItems(items.filter((item) => item.widget_key !== widgetKey))
+        return sanitizeLayoutItems(applyPreferredWidgetSizes(items.filter((item) => item.widget_key !== widgetKey)))
       }
       const meta = catalogByKey.get(widgetKey)
       if (!meta) return items
@@ -883,7 +1088,7 @@ export default function ClientDashboardWidgets() {
         max_h: meta.max_h,
         supports_mobile: meta.supports_mobile,
       }
-      return sanitizeLayoutItems([...items, appended])
+      return sanitizeLayoutItems(applyPreferredWidgetSizes([...items, appended]))
     }
 
     const sourceItems = (layout?.items || [])
@@ -897,6 +1102,109 @@ export default function ClientDashboardWidgets() {
   const renderWidgetBody = useCallback(
     (item: DashboardUserLayoutItem) => {
       switch (item.widget_key) {
+        case 'my_attendance': {
+          const data = widgetData.my_attendance
+          const leaveData = widgetData.my_leave_balance
+          const profile = widgetData.attendance_summary_profile
+          const profileImageUrl = !isAttendanceProfileImageBroken
+            ? resolveApiAssetUrl(profile?.profileImageUrl)
+            : null
+          return (
+            <div className="h-full">
+              <div className="flex items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                  <UserCheck2 className="h-4 w-4 text-zinc-600" />
+                  <span>근태</span>
+                </div>
+                <div>
+                  {data?.canClockIn ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleAttendanceAction('check-in')}
+                      disabled={attendanceSubmitting !== null || !data?.canClockIn}
+                      className="inline-flex h-6 items-center rounded-md border border-sky-200 bg-sky-50 px-2 text-[11px] font-medium leading-none text-sky-700"
+                    >
+                      {attendanceSubmitting === 'check-in' ? '처리중' : '출근'}
+                    </button>
+                  ) : data?.canClockOut ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleAttendanceAction('check-out')}
+                      disabled={attendanceSubmitting !== null || !data?.canClockOut}
+                      className="inline-flex h-6 items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-medium leading-none text-emerald-700"
+                    >
+                      {attendanceSubmitting === 'check-out' ? '처리중' : '퇴근'}
+                    </button>
+                  ) : (
+                    <span className="inline-flex h-6 items-center rounded-md border border-zinc-200 bg-zinc-50 px-2 text-[11px] font-medium leading-none text-zinc-500">
+                      완료
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <div className="h-[64px] w-[84px] overflow-hidden rounded-md border border-transparent bg-transparent">
+                  <div className="mx-auto h-full w-3/4 overflow-hidden rounded-full">
+                    {profileImageUrl ? (
+                      <img
+                        src={profileImageUrl}
+                        alt={profile?.name || '프로필'}
+                        className="block h-full w-full object-contain"
+                        onError={() => setIsAttendanceProfileImageBroken(true)}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[13px] font-semibold text-zinc-500">
+                        {(profile?.name || '-').slice(0, 1)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex h-[64px] flex-1 flex-col items-start justify-center rounded-md border border-transparent bg-transparent px-2 py-1.5 text-[11px] leading-4 text-zinc-700">
+                  <p className="truncate text-[14px]" title={`${profile?.name || '-'} ${profile?.position || ''}`.trim()}>
+                    <span className="text-[15px] font-bold">{profile?.name || '-'}</span>
+                    <span className="ml-1 font-normal">{profile?.position || ''}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-1.5">
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
+                  <p className="text-[9px] text-zinc-500">휴가 D-day</p>
+                  <p className="mt-1 text-[13px] font-semibold text-zinc-900">
+                    {leaveData?.nextLeave ? `D-${leaveData.nextLeave.dDay}` : '-'}
+                  </p>
+                </div>
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
+                  <p className="text-[9px] text-zinc-500">부여휴가</p>
+                  <p className="mt-1 text-[13px] font-semibold text-zinc-900">
+                    {Number(leaveData?.granted || 0).toLocaleString('ko-KR')}일
+                  </p>
+                </div>
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
+                  <p className="text-[9px] text-zinc-500">잔여휴가</p>
+                  <p className="mt-1 text-[13px] font-semibold text-zinc-900">
+                    {Number(leaveData?.remaining || 0).toLocaleString('ko-KR')}일
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        }
+        case 'my_leave_balance': {
+          const data = widgetData.my_leave_balance
+          return (
+            <div className="h-full">
+              <p className="text-xs font-medium text-zinc-500">내 연차</p>
+              <div className="mt-2 space-y-1 text-[11px] leading-4 text-zinc-700">
+                <p>부여일수(granted_days): {Number(data?.granted || 0).toLocaleString('ko-KR')}</p>
+                <p>잔여일수(remaining_days): {Number(data?.remaining || 0).toLocaleString('ko-KR')}</p>
+                <p>다음휴가ID(request_id): {data?.nextLeave?.requestId ?? '-'}</p>
+                <p>시작일(start_date): {data?.nextLeave ? formatKSTDate(data.nextLeave.startDate) : '-'}</p>
+                <p>종료일(end_date): {data?.nextLeave ? formatKSTDate(data.nextLeave.endDate) : '-'}</p>
+                <p>D-day(d_day): {data?.nextLeave ? data.nextLeave.dDay : '-'}</p>
+              </div>
+            </div>
+          )
+        }
         case 'staff_leave_pending':
           return renderSimpleCountCard('휴가 승인 대기', widgetData.staff_leave_pending, '검토 대기 신청')
         case 'approval_pending':
@@ -1135,7 +1443,10 @@ export default function ClientDashboardWidgets() {
           return (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-zinc-500">오늘 체크리스트</p>
+                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                  <CheckSquare className="h-4 w-4 text-zinc-600" />
+                  <span>체크</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-medium text-zinc-600">{doneCount}/{totalCount}</span>
                   <button
@@ -1237,7 +1548,10 @@ export default function ClientDashboardWidgets() {
           return (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-zinc-500">메모장</p>
+                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                  <NotebookPen className="h-4 w-4 text-zinc-600" />
+                  <span>메모</span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <label className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
                     글씨
@@ -1311,6 +1625,8 @@ export default function ClientDashboardWidgets() {
       memoText,
       memoTextColor,
       router,
+      handleAttendanceAction,
+      attendanceSubmitting,
       widgetData,
     ]
   )

@@ -41,6 +41,7 @@ import type { RoleOut } from '@/types/role'
 import type { DepartmentOut } from '@/types/department'
 import type { TeamOut } from '@/types/team'
 import KakaoAddressSearchModal from '@/components/common/KakaoAddressSearchModal'
+import ProfileImageCropModal from '@/components/common/ProfileImageCropModal'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 
@@ -134,6 +135,9 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
     reason: '',
   })
   const [addressSearchOpen, setAddressSearchOpen] = useState(false)
+  const [cropOpen, setCropOpen] = useState(false)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropFileName, setCropFileName] = useState<string>('')
 
   const [form, setForm] = useState({
     name: staff.name || '',
@@ -586,17 +590,20 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        profile_image: e.target.files?.[0] || null,
-                      }))
-                    }
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null
+                      e.currentTarget.value = ''
+                      if (!file) return
+                      const objectUrl = URL.createObjectURL(file)
+                      setCropSrc(objectUrl)
+                      setCropFileName(file.name)
+                      setCropOpen(true)
+                    }}
                     className={inputClass}
                   />
-                  {form.profile_image ? (
+                  {form.profile_image_url ? (
                     <img
-                      src={URL.createObjectURL(form.profile_image)}
+                      src={form.profile_image_url}
                       alt="프로필 미리보기"
                       className="h-16 w-16 rounded-md border border-zinc-200 object-cover"
                     />
@@ -954,6 +961,28 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
             address2: item.address2 || prev.address2,
           }))
         }
+      />
+      <ProfileImageCropModal
+        open={cropOpen}
+        imageSrc={cropSrc}
+        fileName={cropFileName}
+        onClose={() => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc)
+          setCropOpen(false)
+          setCropSrc(null)
+          setCropFileName('')
+        }}
+        onApply={({ file, previewUrl }) => {
+          if (cropSrc) URL.revokeObjectURL(cropSrc)
+          setForm((prev) => ({
+            ...prev,
+            profile_image: file,
+            profile_image_url: previewUrl,
+          }))
+          setCropOpen(false)
+          setCropSrc(null)
+          setCropFileName('')
+        }}
       />
     </div>
   )

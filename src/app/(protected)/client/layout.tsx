@@ -19,10 +19,10 @@ function ProtectedClientShell({
   const [mounted, setMounted] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const isDashboardRoute = pathname.startsWith('/client/dashboard')
+  const isDocsRoute = pathname.startsWith('/client/docs')
   const isBoardRoute =
-    pathname.startsWith('/client/workflow/board') ||
-    (pathname.startsWith('/client/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task')
-  const isSingleRailRoute = isBoardRoute || isDashboardRoute
+    pathname.startsWith('/client/staff/work-posts') && (searchParams.get('post_type') || '').toLowerCase() !== 'task'
+  const isSingleRailRoute = isBoardRoute || isDashboardRoute || isDocsRoute
   const effectiveCollapsed = isSidebarCollapsed || isSingleRailRoute
 
   useEffect(() => {

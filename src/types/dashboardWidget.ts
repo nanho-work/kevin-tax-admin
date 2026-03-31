@@ -110,6 +110,7 @@ export interface DashboardAttendanceSummaryResponse {
     can_clock_out: boolean
   }
   leave: {
+    granted_days: number
     remaining_days: number
     next_leave: {
       request_id: number

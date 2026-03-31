@@ -20,6 +20,7 @@ import {
 } from '@/services/admin/notificationService'
 import { clearAdminAccessToken } from '@/services/http'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
+import { resolveApiAssetUrl } from '@/utils/url'
 
 const Header = () => {
   const pathname = usePathname()
@@ -46,7 +47,7 @@ const Header = () => {
     (session as any)?.profile_image_url ??
     (session as any)?.profileImageUrl ??
     null
-  const resolvedProfileImageUrl = !isProfileImageBroken ? profileImageUrl : null
+  const resolvedProfileImageUrl = !isProfileImageBroken ? resolveApiAssetUrl(profileImageUrl) : null
   const profileInitial = (session?.name || '?').trim().charAt(0) || '?'
 
   const currentLabel = useMemo(() => {

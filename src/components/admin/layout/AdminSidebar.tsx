@@ -7,6 +7,7 @@ import {
   Briefcase,
   Building2,
   ClipboardList,
+  FileCheck2,
   FolderOpen,
   LayoutDashboard,
   Mail,
@@ -53,6 +54,12 @@ const menuSections: MenuSection[] = [
     children: [
       { label: '휴가/근태관리', href: '/admin/staff/attendance' },
       { label: '프로필', href: '/admin/staff/profile' },
+    ],
+  },
+  {
+    key: 'approvals',
+    label: '전자결재',
+    children: [
       { label: '전자문서', href: '/admin/staff/documents' },
       { label: '업무지시', href: '/admin/staff/work-posts?post_type=task' },
     ],
@@ -88,8 +95,9 @@ const menuSections: MenuSection[] = [
 function getActiveSection(pathname: string, searchParams: URLSearchParams): string {
   if (pathname.startsWith('/admin/staff/work-posts')) {
     const postType = (searchParams.get('post_type') || '').toLowerCase()
-    return postType === 'task' ? 'leave' : 'board'
+    return postType === 'task' ? 'approvals' : 'board'
   }
+  if (pathname.startsWith('/admin/staff/documents')) return 'approvals'
   if (pathname.startsWith('/admin/staff')) return 'leave'
   if (pathname.startsWith('/admin/mail')) return 'mail'
   if (pathname.startsWith('/admin/docs')) return 'docs'
@@ -140,6 +148,7 @@ function MailActionMenuLabel({ href, label }: { href: string; label: string }) {
 function getSectionIcon(key: string) {
   if (key === 'dashboard') return LayoutDashboard
   if (key === 'leave') return Briefcase
+  if (key === 'approvals') return FileCheck2
   if (key === 'board') return ClipboardList
   if (key === 'docs') return FolderOpen
   if (key === 'mail') return Mail
@@ -154,7 +163,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const { session, loading: sessionLoading } = useAdminSessionContext()
   const { confirm } = useConfirmDialog()
 
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -197,7 +206,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname, searchParams)
     if (!activeKey) return
-    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies')
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies')
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -342,6 +351,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       active: activeSection === 'leave',
     },
     {
+      key: 'approvals',
+      label: '전자결재',
+      href: '/admin/staff/documents',
+      icon: FileCheck2,
+      active: activeSection === 'approvals',
+    },
+    {
       key: 'board',
       label: '게시판',
       href: '/admin/staff/work-posts?post_type=notice',
@@ -372,7 +388,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'leave' | 'board' | 'docs' | 'mail' | 'companies'
+    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies'
 
     // 같은 아이콘 재클릭:
     // - 2단 열림 상태면 닫기(페이지 유지)

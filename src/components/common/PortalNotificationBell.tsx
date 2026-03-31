@@ -66,6 +66,25 @@ export default function PortalNotificationBell({
     []
   )
 
+  const withWorkPostQuery = useCallback(
+    (
+      basePath: string,
+      item: PortalNotificationItem,
+      sourceIdFromPath?: string | null
+    ) => {
+      const params = new URLSearchParams()
+      const sourceType = item.source_type || 'work_post'
+      const sourceId = item.source_id ? String(item.source_id) : sourceIdFromPath || ''
+      if (sourceType) params.set('source_type', sourceType)
+      if (sourceId) params.set('source_id', sourceId)
+      if (item.domain === 'task') params.set('post_type', 'task')
+      if (item.domain === 'notice') params.set('post_type', 'notice')
+      const query = params.toString()
+      return query ? `${basePath}?${query}` : basePath
+    },
+    []
+  )
+
   const resolveNotificationTarget = useCallback(
     (item: PortalNotificationItem): string | null => {
       const rawTarget = item.deeplink_url?.trim() || ''
@@ -73,7 +92,7 @@ export default function PortalNotificationBell({
         if (portalPrefix === '/client') {
           if (item.domain === 'approval' || item.domain === 'leave') return withSourceQuery('/client/staff/approvals/documents', item)
           if (item.domain === 'notice' || item.domain === 'task' || item.source_type === 'work_post') {
-            return withSourceQuery('/client/staff/work-posts', item)
+            return withWorkPostQuery('/client/staff/work-posts', item)
           }
           if (item.domain === 'signup') return '/client/staff/signup-requests'
           if (item.domain === 'mail') return '/client/mail/inbox'
@@ -83,7 +102,7 @@ export default function PortalNotificationBell({
           if (item.domain === 'approval') return withSourceQuery('/admin/staff/documents', item)
           if (item.domain === 'leave') return withSourceQuery('/admin/staff/documents', item)
           if (item.domain === 'notice' || item.domain === 'task' || item.source_type === 'work_post') {
-            return withSourceQuery('/admin/staff/work-posts', item)
+            return withWorkPostQuery('/admin/staff/work-posts', item)
           }
           if (item.domain === 'mail') return '/admin/mail/inbox'
           return '/admin/dashboard'
@@ -122,16 +141,16 @@ export default function PortalNotificationBell({
       }
       const workPostRawMatch = rawTarget.match(/^\/work-posts\/(\d+)\/?$/)
       if (workPostRawMatch) {
-        if (portalPrefix === '/client') return withSourceQuery('/client/staff/work-posts', item, workPostRawMatch[1], 'work_post')
-        if (portalPrefix === '/admin') return withSourceQuery('/admin/staff/work-posts', item, workPostRawMatch[1], 'work_post')
+        if (portalPrefix === '/client') return withWorkPostQuery('/client/staff/work-posts', item, workPostRawMatch[1])
+        if (portalPrefix === '/admin') return withWorkPostQuery('/admin/staff/work-posts', item, workPostRawMatch[1])
       }
       const workPostClientMatch = rawTarget.match(/^\/client\/work-posts\/(\d+)\/?$/)
       if (workPostClientMatch) {
-        return withSourceQuery('/client/staff/work-posts', item, workPostClientMatch[1], 'work_post')
+        return withWorkPostQuery('/client/staff/work-posts', item, workPostClientMatch[1])
       }
       const workPostAdminMatch = rawTarget.match(/^\/admin\/work-posts\/(\d+)\/?$/)
       if (workPostAdminMatch) {
-        return withSourceQuery('/admin/staff/work-posts', item, workPostAdminMatch[1], 'work_post')
+        return withWorkPostQuery('/admin/staff/work-posts', item, workPostAdminMatch[1])
       }
 
       if (rawTarget.startsWith('/client/') || rawTarget.startsWith('/admin/')) {
@@ -143,7 +162,7 @@ export default function PortalNotificationBell({
       }
       return null
     },
-    [portalPrefix, withSourceQuery]
+    [portalPrefix, withSourceQuery, withWorkPostQuery]
   )
 
   const loadUnreadCount = useCallback(async () => {

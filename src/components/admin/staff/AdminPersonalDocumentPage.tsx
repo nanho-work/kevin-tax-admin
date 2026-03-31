@@ -14,6 +14,7 @@ import {
 } from '@/services/admin/adminSensitiveProfileService'
 import { useAdminSessionContext } from '@/contexts/AdminSessionContext'
 import { emitProfileImageUpdated } from '@/utils/profileImageEvents'
+import ProfileImageCropModal from '@/components/common/ProfileImageCropModal'
 import {
   fetchMyPersonalDocumentPreviewUrl,
   fetchMyPersonalDocumentStatus,
@@ -100,21 +101,6 @@ async function optimizeProfileImage(file: File): Promise<File> {
   }
 }
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result)
-        return
-      }
-      reject(new Error('이미지 미리보기를 생성할 수 없습니다.'))
-    }
-    reader.onerror = () => reject(new Error('이미지 미리보기를 생성할 수 없습니다.'))
-    reader.readAsDataURL(file)
-  })
-}
-
 function formatDateTime(value?: string | null) {
   return formatKSTDateTimeAssumeUTC(value)
 }
@@ -175,6 +161,9 @@ export default function AdminPersonalDocumentPage() {
   const [isPasswordPanelOpen, setIsPasswordPanelOpen] = useState(false)
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
   const [profileImagePreviewUrl, setProfileImagePreviewUrl] = useState('/default-profile.png')
+  const [profileCropOpen, setProfileCropOpen] = useState(false)
+  const [profileCropSrc, setProfileCropSrc] = useState<string | null>(null)
+  const [profileCropFileName, setProfileCropFileName] = useState<string>('')
   const [isOptimizingImage, setIsOptimizingImage] = useState(false)
   const [sensitiveProfile, setSensitiveProfile] = useState<AdminSensitiveProfile | null>(null)
   const [sensitiveLoading, setSensitiveLoading] = useState(false)
@@ -873,15 +862,10 @@ export default function AdminPersonalDocumentPage() {
                       toast.error(`지원하지 않는 이미지 형식입니다. (선택 파일 형식: ${fileType})`)
                       return
                     }
-                    setProfileImageFile(file)
-                    void (async () => {
-                      try {
-                        const previewUrl = await fileToDataUrl(file)
-                        setProfileImagePreviewUrl(previewUrl)
-                      } catch {
-                        toast.error('미리보기 생성에 실패했습니다. 저장은 가능합니다.')
-                      }
-                    })()
+                    const objectUrl = URL.createObjectURL(file)
+                    setProfileCropSrc(objectUrl)
+                    setProfileCropFileName(file.name)
+                    setProfileCropOpen(true)
                   }}
                 />
               </div>
@@ -919,6 +903,25 @@ export default function AdminPersonalDocumentPage() {
         )}
         {sessionLoading && session ? <p className="mt-3 text-xs text-zinc-400">세션 동기화 중...</p> : null}
       </div>
+      <ProfileImageCropModal
+        open={profileCropOpen}
+        imageSrc={profileCropSrc}
+        fileName={profileCropFileName}
+        onClose={() => {
+          if (profileCropSrc) URL.revokeObjectURL(profileCropSrc)
+          setProfileCropOpen(false)
+          setProfileCropSrc(null)
+          setProfileCropFileName('')
+        }}
+        onApply={({ file, previewUrl }) => {
+          if (profileCropSrc) URL.revokeObjectURL(profileCropSrc)
+          setProfileImageFile(file)
+          setProfileImagePreviewUrl(previewUrl)
+          setProfileCropOpen(false)
+          setProfileCropSrc(null)
+          setProfileCropFileName('')
+        }}
+      />
 
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
         <div className="border-b border-zinc-200 bg-zinc-50 px-3 pt-3">
