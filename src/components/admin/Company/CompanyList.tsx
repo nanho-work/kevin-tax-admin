@@ -1,5 +1,6 @@
 'use client';
 
+import { engagementLabel, staffPhone } from './CompanyManagementFields'
 import { useEffect, useState } from 'react';
 import { fetchCompanyTaxList } from '@/services/admin/company';
 import { getCompanyAccounts } from '@/services/admin/companyAccountService'
@@ -217,8 +218,8 @@ export default function CompanyList({
   }, [showAccountStatus])
 
   const columns = showAccountStatus
-    ? ['구분', '거래처명', '대표자', '종목', '계정']
-    : ['구분', '거래처명', '대표자', '종목']
+    ? ['구분', '거래처명', '계약 구분', '대표자', '종목', '담당 직원', '계정']
+    : ['구분', '거래처명', '계약 구분', '대표자', '종목', '담당 직원']
   const columnCount = columns.length
 
   const handleDelete = async (companyId: number) => {
@@ -322,8 +323,10 @@ export default function CompanyList({
                         {formatBusinessNumber(company.registration_number)}
                       </p>
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{engagementLabel(company.engagement_type)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">{company.owner_name || '-'}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{company.business_type || '-'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600"><p>{company.assigned_admin_name || '미지정'}</p>{company.assigned_admin_id ? <p className="mt-1 text-xs text-slate-400">{staffPhone(company.assigned_admin_phone)}</p> : null}</td>
                     {showAccountStatus ? <td className="whitespace-nowrap px-4 py-3 text-center">
                       {companyAccountIds === null ? <span className="text-slate-400">-</span> : companyAccountIds.has(company.id) ? <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />등록됨</span> : <span className="text-xs text-slate-400">미등록</span>}
                     </td> : null}

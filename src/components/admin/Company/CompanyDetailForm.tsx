@@ -1,5 +1,10 @@
 'use client'
 
+import { useManagementSession } from '@/contexts/ManagementSession'
+import { getClientRoleRank } from '@/utils/roleRank'
+import CompanyContractSection, { type CompanyContractHandle } from './CompanyContractSection'
+import { createBookkeepingContract } from '@/services/client/clientBookkeepingService'
+import CompanyManagementFields from './CompanyManagementFields'
 import PasswordInput from '@/components/common/PasswordInput'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
@@ -40,7 +45,7 @@ interface Props {
   showHometaxLogsSection?: boolean
   listPath?: string
   fetchDetailFn?: (company_id: number) => Promise<CompanyDetailResponse>
-  createFn?: (payload: CompanyCreateRequest) => Promise<unknown>
+  createFn?: (payload: CompanyCreateRequest) => Promise<{ id: number }>
   updateFn?: (company_id: number, payload: CompanyUpdateRequest) => Promise<{ message: string }>
   fetchBusinessLicensePreviewFn?: (company_id: number) => Promise<CompanyDocumentPreviewResponse>
   uploadBusinessLicenseFn?: (company_id: number, file: File) => Promise<unknown>
@@ -294,11 +299,11 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="space-y-3">
-      <div className="border-b border-zinc-200 pb-2">
+    <section className="min-w-0">
+      <div className="mb-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-[13px] font-semibold text-zinc-900">{title}</h3>
+            <h3 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h3>
             {description ? <p className="mt-1 text-xs text-zinc-500">{description}</p> : null}
           </div>
           {action ? <div className="sm:ml-auto">{action}</div> : null}
@@ -331,7 +336,7 @@ function Field({
 }
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200'
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100'
 const MAX_CUSTOM_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024 * 1024
 
 function validateCustomDocumentFile(file: File): string | null {
@@ -431,6 +436,13 @@ export default function CompanyDetailForm({
   const { id } = useParams()
   const companyId = Number(id)
   const isCreateMode = mode === 'create'
+  const [activeTab, setActiveTab] = useState<'basic' | 'contract' | 'documents'>('basic')
+  const management = useManagementSession()
+  const canManageContract = Boolean(management.session) && getClientRoleRank(management.session) <= 10
+  const contractRef = useRef<CompanyContractHandle>(null)
+  const createdCompanyIdRef = useRef<number | null>(null)
+  const [createdCompanyId, setCreatedCompanyId] = useState<number | null>(null)
+  const [registrationError, setRegistrationError] = useState('')
   const hasValidCompanyId = Number.isFinite(companyId) && companyId > 0
   const [form, setForm] = useState<CompanyDetailResponse | null>(null)
   const resolvedDocumentTypes = useMemo(
@@ -534,10 +546,6 @@ export default function CompanyDetailForm({
     () => contactSlots.filter((slot) => visibleContactSlotKeys.includes(slot.key)),
     [contactSlots, visibleContactSlotKeys]
   )
-  const listModeSlots = useMemo(
-    () => visibleContactSlots.filter((slot) => Boolean(slot.contactId) && editingContactKey !== slot.key),
-    [visibleContactSlots, editingContactKey]
-  )
   const supportsCompanyAccount =
     !isCreateMode &&
     hasValidCompanyId &&
@@ -558,12 +566,12 @@ export default function CompanyDetailForm({
     }
     return getApiErrorMessageFromDetail(detail, '') || null
   }
-  const canEditFields = isCreateMode ? true : editable && editMode
+  const canEditFields = isCreateMode ? createdCompanyId === null : editable && editMode
   const editableInputClass = canEditFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
-  const basicInfoInputClass = `${editableInputClass} text-center`
-  const basicInfoFieldClass = 'overflow-hidden border-b border-zinc-200 pb-2'
-  const basicInfoLabelClass = 'bg-zinc-50 px-2 py-1'
-  const basicInfoContentClass = 'pt-2'
+  const basicInfoInputClass = `${editableInputClass} text-left`
+  const basicInfoFieldClass = 'min-w-0 space-y-1.5'
+  const basicInfoLabelClass = '!font-medium !text-slate-500'
+  const basicInfoContentClass = 'pt-1'
   const canEditContactsFields = isCreateMode ? true : editable
   const contactEditableInputClass = canEditContactsFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
 
@@ -1492,19 +1500,16 @@ export default function CompanyDetailForm({
     return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-xs text-rose-700">회사 정보를 찾을 수 없습니다.</div>
   }
 
-  return (
-    <div className="w-full space-y-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3 xl:border-r xl:border-zinc-200 xl:pr-6">
-          <Section
-            title="기본 정보"
-            action={
+  const basicActions = (
               <div className="flex items-center gap-3">
                 {isCreateMode && createFn ? (
                   <button
                     onClick={async () => {
                       try {
+                        let contractPayload
+                        try { contractPayload = contractRef.current?.prepare() } catch (error) { setActiveTab('contract'); throw error }
                         setSaving(true)
+                        setRegistrationError('')
                         const payload: CompanyCreateRequest = {
                           manager_name: (contactSlots.find((slot) => slot.key === 'main')?.name || form.manager_name || '').trim() || undefined,
                           manager_phone: (contactSlots.find((slot) => slot.key === 'main')?.phone || form.manager_phone || '').trim() || undefined,
@@ -1513,25 +1518,39 @@ export default function CompanyDetailForm({
                           owner_name: form.owner_name?.trim() || '',
                           registration_number: form.registration_number?.trim() || '',
                           category: form.category?.trim() || undefined,
+                          engagement_type: form.engagement_type,
+                          assigned_admin_id: form.assigned_admin_id,
                           industry_type: form.industry_type?.trim() || undefined,
                           business_type: form.business_type?.trim() || undefined,
                           postal_code: form.postal_code?.trim() || undefined,
                           address1: form.address1?.trim() || undefined,
                           address2: form.address2?.trim() || undefined,
                         }
-                        await createFn(payload)
+                        let registeredId = createdCompanyIdRef.current
+                        if (registeredId === null) {
+                          const result = await createFn(payload)
+                          registeredId = result.id
+                          createdCompanyIdRef.current = registeredId
+                          setCreatedCompanyId(registeredId)
+                        }
+                        if (contractPayload) {
+                          try { await createBookkeepingContract({ ...contractPayload, company_id: registeredId }) } catch (error) { setActiveTab('contract'); throw error }
+                        }
                         toast.success('등록이 완료되었습니다.')
                         router.push(listPath)
                       } catch (err: any) {
-                        toast.error(extractApiDetail(err) || '등록 실패')
+                        const detail = extractApiDetail(err) || (err instanceof Error ? err.message : '등록 실패')
+                        const message = createdCompanyIdRef.current ? `거래처는 등록되었습니다. 기장계약 저장에 실패했습니다: ${detail}` : detail
+                        setRegistrationError(message)
+                        toast.error(message)
                       } finally {
                         setSaving(false)
                       }
                     }}
                     disabled={saving}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                    className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
                   >
-                    {saving ? '등록 중...' : '등록완료'}
+                    {saving ? '등록 중...' : createdCompanyId ? '계약 등록 재시도' : '등록완료'}
                   </button>
                 ) : editable && updateFn ? (
                   <>
@@ -1539,10 +1558,11 @@ export default function CompanyDetailForm({
                     <button
                       type="button"
                       role="switch"
+                      aria-label="기본정보 수정 모드"
                       aria-checked={editMode}
                       onClick={() => setEditMode((prev) => !prev)}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                        editMode ? 'bg-blue-500' : 'bg-zinc-300'
+                        editMode ? 'bg-sky-600' : 'bg-slate-200'
                       }`}
                     >
                       <span
@@ -1576,7 +1596,7 @@ export default function CompanyDetailForm({
                           }
                         }}
                         disabled={saving}
-                        className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                        className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
                       >
                         {saving ? '저장 중...' : '수정완료'}
                       </button>
@@ -1584,13 +1604,41 @@ export default function CompanyDetailForm({
                   </>
                 ) : null}
                 </div>
-            }
+  )
+
+  return (
+    <div className="w-full min-w-0 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
+        <div role="tablist" aria-label="거래처 상세정보" className="flex gap-5 sm:gap-7">
+          {([{ key: 'basic', label: '기본정보' }, ...(canManageContract ? [{ key: 'contract', label: '기장정보' }] : []), { key: 'documents', label: '기타 관련 서류' }] as const).map((tab) => (
+            <button key={tab.key} id={`company-tab-${tab.key}`} type="button" role="tab" aria-selected={activeTab === tab.key} aria-controls={`company-panel-${tab.key}`} tabIndex={activeTab === tab.key ? 0 : -1}
+              onClick={() => setActiveTab(tab.key as typeof activeTab)}
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                event.preventDefault()
+                const buttons = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+                const index = buttons.indexOf(event.currentTarget)
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length
+                buttons[next].click(); buttons[next].focus()
+              }}
+              className={`-mb-px whitespace-nowrap border-b-2 px-1 py-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${activeTab === tab.key ? 'border-sky-600 font-semibold text-sky-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{tab.label}</button>
+          ))}
+        </div>
+        {isCreateMode ? <div className="pb-2">{basicActions}</div> : null}
+      </div>
+          {registrationError ? <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{registrationError}{createdCompanyId ? <button type="button" className="ml-2 underline" onClick={() => router.push(`${listPath}/${createdCompanyId}`)}>등록된 거래처 보기</button> : null}</div> : null}
+      <div id="company-panel-basic" role="tabpanel" aria-labelledby="company-tab-basic" hidden={activeTab !== 'basic'}>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-5">
+        <div className="min-w-0 space-y-8 divide-y divide-slate-100 [&>section:not(:first-child)]:pt-6 xl:col-span-3">
+          <Section
+            title="기본 정보"
+            action={!isCreateMode ? basicActions : undefined}
           >
             {canEditFields ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
                 <Field
                   label="구분"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1602,7 +1650,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="회사명"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1610,7 +1658,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="사업자등록번호"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1631,7 +1679,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="대표자"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1639,7 +1687,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="업태"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1647,17 +1695,15 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="종목"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
                   <input className={basicInfoInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
                 </Field>
-                <div className="hidden xl:block" />
-                <div className="hidden xl:block" />
                 <Field
                   label="우편번호"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1681,7 +1727,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="주소"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1694,7 +1740,7 @@ export default function CompanyDetailForm({
                 </Field>
                 <Field
                   label="상세주소"
-                  className={`${basicInfoFieldClass} text-center`}
+                  className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
                   contentClassName={basicInfoContentClass}
                 >
@@ -1705,51 +1751,40 @@ export default function CompanyDetailForm({
                     onChange={(e) => setForm({ ...form, address2: e.target.value })}
                   />
                 </Field>
-                <div className="hidden xl:block" />
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className={`${basicInfoFieldClass} text-center`}>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>구분</p>
-                  <p className="text-xs text-zinc-900">{form.category || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.category || '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>회사명</p>
-                  <p className="text-xs text-zinc-900">{form.company_name || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.company_name || '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>사업자등록번호</p>
-                  <p className="text-xs text-zinc-900">{form.registration_number || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.registration_number ? formatBusinessRegistrationNumber(form.registration_number) : '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>대표자</p>
-                  <p className="text-xs text-zinc-900">{form.owner_name || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.owner_name || '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>업태</p>
-                  <p className="text-xs text-zinc-900">{form.industry_type || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.industry_type || '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
+                <div className={`${basicInfoFieldClass} text-left`}>
                   <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>종목</p>
-                  <p className="text-xs text-zinc-900">{form.business_type || '-'}</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.business_type || '-'}</p>
                 </div>
-                <div className="hidden xl:block" />
-                <div className="hidden xl:block" />
-                <div className={`${basicInfoFieldClass} text-center`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>우편번호</p>
-                  <p className="text-xs text-zinc-900">{form.postal_code || '-'}</p>
+                <div className={`${basicInfoFieldClass} sm:col-span-2 lg:col-span-3`}>
+                  <p className={`text-xs ${basicInfoLabelClass}`}>주소</p>
+                  <p className="break-words text-sm leading-6 text-slate-800">{form.postal_code ? <span className="mr-2 text-slate-400">({form.postal_code})</span> : null}{[form.address1, form.address2].filter(Boolean).join(' ') || '-'}</p>
                 </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>주소</p>
-                  <p className="text-xs text-zinc-900">{form.address1 || '-'}</p>
-                </div>
-                <div className={`${basicInfoFieldClass} text-center`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>상세주소</p>
-                  <p className="text-xs text-zinc-900">{form.address2 || '-'}</p>
-                </div>
-                <div className="hidden xl:block" />
               </div>
             )}
+            <div className="mt-5 border-t border-slate-100 pt-1"><CompanyManagementFields value={form} editable={canEditFields} onChange={(next) => setForm({ ...form, ...next })} /></div>
           </Section>
           <KakaoAddressSearchModal
             open={addressSearchOpen}
@@ -1767,6 +1802,174 @@ export default function CompanyDetailForm({
               )
             }
           />
+
+          {supportsHometax ? (
+            <Section
+              title="홈택스 정보"
+              action={
+                <div className="flex items-center gap-2">
+                  {!hometaxFetched ? (
+                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
+                      확인 중
+                    </div>
+                  ) : hasHometaxRegistered ? (
+                    <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      등록됨
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
+                      미등록
+                    </div>
+                  )}
+                  <span className="text-xs text-zinc-500">{hometaxExpanded ? '펼침' : '접힘'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHometaxExpanded((prev) => !prev)}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                  >
+                    {hometaxExpanded ? '접기 ▴' : '펼치기 ▾'}
+                  </button>
+                </div>
+              }
+            >
+              {hometaxExpanded ? (
+                <div className="space-y-4">
+                  {loadingHometax ? (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
+                      홈택스 정보를 불러오는 중...
+                    </div>
+                  ) : null}
+                  {!hasHometaxRegistered && supportsHometaxWrite ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <Field label="홈택스 아이디">
+                          <input
+                            className={inputClass}
+                            value={hometaxForm.hometax_login_id}
+                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_login_id: e.target.value }))}
+                          />
+                        </Field>
+                        <Field label="홈택스 비밀번호">
+                          <PasswordInput
+                            type="password"
+                            className={inputClass}
+                            value={hometaxForm.hometax_password}
+                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_password: e.target.value }))}
+                          />
+                        </Field>
+                        <Field label="활성 상태">
+                          <select
+                            className={inputClass}
+                            value={hometaxForm.is_active ? 'active' : 'inactive'}
+                            disabled={!supportsHometaxActivePatch}
+                            onChange={(e) => handlePatchHometaxActive(e.target.value === 'active')}
+                          >
+                            <option value="active">활성</option>
+                            <option value="inactive">비활성</option>
+                          </select>
+                        </Field>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={handleUpsertHometax}
+                          disabled={savingHometax}
+                          className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                        >
+                          {savingHometax ? '저장 중...' : '홈택스 정보 저장'}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                  {!hasHometaxRegistered && !supportsHometaxWrite ? (
+                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
+                      홈택스 등록/수정 권한이 없습니다.
+                    </div>
+                  ) : null}
+
+                  {supportsHometaxReveal && hasHometaxRegistered ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                        <PasswordInput
+                          type="password"
+                          className={inputClass}
+                          placeholder="본인 계정 비밀번호 입력"
+                          value={revealAccountPassword}
+                          onChange={(e) => setRevealAccountPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRevealHometax}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                        >
+                          정보 확인
+                        </button>
+                      </div>
+                      {revealedHometaxPassword !== null ? (
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <input
+                            className={`${inputClass} bg-white`}
+                            value={`아이디: ${hometaxCredential?.hometax_login_id || hometaxForm.hometax_login_id}`}
+                            readOnly
+                          />
+                          <input
+                            className={`${inputClass} bg-white`}
+                            value={`비밀번호: ${revealedHometaxPassword}`}
+                            readOnly
+                          />
+                        </div>
+                      ) : null}
+                      {revealedCount !== null ? (
+                        <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {supportsHometaxLogs ? (
+                    <div className="overflow-hidden rounded-lg border border-zinc-200">
+                      <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-900">
+                        조회 이력
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead className="bg-white text-zinc-900">
+                          <tr>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-center">주체</th>
+                            <th className="border-b border-zinc-200 px-3 py-2 text-left">IP</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {loadingHometaxLogs ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                                로그를 불러오는 중...
+                              </td>
+                            </tr>
+                          ) : hometaxLogs.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
+                                로그가 없습니다.
+                              </td>
+                            </tr>
+                          ) : (
+                            hometaxLogs.map((log) => (
+                              <tr key={log.id}>
+                                <td className="px-3 py-2 text-zinc-700">{toDateTime(log.created_at)}</td>
+                                <td className="px-3 py-2 text-center text-zinc-700">{log.action}</td>
+                                <td className="px-3 py-2 text-center text-zinc-700">{log.actor_type}</td>
+                                <td className="px-3 py-2 text-zinc-500">{log.ip || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </Section>
+          ) : null}
 
           <Section
             title="회사 담당자"
@@ -1791,17 +1994,6 @@ export default function CompanyDetailForm({
             }
           >
             <div className="grid grid-cols-1 gap-2">
-              {listModeSlots.length > 0 ? (
-                <div className="hidden grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_45px] gap-2 border-b border-zinc-200 px-2 py-1 text-[11px] font-semibold text-zinc-900 md:grid">
-                  <div className="text-center">구분</div>
-                  <div className="text-center">이름</div>
-                  <div className="text-center">연락처</div>
-                  <div className="text-center">이메일</div>
-                  <div className="text-center">부서</div>
-                  <div className="text-center">직책</div>
-                  <div className="text-center">메일수신</div>
-                </div>
-              ) : null}
               {visibleContactSlots.map((slot) => {
                 const isListMode = Boolean(slot.contactId) && editingContactKey !== slot.key
                 return (
@@ -1809,14 +2001,14 @@ export default function CompanyDetailForm({
                     key={slot.key}
                     className={
                       isListMode
-                        ? 'border-b border-zinc-200 px-2 py-2'
-                        : 'space-y-2 rounded-lg border border-zinc-200 bg-white p-2'
+                        ? 'border-b border-slate-100 py-4 last:border-b-0'
+                        : 'space-y-3 border-b border-slate-100 py-4'
                     }
                   >
                     {isListMode ? (
                       <div className="space-y-1">
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_45px] md:items-center">
-                          <div className="flex items-center justify-center">
+                        <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
+                          <div className="flex items-center gap-2 sm:col-span-2"><span className="text-xs font-semibold text-slate-600">{slot.label}</span>
                             {slot.key === 'main' ? (
                               <span title="메인 담당자" className="inline-flex h-5 w-5 items-center justify-center">
                                 <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
@@ -1833,16 +2025,16 @@ export default function CompanyDetailForm({
                               </button>
                             )}
                           </div>
-                          <div className="truncate text-center text-xs text-zinc-700">{slot.name || '-'}</div>
-                          <div className="truncate text-center text-xs text-zinc-700">{slot.phone || '-'}</div>
-                          <div className="truncate text-center text-xs text-zinc-700">{slot.email || '-'}</div>
-                          <div className="truncate text-center text-xs text-zinc-500">{slot.department || '-'}</div>
-                          <div className="truncate text-center text-xs text-zinc-500">{slot.position || '-'}</div>
-                          <div className="text-center text-xs text-zinc-500">{slot.notify_mail ? 'Y' : 'N'}</div>
+                          <div className="min-w-0"><p className="text-[11px] text-slate-500">이름</p><p className="mt-1 break-words text-sm text-slate-800">{slot.name || '-'}</p></div>
+                          <div className="min-w-0"><p className="text-[11px] text-slate-500">연락처</p><p className="mt-1 break-words text-sm text-slate-800">{slot.phone || '-'}</p></div>
+                          <div className="min-w-0"><p className="text-[11px] text-slate-500">이메일</p><p className="mt-1 break-words text-sm text-slate-800">{slot.email || '-'}</p></div>
+                          <div className="min-w-0"><p className="text-[11px] text-slate-500">부서</p><p className="mt-1 break-words text-sm text-slate-800">{slot.department || '-'}</p></div>
+                          <div className="min-w-0"><p className="text-[11px] text-slate-500">직책</p><p className="mt-1 break-words text-sm text-slate-800">{slot.position || '-'}</p></div>
+                          <div><p className="text-[11px] text-slate-500">메일수신</p><p className="mt-1 text-sm text-slate-800">{slot.notify_mail ? '수신' : '미수신'}</p></div>
                         </div>
-                        <div className="grid grid-cols-[44px_minmax(0,1fr)_45px]">
+                        <div className="mt-3 grid grid-cols-[0_minmax(0,1fr)_32px] items-start border-t border-slate-200/60 pt-3">
                           <div />
-                          <div className="truncate text-right text-xs text-zinc-500">{slot.memo || ''}</div>
+                          <div className="whitespace-pre-wrap break-words text-left text-xs leading-5 text-slate-500">{slot.memo || ''}</div>
                           <div className="relative flex items-center justify-center">
                             <button
                               type="button"
@@ -1850,7 +2042,8 @@ export default function CompanyDetailForm({
                               onClick={() =>
                                 setOpenContactActionMenuKey((prev) => (prev === slot.key ? null : slot.key))
                               }
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-300 bg-white text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                              aria-label={`${slot.label} 메뉴`}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-300 bg-white text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
                             >
                               ...
                             </button>
@@ -2127,174 +2320,200 @@ export default function CompanyDetailForm({
             </Section>
           ) : null}
 
-          {supportsHometax ? (
-            <Section
-              title="홈택스 정보"
-              action={
-                <div className="flex items-center gap-2">
-                  {!hometaxFetched ? (
-                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
-                      확인 중
-                    </div>
-                  ) : hasHometaxRegistered ? (
-                    <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                      등록됨
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600">
-                      미등록
-                    </div>
-                  )}
-                  <span className="text-xs text-zinc-500">{hometaxExpanded ? '펼침' : '접힘'}</span>
-                  <button
-                    type="button"
-                    onClick={() => setHometaxExpanded((prev) => !prev)}
-                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                  >
-                    {hometaxExpanded ? '접기 ▴' : '펼치기 ▾'}
-                  </button>
-                </div>
-              }
-            >
-              {hometaxExpanded ? (
-                <div className="space-y-4">
-                  {loadingHometax ? (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
-                      홈택스 정보를 불러오는 중...
-                    </div>
-                  ) : null}
-                  {!hasHometaxRegistered && supportsHometaxWrite ? (
-                    <>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        <Field label="홈택스 아이디">
-                          <input
-                            className={inputClass}
-                            value={hometaxForm.hometax_login_id}
-                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_login_id: e.target.value }))}
-                          />
-                        </Field>
-                        <Field label="홈택스 비밀번호">
-                          <PasswordInput
-                            type="password"
-                            className={inputClass}
-                            value={hometaxForm.hometax_password}
-                            onChange={(e) => setHometaxForm((prev) => ({ ...prev, hometax_password: e.target.value }))}
-                          />
-                        </Field>
-                        <Field label="활성 상태">
-                          <select
-                            className={inputClass}
-                            value={hometaxForm.is_active ? 'active' : 'inactive'}
-                            disabled={!supportsHometaxActivePatch}
-                            onChange={(e) => handlePatchHometaxActive(e.target.value === 'active')}
-                          >
-                            <option value="active">활성</option>
-                            <option value="inactive">비활성</option>
-                          </select>
-                        </Field>
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <button
-                          type="button"
-                          onClick={handleUpsertHometax}
-                          disabled={savingHometax}
-                          className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
-                        >
-                          {savingHometax ? '저장 중...' : '홈택스 정보 저장'}
-                        </button>
-                      </div>
-                    </>
-                  ) : null}
-                  {!hasHometaxRegistered && !supportsHometaxWrite ? (
-                    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
-                      홈택스 등록/수정 권한이 없습니다.
-                    </div>
-                  ) : null}
-
-                  {supportsHometaxReveal && hasHometaxRegistered ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
-                        <PasswordInput
-                          type="password"
-                          className={inputClass}
-                          placeholder="본인 계정 비밀번호 입력"
-                          value={revealAccountPassword}
-                          onChange={(e) => setRevealAccountPassword(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleRevealHometax}
-                          className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-                        >
-                          정보 확인
-                        </button>
-                      </div>
-                      {revealedHometaxPassword !== null ? (
-                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <input
-                            className={`${inputClass} bg-white`}
-                            value={`아이디: ${hometaxCredential?.hometax_login_id || hometaxForm.hometax_login_id}`}
-                            readOnly
-                          />
-                          <input
-                            className={`${inputClass} bg-white`}
-                            value={`비밀번호: ${revealedHometaxPassword}`}
-                            readOnly
-                          />
-                        </div>
-                      ) : null}
-                      {revealedCount !== null ? (
-                        <p className="mt-2 text-xs text-zinc-500">정보 확인 누적 횟수: {revealedCount}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {supportsHometaxLogs ? (
-                    <div className="overflow-hidden rounded-lg border border-zinc-200">
-                      <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-900">
-                        조회 이력
-                      </div>
-                      <table className="w-full text-xs">
-                        <thead className="bg-white text-zinc-900">
-                          <tr>
-                            <th className="border-b border-zinc-200 px-3 py-2 text-left">시각</th>
-                            <th className="border-b border-zinc-200 px-3 py-2 text-center">액션</th>
-                            <th className="border-b border-zinc-200 px-3 py-2 text-center">주체</th>
-                            <th className="border-b border-zinc-200 px-3 py-2 text-left">IP</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-200">
-                          {loadingHometaxLogs ? (
-                            <tr>
-                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
-                                로그를 불러오는 중...
-                              </td>
-                            </tr>
-                          ) : hometaxLogs.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-3 py-3 text-center text-zinc-500">
-                                로그가 없습니다.
-                              </td>
-                            </tr>
-                          ) : (
-                            hometaxLogs.map((log) => (
-                              <tr key={log.id}>
-                                <td className="px-3 py-2 text-zinc-700">{toDateTime(log.created_at)}</td>
-                                <td className="px-3 py-2 text-center text-zinc-700">{log.action}</td>
-                                <td className="px-3 py-2 text-center text-zinc-700">{log.actor_type}</td>
-                                <td className="px-3 py-2 text-zinc-500">{log.ip || '-'}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+          {showSystemInfo ? (
+            <Section title="시스템 정보">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="활성 상태">
+                  <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
+                </Field>
+                <Field label="등록일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
+                </Field>
+                <Field label="수정일">
+                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
+                </Field>
+              </div>
             </Section>
           ) : null}
+        </div>
+        <div className="min-w-0 w-full xl:col-span-2">
+          <section className="space-y-4">
+            <div className="border-b border-zinc-200 pb-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-zinc-900">문서 목록</p>
+                  <button
+                    type="button"
+                    onClick={() => setDocumentsExpanded((prev) => !prev)}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                  >
+                    {documentsExpanded ? '접기 ▴' : '펼치기 ▾'}
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  기본 문서를 확인합니다. 추가 서류는 기타 관련 서류 탭에서 관리하세요.
+                </p>
+              </div>
+            </div>
 
+            <div className="space-y-3">
+              {documentsExpanded && supportsDocumentUpload ? (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)] md:grid-rows-[auto_auto]">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+                      className="hidden"
+                      onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
+                    />
+                    <div className="md:row-span-2">
+                      <FileDropzone
+                        onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex h-full min-h-[88px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-xs transition"
+                        idleClassName={
+                          selectedDocumentFile
+                            ? 'border-emerald-300 bg-emerald-50 text-zinc-600 animate-[pulse_1.8s_ease-in-out_infinite]'
+                            : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                        }
+                        activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
+                      >
+                        <span className={selectedDocumentFile ? 'font-semibold' : undefined}>
+                          {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
+                        </span>
+                      </FileDropzone>
+                    </div>
+                    <select
+                      className={`${inputClass} h-10`}
+                      value={selectedUploadDocType}
+                      onChange={(e) => setSelectedUploadDocType(e.target.value)}
+                    >
+                      {resolvedDocumentTypes.map((item) => (
+                        <option key={item.code} value={item.code}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={uploadingDocument || !selectedDocumentFile}
+                      onClick={handleUploadBusinessLicense}
+                      className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                    >
+                      {uploadingDocument ? '등록 중...' : '등록'}
+                    </button>
+                  </div>
+                ) : null}
+              {documentsExpanded && isCreateMode ? (
+                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
+                    회사 등록 후 문서 업로드/미리보기가 가능합니다.
+                  </div>
+                ) : null}
+
+              <div className="overflow-hidden rounded-lg border border-zinc-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-zinc-50 text-xs text-zinc-900">
+                        <tr>
+                          <th className="px-3 py-2 text-left">문서명</th>
+                          <th className="px-3 py-2 text-center">상태</th>
+                          <th className="px-3 py-2 text-center">작업</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {resolvedDocumentTypes.map((item) => {
+                          const checked = previewCheckedDocCodes.has(item.code)
+                          const hasPreview = Boolean(documentPreviews[item.code]?.preview_url)
+                          const statusLabel = hasPreview ? '등록됨' : checked ? '미등록' : '확인 전'
+                          const statusClass = hasPreview
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : checked
+                              ? 'bg-zinc-100 text-zinc-500'
+                              : 'bg-blue-50 text-blue-700'
+                          return (
+                            <tr key={item.code}>
+                              <td className="px-3 py-2 text-zinc-900">{item.label}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span
+                                  className={`rounded px-2 py-1 text-xs ${statusClass}`}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleOpenDocumentPreview(item.code)}
+                                    className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
+                                  >
+                                    미리보기
+                                  </button>
+                                  {supportsDocumentDelete ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteDocument(item.code)}
+                                      disabled={!hasPreview || deletingDocumentCode === item.code}
+                                      className="inline-flex h-7 items-center rounded border border-rose-300 px-2 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                                    >
+                                      {deletingDocumentCode === item.code ? '삭제 중...' : '삭제'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+              {activePreview?.preview_url ? (
+                  <div className="space-y-2">
+                    <div className="aspect-[3/4] min-h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                      {isImageFile(activePreview.file_name) ? (
+                        <img
+                          src={activePreview.preview_url}
+                          alt="문서 미리보기"
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <object
+                          data={buildPreviewSrc(activePreview.preview_url, activePreview.file_name)}
+                          type="application/pdf"
+                          className="h-full w-full"
+                        >
+                          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-500">
+                            미리보기를 불러오지 못했습니다. 아래 버튼으로 새 창에서 확인해 주세요.
+                          </div>
+                        </object>
+                      )}
+                    </div>
+                    <a
+                      href={activePreview.preview_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                    >
+                      새 창에서 보기
+                    </a>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-xs text-zinc-500">
+                    선택한 문서의 미리보기가 없습니다.
+                  </div>
+                )}
+            </div>
+          </section>
+        </div>
+      </div>
+      </div>
+      <div id="company-panel-contract" role="tabpanel" aria-labelledby="company-tab-contract" hidden={activeTab !== 'contract' || !canManageContract}>
+        <div className="max-w-4xl">
+          <CompanyContractSection ref={contractRef} companyId={companyId} creating={isCreateMode} engagement={form.engagement_type} disabled={saving} editable={editable} />
+
+        </div>
+      </div>
+      <div id="company-panel-documents" role="tabpanel" aria-labelledby="company-tab-documents" hidden={activeTab !== 'documents'}>
           {enableCustomDocuments ? (
             <Section title="기타 관련 서류">
               <div className="space-y-4">
@@ -2469,191 +2688,7 @@ export default function CompanyDetailForm({
             </Section>
           ) : null}
 
-          {showSystemInfo ? (
-            <Section title="시스템 정보">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="활성 상태">
-                  <input className={`${inputClass} bg-zinc-100`} value="활성중" readOnly />
-                </Field>
-                <Field label="등록일">
-                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.created_at)} readOnly />
-                </Field>
-                <Field label="수정일">
-                  <input className={`${inputClass} bg-zinc-100`} value={toDateOnly(form.updated_at)} readOnly />
-                </Field>
-              </div>
-            </Section>
-          ) : null}
-        </div>
-        <div className="w-full xl:col-span-2 xl:max-w-[500px] xl:justify-self-start xl:pl-6">
-          <section className="space-y-3">
-            <div className="border-b border-zinc-200 pb-2">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-zinc-900">문서 목록</p>
-                  <button
-                    type="button"
-                    onClick={() => setDocumentsExpanded((prev) => !prev)}
-                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                  >
-                    {documentsExpanded ? '접기 ▴' : '펼치기 ▾'}
-                  </button>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  3개 필수 문서 외 다른 문서는 스크롤을 내려서 등록해 주세요.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {documentsExpanded && supportsDocumentUpload ? (
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)] md:grid-rows-[auto_auto]">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp"
-                      className="hidden"
-                      onChange={(e) => setSelectedDocumentFile(e.target.files?.[0] || null)}
-                    />
-                    <div className="md:row-span-2">
-                      <FileDropzone
-                        onFilesDrop={(files) => setSelectedDocumentFile(files[0] || null)}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex h-full min-h-[88px] cursor-pointer items-center justify-center rounded-md border border-dashed px-3 text-xs transition"
-                        idleClassName={
-                          selectedDocumentFile
-                            ? 'border-emerald-300 bg-emerald-50 text-zinc-600 animate-[pulse_1.8s_ease-in-out_infinite]'
-                            : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-                        }
-                        activeClassName="border-zinc-500 bg-zinc-100 text-zinc-900"
-                      >
-                        <span className={selectedDocumentFile ? 'font-semibold' : undefined}>
-                          {selectedDocumentFile ? selectedDocumentFile.name : '파일을 드래그 하거나 클릭해서 선택하세요'}
-                        </span>
-                      </FileDropzone>
-                    </div>
-                    <select
-                      className={`${inputClass} h-10`}
-                      value={selectedUploadDocType}
-                      onChange={(e) => setSelectedUploadDocType(e.target.value)}
-                    >
-                      {resolvedDocumentTypes.map((item) => (
-                        <option key={item.code} value={item.code}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={uploadingDocument || !selectedDocumentFile}
-                      onClick={handleUploadBusinessLicense}
-                      className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                    >
-                      {uploadingDocument ? '등록 중...' : '등록'}
-                    </button>
-                  </div>
-                ) : null}
-              {documentsExpanded && isCreateMode ? (
-                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">
-                    회사 등록 후 문서 업로드/미리보기가 가능합니다.
-                  </div>
-                ) : null}
-
-              <div className="overflow-hidden rounded-lg border border-zinc-200">
-                    <table className="w-full text-xs">
-                      <thead className="bg-zinc-50 text-xs text-zinc-900">
-                        <tr>
-                          <th className="px-3 py-2 text-left">문서명</th>
-                          <th className="px-3 py-2 text-center">상태</th>
-                          <th className="px-3 py-2 text-center">작업</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-200">
-                        {resolvedDocumentTypes.map((item) => {
-                          const checked = previewCheckedDocCodes.has(item.code)
-                          const hasPreview = Boolean(documentPreviews[item.code]?.preview_url)
-                          const statusLabel = hasPreview ? '등록됨' : checked ? '미등록' : '확인 전'
-                          const statusClass = hasPreview
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : checked
-                              ? 'bg-zinc-100 text-zinc-500'
-                              : 'bg-blue-50 text-blue-700'
-                          return (
-                            <tr key={item.code}>
-                              <td className="px-3 py-2 text-zinc-900">{item.label}</td>
-                              <td className="px-3 py-2 text-center">
-                                <span
-                                  className={`rounded px-2 py-1 text-xs ${statusClass}`}
-                                >
-                                  {statusLabel}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleOpenDocumentPreview(item.code)}
-                                    className="inline-flex h-7 items-center rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-zinc-50"
-                                  >
-                                    미리보기
-                                  </button>
-                                  {supportsDocumentDelete ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteDocument(item.code)}
-                                      disabled={!hasPreview || deletingDocumentCode === item.code}
-                                      className="inline-flex h-7 items-center rounded border border-rose-300 px-2 text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                                    >
-                                      {deletingDocumentCode === item.code ? '삭제 중...' : '삭제'}
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-              {activePreview?.preview_url ? (
-                  <div className="space-y-2">
-                    <div className="aspect-[3/4] min-h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                      {isImageFile(activePreview.file_name) ? (
-                        <img
-                          src={activePreview.preview_url}
-                          alt="문서 미리보기"
-                          className="h-full w-full object-contain"
-                        />
-                      ) : (
-                        <object
-                          data={buildPreviewSrc(activePreview.preview_url, activePreview.file_name)}
-                          type="application/pdf"
-                          className="h-full w-full"
-                        >
-                          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-500">
-                            미리보기를 불러오지 못했습니다. 아래 버튼으로 새 창에서 확인해 주세요.
-                          </div>
-                        </object>
-                      )}
-                    </div>
-                    <a
-                      href={activePreview.preview_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                    >
-                      새 창에서 보기
-                    </a>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-xs text-zinc-500">
-                    선택한 문서의 미리보기가 없습니다.
-                  </div>
-                )}
-            </div>
-          </section>
-        </div>
+        {!enableCustomDocuments ? <p className="py-8 text-sm text-slate-500">{isCreateMode ? '거래처 등록 후 추가 서류를 관리할 수 있습니다.' : '이 화면에서는 추가 서류 관리가 제공되지 않습니다.'}</p> : null}
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { adminHttp } from '@/services/http'
 import { officeHttp as clientHttp } from '@/services/officeHttp'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
@@ -89,17 +90,22 @@ export function getClientBookkeepingErrorMessage(error: unknown): string {
   return detail || '서버 요청 처리 중 오류가 발생했습니다.'
 }
 
+// Contract forms are also embedded in /admin/companies. Keep the real session token.
+function contractHttp() {
+  return typeof window !== 'undefined' && window.location.pathname.startsWith('/admin/') ? adminHttp : clientHttp
+}
+
 export async function createBookkeepingContract(
   payload: ClientBookkeepingContractCreateRequest
 ): Promise<ClientBookkeepingContractOut> {
-  const res = await clientHttp.post<ClientBookkeepingContractOut>(`${BASE}/contracts`, payload)
+  const res = await contractHttp().post<ClientBookkeepingContractOut>(`${BASE}/contracts`, payload)
   return res.data
 }
 
 export async function listBookkeepingContracts(
   filters: ClientBookkeepingContractListFilters = {}
 ): Promise<ClientBookkeepingContractListResponse> {
-  const res = await clientHttp.get<ClientBookkeepingContractListResponse>(`${BASE}/contracts`, { params: filters })
+  const res = await contractHttp().get<ClientBookkeepingContractListResponse>(`${BASE}/contracts`, { params: filters })
   return res.data
 }
 
@@ -107,7 +113,7 @@ export async function updateBookkeepingContract(
   contractId: number,
   payload: ClientBookkeepingContractUpdateRequest
 ): Promise<ClientBookkeepingContractOut> {
-  const res = await clientHttp.put<ClientBookkeepingContractOut>(`${BASE}/contracts/${contractId}`, payload)
+  const res = await contractHttp().put<ClientBookkeepingContractOut>(`${BASE}/contracts/${contractId}`, payload)
   return res.data
 }
 

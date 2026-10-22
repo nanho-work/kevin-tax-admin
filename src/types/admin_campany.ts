@@ -6,6 +6,10 @@ export interface PaginatedResponse<T> {
 }
 
 export interface CompanyTaxDetail {
+  engagement_type?: 'bookkeeping' | 'one_off' | null
+  assigned_admin_id?: number | null
+  assigned_admin_name?: string | null
+  assigned_admin_phone?: string | null
   id: number
   client_id?: number
   category?: string
@@ -51,6 +55,10 @@ export interface CompanyTaxDetail {
 }
 
 export interface CompanyDetailResponse {
+  engagement_type?: 'bookkeeping' | 'one_off' | null
+  assigned_admin_id?: number | null
+  assigned_admin_name?: string | null
+  assigned_admin_phone?: string | null
   id: number
   client_id?: number
   category?: string
@@ -96,6 +104,8 @@ export interface CompanyDetailResponse {
 }
 
 export interface CompanyUpdateRequest {
+  engagement_type?: 'bookkeeping' | 'one_off' | null
+  assigned_admin_id?: number | null
   category?: string
   company_name?: string
   owner_name?: string
@@ -137,6 +147,8 @@ export interface CompanyUpdateRequest {
 }
 
 export interface CompanyCreateRequest {
+  engagement_type?: 'bookkeeping' | 'one_off' | null
+  assigned_admin_id?: number | null
   company_name: string
   owner_name: string
   registration_number: string

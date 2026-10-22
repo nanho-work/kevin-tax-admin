@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import CompanyManagementFields from '@/components/admin/Company/CompanyManagementFields'
 import type React from 'react'
 import { useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
@@ -182,6 +183,7 @@ export default function CompanyCreateForm() {
               <input name="business_type" value={form.business_type} onChange={handleChange} className={inputClass} />
             </Field>
           </div>
+          <CompanyManagementFields value={form} editable onChange={(next) => setForm({ ...form, ...next })} />
         </Section>
 
         <Section title="주소 정보">

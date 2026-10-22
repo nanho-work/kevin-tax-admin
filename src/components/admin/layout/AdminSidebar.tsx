@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Briefcase,
+  Wallet,
   Building2,
   ClipboardList,
   FileCheck2,
@@ -48,54 +49,7 @@ type AdminSidebarProps = {
 }
 
 const menuSections: MenuSection[] = [
-  { key: 'office', label: '사무소 관리', children: [
-    { label: '직원·조직·권한', href: '/admin/office/staff' },
-    { label: '가입 승인', href: '/admin/office/staff/signup-requests' },
-    { label: '연차 부여·조정', href: '/admin/office/staff/annual-leaves' },
-    { label: '휴가 승인', href: '/admin/office/staff/leave-approvals' },
-    { label: '결재 문서', href: '/admin/staff/documents' },
-    { label: '근태·연차 관리', href: '/admin/office/staff/leave' },
-    { label: '직원 계정 보안', href: '/admin/office/staff/account-security' },
-    { label: '기장 계약', href: '/admin/office/bookkeeping/contracts' },
-    { label: '청구·미수', href: '/admin/office/bookkeeping/billings' },
-    { label: '기장 현황', href: '/admin/office/bookkeeping/summary' },
-    { label: '수금 내역', href: '/admin/office/bookkeeping/debits' },
-    { label: '입금 업로드', href: '/admin/office/bookkeeping/debits/upload' },
-    { label: '업로드 이력', href: '/admin/office/bookkeeping/debits/history' },
-    { label: '블로그 목록', href: '/admin/office/blog/list' },
-    { label: '요금제·구독', href: '/admin/office/setting/subscription' },
-  ] },
   { key: 'dashboard', label: '대시보드', href: '/admin/dashboard' },
-  {
-    key: 'leave',
-    label: '인사',
-    children: [
-      { label: '휴가/근태관리', href: '/admin/staff/attendance' },
-      { label: '프로필', href: '/admin/staff/profile' },
-    ],
-  },
-  {
-    key: 'approvals',
-    label: '전자결재',
-    children: [
-      { label: '전자문서', href: '/admin/staff/documents' },
-      { label: '업무지시', href: '/admin/staff/work-posts?post_type=task' },
-    ],
-  },
-  {
-    key: 'board',
-    label: '게시판',
-    children: [{ label: '공지사항', href: '/admin/staff/work-posts?post_type=notice' }],
-  },
-  { key: 'docs', label: '문서함', href: '/admin/docs' },
-  {
-    key: 'mail',
-    label: '메일',
-    children: [
-      { label: '메일작성', href: '/admin/mail/compose' },
-      { label: '메일설정', href: '/admin/mail/accounts' },
-    ],
-  },
   {
     key: 'companies',
     label: '업무',
@@ -117,9 +71,59 @@ const menuSections: MenuSection[] = [
       { label: '고객사 일정', href: '/admin/tax-schedule' },
     ],
   },
+  { key: 'bookkeeping', label: '계약·수금 관리', children: [
+    { label: '기장 계약', href: '/admin/office/bookkeeping/contracts' },
+    { label: '기장 현황', href: '/admin/office/bookkeeping/summary' },
+    { label: '청구·미수', href: '/admin/office/bookkeeping/billings' },
+    { label: '수금 내역', href: '/admin/office/bookkeeping/debits' },
+    { label: '입금 업로드', href: '/admin/office/bookkeeping/debits/upload' },
+    { label: '업로드 이력', href: '/admin/office/bookkeeping/debits/history' },
+  ] },
+  {
+    key: 'approvals',
+    label: '전자결재',
+    children: [
+      { label: '전자문서', href: '/admin/staff/documents' },
+      { label: '업무지시', href: '/admin/staff/work-posts?post_type=task' },
+    ],
+  },
+  {
+    key: 'mail',
+    label: '메일',
+    children: [
+      { label: '메일작성', href: '/admin/mail/compose' },
+      { label: '메일설정', href: '/admin/mail/accounts' },
+    ],
+  },
+  { key: 'docs', label: '문서함', href: '/admin/docs' },
+  {
+    key: 'board',
+    label: '게시판',
+    children: [{ label: '공지사항', href: '/admin/staff/work-posts?post_type=notice' }],
+  },
+  {
+    key: 'leave',
+    label: '인사',
+    children: [
+      { label: '휴가/근태관리', href: '/admin/staff/attendance' },
+      { label: '프로필', href: '/admin/staff/profile' },
+    ],
+  },
+  { key: 'office', label: '사무소 관리', children: [
+    { label: '직원·조직·권한', href: '/admin/office/staff' },
+    { label: '가입 승인', href: '/admin/office/staff/signup-requests' },
+    { label: '연차 부여·조정', href: '/admin/office/staff/annual-leaves' },
+    { label: '휴가 승인', href: '/admin/office/staff/leave-approvals' },
+    { label: '결재 문서', href: '/admin/staff/documents' },
+    { label: '근태·연차 관리', href: '/admin/office/staff/leave' },
+    { label: '직원 계정 보안', href: '/admin/office/staff/account-security' },
+    { label: '블로그 목록', href: '/admin/office/blog/list' },
+    { label: '요금제·구독', href: '/admin/office/setting/subscription' },
+  ] },
 ]
 
 function getActiveSection(pathname: string, searchParams: URLSearchParams): string {
+  if (pathname.startsWith('/admin/office/bookkeeping')) return 'bookkeeping'
   if (pathname.startsWith('/admin/office')) return 'office'
   if (pathname.startsWith('/admin/staff/work-posts')) {
     const postType = (searchParams.get('post_type') || '').toLowerCase()
@@ -181,6 +185,7 @@ function getSectionIcon(key: string) {
   if (key === 'docs') return FolderOpen
   if (key === 'mail') return Mail
   if (key === 'companies') return Building2
+  if (key === 'bookkeeping') return Wallet
   return Briefcase
 }
 
@@ -191,7 +196,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const { session, loading: sessionLoading } = useAdminSessionContext()
   const { confirm } = useConfirmDialog()
 
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -234,7 +239,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname, searchParams)
     if (!activeKey) return
-    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office')
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office')
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -364,7 +369,6 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const userRoleLevel = session ? getAdminRoleRank(session) : 99
   const hasUserSession = Boolean(session)
   const collapsedQuickMenus = [
-    ...(getAdminRoleRank(session) === 1 ? [{ key: 'office', label: '사무소', href: '/admin/office/staff', icon: Settings, active: activeSection === 'office' }] : []),
     {
       key: 'dashboard',
       label: '대시',
@@ -373,32 +377,19 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       active: activeSection === 'dashboard',
     },
     {
-      key: 'leave',
-      label: '인사',
-      href: '/admin/staff/attendance',
-      icon: Briefcase,
-      active: activeSection === 'leave',
+      key: 'companies',
+      label: '업무',
+      href: '/admin/companies',
+      icon: Building2,
+      active: activeSection === 'companies',
     },
+    ...(getAdminRoleRank(session) === 1 ? [{ key: 'bookkeeping', label: '계약·수금 관리', href: '/admin/office/bookkeeping/contracts', icon: Wallet, active: activeSection === 'bookkeeping' }] : []),
     {
       key: 'approvals',
       label: '전자결재',
       href: '/admin/staff/documents',
       icon: FileCheck2,
       active: activeSection === 'approvals',
-    },
-    {
-      key: 'board',
-      label: '게시판',
-      href: '/admin/staff/work-posts?post_type=notice',
-      icon: ClipboardList,
-      active: activeSection === 'board',
-    },
-    {
-      key: 'docs',
-      label: '문서함',
-      href: '/admin/docs',
-      icon: FolderOpen,
-      active: activeSection === 'docs',
     },
     {
       key: 'mail',
@@ -408,16 +399,31 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       active: activeSection === 'mail',
     },
     {
-      key: 'companies',
-      label: '업무',
-      href: '/admin/companies',
-      icon: Building2,
-      active: activeSection === 'companies',
+      key: 'docs',
+      label: '문서함',
+      href: '/admin/docs',
+      icon: FolderOpen,
+      active: activeSection === 'docs',
     },
+    {
+      key: 'board',
+      label: '게시판',
+      href: '/admin/staff/work-posts?post_type=notice',
+      icon: ClipboardList,
+      active: activeSection === 'board',
+    },
+    {
+      key: 'leave',
+      label: '인사',
+      href: '/admin/staff/attendance',
+      icon: Briefcase,
+      active: activeSection === 'leave',
+    },
+    ...(getAdminRoleRank(session) === 1 ? [{ key: 'office', label: '사무소', href: '/admin/office/staff', icon: Settings, active: activeSection === 'office' }] : []),
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office'
+    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office'
 
     // 같은 아이콘 재클릭:
     // - 2단 열림 상태면 닫기(페이지 유지)
@@ -673,7 +679,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection && (section.key !== 'office' || getAdminRoleRank(session) === 1))
+  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection && (!['office', 'bookkeeping'].includes(section.key) || getAdminRoleRank(session) === 1))
 
   return (
     <aside className={sidebarAsideClass(collapsed || shouldHideSecondSidebar)}>
