@@ -1,6 +1,8 @@
 // app/blog/components/BlogDetail.tsx
 
-'use client';
+'use client'
+
+import { useOfficeHref } from '@/utils/officeHref';
 
 import { useMemo } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
@@ -15,6 +17,7 @@ interface BlogDetailProps {
 }
 
 export default function BlogDetail({ post }: BlogDetailProps) {
+  const officeHref = useOfficeHref()
   const safeHtml = useMemo(() => {
     const raw = post.content_md ?? '';
     // allow style/target/rel since your saved HTML includes inline styles and external links
@@ -27,7 +30,7 @@ export default function BlogDetail({ post }: BlogDetailProps) {
       {/* 카테고리 */}
       {post.category && (
         <div className="text-sm text-blue-600 mb-2">
-          <Link href={`/client/client-management/blog/list?category=${post.category.id}`}>
+          <Link href={officeHref(`/client/client-management/blog/list?category=${post.category.id}`)}>
             {post.category.name}
           </Link>
         </div>
@@ -74,7 +77,7 @@ export default function BlogDetail({ post }: BlogDetailProps) {
           {post.keywords.map((kw) => (
             <Link
               key={kw.id}
-              href={`/client/client-management/blog/list?keyword=${kw.id}`}
+              href={officeHref(`/client/client-management/blog/list?keyword=${kw.id}`)}
               className="px-3 py-1 bg-gray-100 rounded-full text-sm hover:bg-gray-200"
             >
               #{kw.name}

@@ -1,3 +1,4 @@
+import { officeHttp } from '@/services/officeHttp'
 import { clientHttp } from '@/services/http'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
@@ -47,6 +48,6 @@ export async function uploadClientTemplateFileByCode(
 export async function getClientTemplateDownloadUrlByCode(
   code: string
 ): Promise<SupervisorTemplateDownloadResponse> {
-  const res = await clientHttp.get<SupervisorTemplateDownloadResponse>(`${BASE}/${encodeURIComponent(code)}/download-url`)
+  const res = await officeHttp.get<SupervisorTemplateDownloadResponse>(`${BASE}/${encodeURIComponent(code)}/download-url`)
   return res.data
 }

@@ -1,4 +1,4 @@
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import type { RoleCreate, RoleOut } from '@/types/role'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/roles`

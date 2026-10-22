@@ -13,8 +13,8 @@ export default function ClientCompanyList() {
       pageSize={12}
       createHref="/client/companies/new"
       createActions={[
-        { href: '/client/companies/new', label: '고객사 단건등록' },
-        { href: '/client/companies/bulk', label: '고객사 일괄등록' },
+        { href: '/client/companies/new', label: '거래처 등록' },
+        { href: '/client/companies/bulk', label: '거래처 일괄등록' },
       ]}
       showAccountStatus={false}
     />

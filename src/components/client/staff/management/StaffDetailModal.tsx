@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { AdminOut } from '@/types/admin'
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
@@ -771,7 +772,7 @@ export default function StaffDetailModal({ staff, onClose, onSaved }: Props) {
               <div className="mt-4 rounded-md border border-zinc-200 bg-white p-4">
                 <p className="text-sm font-medium text-zinc-900">평문 조회(비밀번호 재확인)</p>
                 <div className="mt-3 grid grid-cols-1 gap-3">
-                  <input
+                  <PasswordInput
                     type="password"
                     placeholder="클라이언트 계정 비밀번호"
                     value={revealAccountPassword}

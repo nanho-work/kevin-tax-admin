@@ -4,7 +4,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
-import UiButton from '@/components/common/UiButton'
+import HeaderActionButton from '@/components/common/HeaderActionButton'
+import { LogOut, LogIn } from 'lucide-react'
 import {
   checkInAdmin,
   checkOutAdmin,
@@ -55,14 +56,23 @@ const Header = () => {
     const isCompanyDetailPath = /^\/admin\/companies\/\d+$/.test(pathname)
     if (isCompanyDetailPath) {
       return companyNameFromQuery
-        ? `업무 > 기본관리 > ${companyNameFromQuery}`
-        : '업무 > 기본관리 > 상세'
+        ? `업무 > 거래처 관리 > ${companyNameFromQuery}`
+        : '업무 > 거래처 관리 > 상세'
     }
-    if (pathname.startsWith('/admin/companies')) return '업무 > 기본관리'
+    if (pathname.startsWith('/admin/office/blog')) return '사무소 관리 > 블로그'
+    if (pathname.startsWith('/admin/office/bookkeeping')) return '사무소 관리 > 기장·청구·수금'
+    if (pathname.startsWith('/admin/office/setting/subscription')) return '사무소 관리 > 요금제·구독'
+    if (pathname.startsWith('/admin/office/staff')) return '사무소 관리 > 직원·조직·근태'
+    if (pathname.startsWith('/admin/companies')) return '업무 > 거래처 관리'
     if (pathname.startsWith('/admin/workflow/consult')) return '업무 > 컨설트 툴'
     if (pathname.startsWith('/admin/workflow/board/materials')) return '업무 > 업무보드 > 업무자료함'
     if (pathname.startsWith('/admin/workflow/board')) return '업무 > 업무보드'
-    if (pathname.startsWith('/admin/company-withholding')) return '업무 > 원천세관리'
+    if (pathname.startsWith('/admin/company-withholding')) {
+      const taxLabel = pathname.endsWith('/vat') ? '부가세'
+        : pathname.endsWith('/income-tax') ? '종합소득세'
+        : pathname.endsWith('/corporate-tax') ? '법인세' : '원천세'
+      return `업무 > 세목별 신고 > ${taxLabel}`
+    }
     if (pathname.startsWith('/admin/mail/inbox')) return '메일 > 메일함'
     if (pathname.startsWith('/admin/mail/compose')) return '메일 > 메일작성'
     if (pathname.startsWith('/admin/mail/accounts')) return '메일 > 설정'
@@ -88,7 +98,7 @@ const Header = () => {
     if (pathname.startsWith('/admin/companies/account/new')) return '/admin/companies/account'
     if (
       pathname.startsWith('/admin/company-withholding/') &&
-      pathname !== '/admin/company-withholding/business'
+      !['/admin/company-withholding/business', '/admin/company-withholding/vat', '/admin/company-withholding/income-tax', '/admin/company-withholding/corporate-tax'].includes(pathname)
     ) {
       return '/admin/company-withholding/business'
     }
@@ -194,7 +204,7 @@ const Header = () => {
       console.warn('로그아웃 API 호출 실패:', error)
     } finally {
       clearAdminAccessToken()
-      router.replace('/login/staff')
+      router.replace('/login')
       setLoggingOut(false)
     }
   }
@@ -273,24 +283,26 @@ const Header = () => {
               </div>
             </div>
             {canCheckIn ? (
-              <UiButton
+              <HeaderActionButton
                 onClick={() => void handleManualCheckIn()}
                 disabled={attendanceSubmitting !== null}
-                variant="secondary"
-                size="sm"
+                icon={LogIn}
+                tone="accent"
+                loading={attendanceSubmitting === 'check-in'}
               >
                 {attendanceSubmitting === 'check-in' ? '출근 처리중...' : '출근'}
-              </UiButton>
+              </HeaderActionButton>
             ) : null}
             {canCheckOut ? (
-              <UiButton
+              <HeaderActionButton
                 onClick={() => void handleManualCheckOut()}
                 disabled={attendanceSubmitting !== null}
-                variant="secondary"
-                size="sm"
+                icon={LogOut}
+                tone="accent"
+                loading={attendanceSubmitting === 'check-out'}
               >
                 {attendanceSubmitting === 'check-out' ? '퇴근 처리중...' : '퇴근'}
-              </UiButton>
+              </HeaderActionButton>
             ) : null}
             <PortalNotificationBell
               listNotifications={listAdminNotifications}
@@ -300,14 +312,14 @@ const Header = () => {
               getErrorMessage={getAdminNotificationErrorMessage}
               onUnreadCountChange={setUnreadNotificationCount}
             />
-            <UiButton
+            <HeaderActionButton
               onClick={() => void handleLogout()}
               disabled={loggingOut}
-              variant="secondary"
-              size="sm"
+              icon={LogOut}
+              loading={loggingOut}
             >
               {loggingOut ? '로그아웃 중...' : '로그아웃'}
-            </UiButton>
+            </HeaderActionButton>
           </div>
         </div>
       </div>

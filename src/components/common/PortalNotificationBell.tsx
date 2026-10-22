@@ -326,22 +326,23 @@ export default function PortalNotificationBell({
 
   return (
     <div ref={dropdownRef} className={`relative ${className || ''}`}>
-      <UiButton
+      <button
+        type="button"
         onClick={handleOpen}
-        variant="secondary"
-        size="iconSm"
-        className={`relative inline-flex h-8 w-8 !p-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:bg-zinc-50 ${
-          isBellHighlight ? 'animate-pulse ring-2 ring-amber-300/70' : ''
+        className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${open ? 'bg-sky-100/80 text-sky-800' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'} ${
+          isBellHighlight ? 'motion-safe:animate-pulse ring-2 ring-sky-300/70' : ''
         }`}
-        aria-label="알림"
+        aria-label={unreadCount > 0 ? `알림, 읽지 않은 알림 ${unreadCount}개` : '알림'}
+        aria-expanded={open}
+        title="알림"
       >
-        <Bell size={14} />
+        <Bell size={18} strokeWidth={1.75} aria-hidden="true" />
         {unreadCount > 0 ? (
-          <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-4 text-white">
+          <span aria-hidden="true" className="absolute -right-1 -top-0.5 min-w-[17px] rounded-full bg-sky-600 px-1 text-center text-[10px] font-semibold leading-[17px] text-white ring-2 ring-sky-50">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}
-      </UiButton>
+      </button>
 
       {open ? (
         <div className="absolute right-0 z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">

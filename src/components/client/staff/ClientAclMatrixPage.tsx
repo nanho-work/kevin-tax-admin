@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
-import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { useManagementSession } from '@/contexts/ManagementSession'
 import {
   createDepartment,
   deleteDepartment,
@@ -62,7 +62,7 @@ function filterAclCodes(items: PermissionCodeOut[]) {
 }
 
 export default function ClientAclMatrixPage() {
-  const { session } = useClientSessionContext()
+  const { session } = useManagementSession()
   const { confirm } = useConfirmDialog()
   const companyName = (session as any)?.client_company_name || `회사 ${session?.client_id ?? ''}`.trim()
   const ownerName = session?.name || '관리자'

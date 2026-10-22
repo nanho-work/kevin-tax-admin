@@ -1,5 +1,1 @@
-import ClientBookkeepingDebitReceiptsSection from '@/components/client/bookkeeping/debits/ClientBookkeepingDebitReceiptsSection'
-
-export default function ClientBookkeepingDebitsPage() {
-  return <ClientBookkeepingDebitReceiptsSection />
-}
+export { default } from '@/components/office/pages/bookkeeping/debits/page'

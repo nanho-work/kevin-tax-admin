@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 import type {

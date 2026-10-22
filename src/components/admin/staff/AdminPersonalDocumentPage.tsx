@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'react-hot-toast'
@@ -1412,7 +1413,7 @@ export default function AdminPersonalDocumentPage() {
               <div>
                 <label className="mb-1 block text-xs text-zinc-600">현재 비밀번호</label>
                 <div className="relative">
-                  <input
+                  <PasswordInput
                     type={showSensitiveRevealPassword ? 'text' : 'password'}
                     className={`${inputClass} pr-16`}
                     value={sensitiveRevealPassword}
@@ -1480,7 +1481,7 @@ export default function AdminPersonalDocumentPage() {
               <div>
                 <label className="mb-1 block text-xs text-zinc-600">현재 비밀번호</label>
                 <div className="relative">
-                  <input
+                  <PasswordInput
                     type={showCurrentPassword ? 'text' : 'password'}
                     className={`${inputClass} pr-16`}
                     value={currentPassword}
@@ -1498,7 +1499,7 @@ export default function AdminPersonalDocumentPage() {
               <div>
                 <label className="mb-1 block text-xs text-zinc-600">새 비밀번호</label>
                 <div className="relative">
-                  <input
+                  <PasswordInput
                     type={showNewPassword ? 'text' : 'password'}
                     className={`${inputClass} pr-16`}
                     value={newPassword}
@@ -1516,7 +1517,7 @@ export default function AdminPersonalDocumentPage() {
               <div>
                 <label className="mb-1 block text-xs text-zinc-600">새 비밀번호 확인</label>
                 <div className="relative">
-                  <input
+                  <PasswordInput
                     type={showConfirmPassword ? 'text' : 'password'}
                     className={`${inputClass} pr-16`}
                     value={confirmPassword}

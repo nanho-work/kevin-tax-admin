@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
-import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { useManagementSession } from '@/contexts/ManagementSession'
 import { getClientStaffs } from '@/services/client/clientStaffService'
 import {
   fetchClientAnnualLeaveRequests,
@@ -35,7 +35,7 @@ function getStatusMeta(status: AnnualLeaveRequestStatus) {
 }
 
 export default function ClientLeaveApprovalsPanel() {
-  const { session, loading: sessionLoading } = useClientSessionContext()
+  const { session, loading: sessionLoading } = useManagementSession()
   const canManage = getClientRoleRank(session) <= 10
 
   const [staffs, setStaffs] = useState<AdminOut[]>([])

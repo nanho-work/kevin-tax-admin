@@ -1,4 +1,4 @@
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import type { AdminOut } from '@/types/admin'
 import type { CreateStaffRequest, UpdateStaffRequest } from '@/types/admin'
 

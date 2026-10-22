@@ -105,7 +105,7 @@ export default function ClientCompanyBulkUploadForm() {
     <div className="space-y-4 rounded-lg border border-zinc-200 bg-white p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-900">고객사 일괄등록</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">거래처 일괄등록</h2>
           <p className="mt-1 text-xs text-zinc-500">엑셀/CSV 파일을 검증한 뒤 한 번에 등록합니다.</p>
         </div>
         <Link

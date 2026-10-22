@@ -70,7 +70,7 @@ function handleAdminUnauthorized() {
     return
   }
   if (path.startsWith('/admin')) {
-    window.location.href = '/login/staff'
+    window.location.href = '/login'
     return
   }
   if (path.startsWith('/company')) {
@@ -267,7 +267,7 @@ clientHttp.interceptors.response.use(
         window.location.pathname.startsWith('/client') &&
         window.location.pathname !== '/client/mail/oauth/callback'
       ) {
-        window.location.href = '/login/client'
+        window.location.href = '/login/master/login'
       }
       return Promise.reject(refreshError)
     } finally {

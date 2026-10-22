@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import Link from 'next/link'
 import { CircleHelp } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -531,7 +532,7 @@ export default function StaffSignupRequestForm() {
 
           <div>
             <FieldLabel label="비밀번호" required />
-            <input
+            <PasswordInput
               ref={(el) => {
                 fieldRefs.current.password = el
               }}
@@ -550,7 +551,7 @@ export default function StaffSignupRequestForm() {
 
           <div>
             <FieldLabel label="비밀번호 확인" required />
-            <input
+            <PasswordInput
               ref={(el) => {
                 fieldRefs.current.password_confirm = el
               }}
@@ -670,7 +671,7 @@ export default function StaffSignupRequestForm() {
         </form>
 
         <div className="mt-4 text-center text-sm">
-          <Link href="/login/staff" className="text-blue-700 hover:underline">
+          <Link href="/login" className="text-blue-700 hover:underline">
             직원 로그인으로 돌아가기
           </Link>
         </div>

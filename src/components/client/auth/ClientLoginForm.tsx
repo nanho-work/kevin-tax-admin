@@ -1,5 +1,9 @@
 'use client'
 
+import LoginLayout from '@/components/auth/LoginLayout'
+import LoginFields from '@/components/auth/LoginFields'
+
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { clientLogin } from '@/services/client/clientAuthService'
@@ -36,56 +40,12 @@ export default function ClientLoginForm() {
   }
 
   return (
-    <section className="min-h-screen bg-gray-50 flex items-center justify-center py-20 px-4">
-      <div className="w-full max-w-md bg-white shadow-md rounded-lg p-8">
-        <h1 className="text-2xl font-bold text-blue-900 text-center mb-6">회사관리자 로그인</h1>
-        {errorMessage ? <p className="mb-4 text-sm text-red-500 text-center">{errorMessage}</p> : null}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="login_id" className="block text-sm text-gray-700 mb-1">로그인 ID</label>
-            <input
-              id="login_id"
-              type="text"
-              name="login_id"
-              value={form.login_id}
-              onChange={handleChange}
-              required
-              autoComplete="username"
-              className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-900"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm text-gray-700 mb-1">비밀번호</label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                required
-                autoComplete="current-password"
-                className="w-full border px-4 py-2 pr-16 rounded focus:outline-none focus:ring-2 focus:ring-blue-900"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
-              >
-                {showPassword ? '숨김' : '보기'}
-              </button>
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-2 rounded ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-900 text-white hover:bg-blue-800'}`}
-          >
-            {loading ? '로딩 중...' : '로그인'}
-          </button>
-        </form>
-      </div>
-    </section>
+    <LoginLayout>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">마스터 로그인</h1>
+      <p className="mt-3 text-sm leading-6 text-slate-500">플랫폼과 가입 업체를 관리하세요.</p>
+      <LoginFields form={form} onChange={handleChange} onSubmit={handleSubmit} showPassword={showPassword} onTogglePassword={() => setShowPassword((prev) => !prev)} loading={loading} errorMessage={errorMessage}>
+        <div className="text-right"><Link href="/login/master/forgot-password" className="text-sm text-slate-500 hover:underline">비밀번호 찾기</Link></div>
+      </LoginFields>
+    </LoginLayout>
   )
 }

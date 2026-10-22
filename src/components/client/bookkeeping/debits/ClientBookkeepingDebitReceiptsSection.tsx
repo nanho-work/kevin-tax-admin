@@ -1,5 +1,7 @@
 'use client'
 
+import { useOfficeHref } from '@/utils/officeHref'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
@@ -65,6 +67,7 @@ function formatAppliedMonth(value?: string | null) {
 }
 
 export default function ClientBookkeepingDebitReceiptsSection() {
+  const officeHref = useOfficeHref()
   const [rows, setRows] = useState<ClientDebitReceiptOut[]>([])
   const [summaryRows, setSummaryRows] = useState<ClientDebitReceiptMonthlySummaryOut[]>([])
   const [loading, setLoading] = useState(false)
@@ -181,13 +184,13 @@ export default function ClientBookkeepingDebitReceiptsSection() {
           </div>
           <div className="flex items-center justify-end gap-2">
             <Link
-              href="/client/bookkeeping/debits/upload"
+              href={officeHref("/client/bookkeeping/debits/upload")}
               className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
             >
               자동이체 업로드
             </Link>
             <Link
-              href="/client/bookkeeping/debits/history"
+              href={officeHref("/client/bookkeeping/debits/history")}
               className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
             >
               업로드 이력
@@ -312,7 +315,7 @@ export default function ClientBookkeepingDebitReceiptsSection() {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <Link
-                      href={`/client/bookkeeping/debits/history/${row.batch_id}`}
+                      href={officeHref(`/client/bookkeeping/debits/history/${row.batch_id}`)}
                       className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                     >
                       {formatAppliedMonth(batchMap[row.batch_id]?.source_name)}

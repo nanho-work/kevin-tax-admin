@@ -1,5 +1,6 @@
 'use client'
 
+import { sidebarShellClass } from '@/utils/portalSidebarStyles'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ClientHeader from '@/components/client/layout/ClientHeader'
@@ -41,7 +42,7 @@ function ProtectedClientShell({
 
   useEffect(() => {
     if (!loading && !session) {
-      router.replace('/login/client')
+      router.replace('/login/master/login')
     }
   }, [loading, session, router])
 
@@ -51,7 +52,7 @@ function ProtectedClientShell({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${effectiveCollapsed ? 'w-14' : 'w-[260px]'}`}>
+      <div className={sidebarShellClass(effectiveCollapsed)}>
         <ClientSidebar
           collapsed={effectiveCollapsed}
           onToggleCollapse={() =>

@@ -1,4 +1,4 @@
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import type { TeamCreate, TeamOut, TeamSortUpdateRequest, TeamUpdate } from '@/types/team'
 
 const BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/teams`

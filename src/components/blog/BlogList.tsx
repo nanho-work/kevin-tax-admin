@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useOfficeHref } from '@/utils/officeHref';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -14,6 +16,7 @@ import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import { getApiErrorMessage } from '@/utils/apiError'
 
 export default function BlogList() {
+  const officeHref = useOfficeHref()
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -100,7 +103,7 @@ export default function BlogList() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-semibold text-zinc-900">블로그 목록</h2>
             <Link
-              href="/client/client-management/blog/create"
+              href={officeHref("/client/client-management/blog/create")}
               className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-800"
             >
               글 작성
@@ -193,7 +196,7 @@ export default function BlogList() {
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/client/client-management/blog/${r.slug}`}
+                      href={officeHref(`/client/client-management/blog/${r.slug}`)}
                       className="text-blue-600 hover:underline font-medium"
                     >
                       {r.title}

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 const CLIENT_DOCS_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}/client/docs`

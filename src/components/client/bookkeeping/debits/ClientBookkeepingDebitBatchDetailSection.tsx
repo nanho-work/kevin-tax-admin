@@ -1,5 +1,7 @@
 'use client'
 
+import { useOfficeHref } from '@/utils/officeHref'
+
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
@@ -74,6 +76,7 @@ function isLinkableWithdrawStatus(status?: string | null) {
 }
 
 export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Props) {
+  const officeHref = useOfficeHref()
   const router = useRouter()
   const [batchMeta, setBatchMeta] = useState<ClientDebitUploadBatchOut | null>(null)
   const [metaLoading, setMetaLoading] = useState(false)
@@ -192,13 +195,13 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       setBatchMeta(found)
       if (!found) {
         toast.error('배치 정보를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/history')
+        router.replace(officeHref('/client/bookkeeping/debits/history'))
       }
     } catch (error) {
       const status = (error as any)?.response?.status
       if (status === 404) {
         toast.error(extractApiDetail(error) || '배치를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/history')
+        router.replace(officeHref('/client/bookkeeping/debits/history'))
         return
       }
       toast.error(extractApiDetail(error) || '배치 메타 조회 중 오류가 발생했습니다.')
@@ -256,7 +259,7 @@ export default function ClientBookkeepingDebitBatchDetailSection({ batchId }: Pr
       const status = (error as any)?.response?.status
       if (status === 404) {
         toast.error(extractApiDetail(error) || '배치를 찾을 수 없습니다.')
-        router.replace('/client/bookkeeping/debits/history')
+        router.replace(officeHref('/client/bookkeeping/debits/history'))
         return
       }
       toast.error(extractApiDetail(error) || '배치 아이템 조회 중 오류가 발생했습니다.')

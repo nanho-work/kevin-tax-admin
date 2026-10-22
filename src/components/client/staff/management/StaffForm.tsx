@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useState, useEffect } from 'react'
 import type { CreateStaffRequest } from '@/types/admin'
 import { createClientStaff } from '@/services/client/clientStaffService'
@@ -9,7 +10,7 @@ import { getDepartments } from '@/services/client/departmentService'
 import type { RoleOut } from '@/types/role'
 import type { TeamOut } from '@/types/team'
 import type { DepartmentOut } from '@/types/department'
-import { useClientSessionContext } from '@/contexts/ClientSessionContext'
+import { useManagementSession } from '@/contexts/ManagementSession'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
 type Props = {
@@ -68,7 +69,7 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
     const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | ''>('')
     const [submitting, setSubmitting] = useState(false)
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-    const { session } = useClientSessionContext()
+    const { session } = useManagementSession()
 
     useEffect(() => {
         async function loadData() {
@@ -244,7 +245,7 @@ export default function StaffForm({ title = '직원 등록 정보', onCancel, on
                 </div>
                 <div>
                     <label htmlFor="password" className="mb-1 block text-xs text-zinc-600">비밀번호</label>
-                    <input
+                    <PasswordInput
                         id="password"
                         name="password"
                         value={form.password}

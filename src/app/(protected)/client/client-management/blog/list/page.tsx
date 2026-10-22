@@ -1,10 +1,1 @@
-import { Suspense } from 'react'
-import BlogList from '@/components/blog/BlogList'
-
-export default function ClientBlogListPage() {
-  return (
-    <Suspense fallback={<div className="p-4 text-sm text-zinc-500">불러오는 중...</div>}>
-      <BlogList />
-    </Suspense>
-  )
-}
+export { default } from '@/components/office/pages/blog/list/page'

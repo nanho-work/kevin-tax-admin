@@ -1,5 +1,7 @@
 'use client'
 
+import { useOfficeHref } from '@/utils/officeHref'
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
@@ -25,6 +27,7 @@ const slugify = (s: string) =>
     .replace(/-+/g, '-')
 
 export default function BlogCreateForm() {
+  const officeHref = useOfficeHref()
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [categoryId, setCategoryId] = useState<number | ''>('')
@@ -157,7 +160,7 @@ export default function BlogCreateForm() {
       setSaving(true)
       const created = await blogService.createPost(payload)
       toast.success('블로그 글이 생성되었습니다.')
-      router.push(created.slug ? `/client/client-management/blog/${created.slug}` : '/client/client-management/blog/list')
+      router.push(created.slug ? officeHref(`/client/client-management/blog/${created.slug}`) : officeHref('/client/client-management/blog/list'))
     } catch (err: any) {
       console.error('생성 실패:', err)
       toast.error(getApiErrorMessage(err, err?.message || '생성 중 오류가 발생했습니다.'))
@@ -167,7 +170,7 @@ export default function BlogCreateForm() {
   }
 
   const handleCancel = async () => {
-    router.push('/client/client-management/blog/list')
+    router.push(officeHref('/client/client-management/blog/list'))
   }
 
   return (

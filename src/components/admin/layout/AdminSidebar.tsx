@@ -1,5 +1,6 @@
 'use client'
 
+import { sidebarAsideClass, sidebarPanelClass } from '@/utils/portalSidebarStyles'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
@@ -33,7 +34,7 @@ import { getAdminRoleRank } from '@/utils/roleRank'
 import { MAIL_COUNTS_REFRESH_EVENT } from '@/utils/mailSidebarEvents'
 import { getApiErrorMessageFromDetail } from '@/utils/apiError'
 
-type MenuChild = { label: string; href: string }
+type MenuChild = { label: string; href: string; children?: MenuChild[] }
 type MenuSection = {
   key: string
   label: string
@@ -47,6 +48,23 @@ type AdminSidebarProps = {
 }
 
 const menuSections: MenuSection[] = [
+  { key: 'office', label: '사무소 관리', children: [
+    { label: '직원·조직·권한', href: '/admin/office/staff' },
+    { label: '가입 승인', href: '/admin/office/staff/signup-requests' },
+    { label: '연차 부여·조정', href: '/admin/office/staff/annual-leaves' },
+    { label: '휴가 승인', href: '/admin/office/staff/leave-approvals' },
+    { label: '결재 문서', href: '/admin/staff/documents' },
+    { label: '근태·연차 관리', href: '/admin/office/staff/leave' },
+    { label: '직원 계정 보안', href: '/admin/office/staff/account-security' },
+    { label: '기장 계약', href: '/admin/office/bookkeeping/contracts' },
+    { label: '청구·미수', href: '/admin/office/bookkeeping/billings' },
+    { label: '기장 현황', href: '/admin/office/bookkeeping/summary' },
+    { label: '수금 내역', href: '/admin/office/bookkeeping/debits' },
+    { label: '입금 업로드', href: '/admin/office/bookkeeping/debits/upload' },
+    { label: '업로드 이력', href: '/admin/office/bookkeeping/debits/history' },
+    { label: '블로그 목록', href: '/admin/office/blog/list' },
+    { label: '요금제·구독', href: '/admin/office/setting/subscription' },
+  ] },
   { key: 'dashboard', label: '대시보드', href: '/admin/dashboard' },
   {
     key: 'leave',
@@ -85,14 +103,24 @@ const menuSections: MenuSection[] = [
       { label: '업무보드', href: '/admin/workflow/board' },
       { label: '업무자료함', href: '/admin/workflow/board/materials' },
       { label: '컨설트 툴', href: '/admin/workflow/consult' },
-      { label: '기본관리', href: '/admin/companies' },
-      { label: '원천세관리', href: '/admin/company-withholding/business' },
+      { label: '거래처 관리', href: '/admin/companies' },
+      {
+        label: '세목별 신고',
+        href: '/admin/company-withholding',
+        children: [
+          { label: '원천세', href: '/admin/company-withholding/business' },
+          { label: '부가세', href: '/admin/company-withholding/vat' },
+          { label: '종합소득세', href: '/admin/company-withholding/income-tax' },
+          { label: '법인세', href: '/admin/company-withholding/corporate-tax' },
+        ],
+      },
       { label: '고객사 일정', href: '/admin/tax-schedule' },
     ],
   },
 ]
 
 function getActiveSection(pathname: string, searchParams: URLSearchParams): string {
+  if (pathname.startsWith('/admin/office')) return 'office'
   if (pathname.startsWith('/admin/staff/work-posts')) {
     const postType = (searchParams.get('post_type') || '').toLowerCase()
     return postType === 'task' ? 'approvals' : 'board'
@@ -110,7 +138,7 @@ function getActiveSection(pathname: string, searchParams: URLSearchParams): stri
 }
 
 function isChildActive(pathname: string, searchParams: URLSearchParams, href: string): boolean {
-  if (href === '/admin/company-withholding/business' && pathname.startsWith('/admin/company-withholding')) {
+  if (href === '/admin/company-withholding/business' && ['/admin/company-withholding', '/admin/company-withholding/earned-income', '/admin/company-withholding/etc'].includes(pathname)) {
     return true
   }
   const [targetPath, queryString] = href.split('?')
@@ -163,7 +191,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const { session, loading: sessionLoading } = useAdminSessionContext()
   const { confirm } = useConfirmDialog()
 
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -206,7 +234,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname, searchParams)
     if (!activeKey) return
-    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies')
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office')
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -336,6 +364,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const userRoleLevel = session ? getAdminRoleRank(session) : 99
   const hasUserSession = Boolean(session)
   const collapsedQuickMenus = [
+    ...(getAdminRoleRank(session) === 1 ? [{ key: 'office', label: '사무소', href: '/admin/office/staff', icon: Settings, active: activeSection === 'office' }] : []),
     {
       key: 'dashboard',
       label: '대시',
@@ -388,7 +417,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies'
+    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'office'
 
     // 같은 아이콘 재클릭:
     // - 2단 열림 상태면 닫기(페이지 유지)
@@ -644,11 +673,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection)
+  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection && (section.key !== 'office' || getAdminRoleRank(session) === 1))
 
   return (
-    <aside className={`flex h-full border-r border-neutral-200 bg-white ${collapsed || shouldHideSecondSidebar ? 'w-14' : 'w-full'}`}>
-      <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
+    <aside className={sidebarAsideClass(collapsed || shouldHideSecondSidebar)}>
+      <div className="flex h-full w-14 shrink-0 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
             {collapsedQuickMenus.map((item) => {
@@ -674,7 +703,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
         </nav>
       </div>
       {!collapsed && !shouldHideSecondSidebar ? (
-      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <nav className={sidebarPanelClass(activeRailSection === 'mail')}>
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
         </div>
@@ -688,7 +717,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
               return (
                 <Link key={section.key} href={section.href}>
                   <div
-                    className={`rounded-lg px-3 py-2 text-sm transition ${
+                    className={`rounded-lg px-2 py-1.5 text-sm transition ${
                       isActiveSection ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-700 hover:bg-neutral-100'
                     }`}
                   >
@@ -726,13 +755,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                 key={section.key}
                 className="rounded-lg bg-white"
               >
-                <div className="flex w-full items-center rounded-lg px-3 py-2 text-sm text-neutral-700">
+                <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-sm text-neutral-700">
                   <span className="inline-flex items-center gap-2">
                     <SectionIcon className="h-4 w-4" />
                     <span>{section.label}</span>
                   </span>
                 </div>
-                <div className="space-y-1 px-2 py-2">
+                <div className="space-y-0.5 py-1">
                     {section.key === 'mail' ? (
                       <div className="grid grid-cols-1 gap-2">
                         {mailTopChildren.map((child) => (
@@ -750,10 +779,24 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
                         ))}
                       </div>
                     ) : (
-                      visibleChildren.map((child) => (
+                      visibleChildren.map((child) => child.children ? (
+                        <div key={child.href} className="py-1">
+                          <p className="px-2 py-2 text-xs font-medium text-neutral-700">{child.label}</p>
+                          <div className="ml-2 space-y-0.5 border-l border-neutral-200 pl-1">
+                            {child.children.map((item) => {
+                              const active = isChildActive(pathname, searchParams, item.href)
+                              return (
+                                <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined} className={`block rounded-md px-2 py-2 text-xs transition ${active ? 'bg-sky-50 font-medium text-sky-800' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                                  {item.label}
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : (
                         <Link key={child.href} href={child.href}>
                           <div
-                            className={`rounded-md px-3 py-2 text-xs transition ${
+                            className={`rounded-md px-2 py-2 text-xs transition ${
                               isChildActive(pathname, searchParams, child.href)
                                 ? 'bg-neutral-100 font-medium text-neutral-900'
                                 : 'text-neutral-600 hover:bg-neutral-50'

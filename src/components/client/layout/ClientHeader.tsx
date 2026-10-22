@@ -4,7 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import BackButton from '@/components/common/BackButton'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
-import UiButton from '@/components/common/UiButton'
+import HeaderActionButton from '@/components/common/HeaderActionButton'
+import { LogOut } from 'lucide-react'
 import { logoutClient } from '@/services/client/clientAuthService'
 import {
   fetchClientNotificationUnreadCount,
@@ -29,10 +30,10 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/mail/compose')) return { parent: '메일', child: '메일작성' }
   if (pathname.startsWith('/client/mail/accounts')) return { parent: '메일', child: '설정' }
   if (pathname.startsWith('/client/mail')) return { parent: '메일' }
-  if (pathname.startsWith('/client/companies/bulk')) return { parent: '업무(고객사)', child: '고객사 일괄등록' }
-  if (pathname.startsWith('/client/companies/new')) return { parent: '업무(고객사)', child: '고객사등록' }
-  if (pathname.startsWith('/client/companies/')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
-  if (pathname.startsWith('/client/companies')) return { parent: '업무(고객사)', child: '고객사 기본사항' }
+  if (pathname.startsWith('/client/companies/bulk')) return { parent: '거래처 관리', child: '거래처 일괄등록' }
+  if (pathname.startsWith('/client/companies/new')) return { parent: '거래처 관리', child: '거래처 등록' }
+  if (pathname.startsWith('/client/companies/')) return { parent: '거래처 관리', child: '거래처 상세' }
+  if (pathname.startsWith('/client/companies')) return { parent: '거래처 관리' }
   if (pathname.startsWith('/client/bookkeeping/contracts')) return { parent: '업무(기장)', child: '기장 고객사 관리' }
   if (pathname.startsWith('/client/bookkeeping/billings')) return { parent: '업무(기장)', child: '월별 청구/수납 관리' }
   if (pathname.startsWith('/client/bookkeeping/summary')) return { parent: '업무(기장)', child: '월별 집계' }
@@ -68,7 +69,7 @@ function currentHeader(pathname: string): HeaderInfo {
   if (pathname.startsWith('/client/setting/subscription')) return { parent: '내 정보', child: '요금제/구독' }
   if (pathname.startsWith('/client/setting/security')) return { parent: '내 정보', child: '로그/보안' }
   if (pathname.startsWith('/client/setting')) return { parent: '내 정보' }
-  if (pathname.startsWith('/client/schedule')) return { parent: '업무(고객사)', child: '고객사 일정' }
+  if (pathname.startsWith('/client/schedule')) return { parent: '거래처 관리', child: '거래처 일정' }
   return { parent: '클라이언트' }
 }
 
@@ -94,7 +95,7 @@ export default function ClientHeader() {
       await logoutClient()
     } finally {
       clearClientAccessToken()
-      router.replace('/login/client')
+      router.replace('/login/master/login')
       setLoggingOut(false)
     }
   }
@@ -138,14 +139,14 @@ export default function ClientHeader() {
               getErrorMessage={getClientNotificationErrorMessage}
               onUnreadCountChange={setUnreadNotificationCount}
             />
-            <UiButton
+            <HeaderActionButton
               onClick={() => void handleLogout()}
               disabled={loggingOut}
-              variant="secondary"
-              size="sm"
+              icon={LogOut}
+              loading={loggingOut}
             >
               {loggingOut ? '로그아웃 중...' : '로그아웃'}
-            </UiButton>
+            </HeaderActionButton>
           </div>
         </div>
       </div>

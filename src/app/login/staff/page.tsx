@@ -1,5 +1,3 @@
-import StaffLoginForm from '@/components/admin/auth/StaffLoginForm'
+import { redirect } from 'next/navigation'
 
-export default function StaffLoginPage() {
-  return <StaffLoginForm />
-}
+export default function Page() { redirect('/login') }

@@ -1,5 +1,7 @@
 'use client'
 
+import { useOfficeHref } from '@/utils/officeHref'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
@@ -53,6 +55,7 @@ function extractApiDetail(error: unknown): string | null {
 }
 
 export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' }: Props) {
+  const officeHref = useOfficeHref()
   const router = useRouter()
   const isUploadMode = mode === 'upload'
   const isHistoryMode = mode === 'history'
@@ -218,7 +221,7 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
                 type="button"
                 variant="secondary"
                 size="md"
-                onClick={() => router.push(`/client/bookkeeping/debits/history/${uploadedBatchId}`)}
+                onClick={() => router.push(officeHref(`/client/bookkeeping/debits/history/${uploadedBatchId}`))}
               >
                 방금 업로드한 이력 보기
               </UiButton>
@@ -227,7 +230,7 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
                 type="button"
                 variant="secondary"
                 size="md"
-                onClick={() => router.push('/client/bookkeeping/debits/history')}
+                onClick={() => router.push(officeHref('/client/bookkeeping/debits/history'))}
               >
                 업로드 이력 보기
               </UiButton>
@@ -237,7 +240,7 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
               type="button"
               variant="secondary"
               size="md"
-              onClick={() => router.push('/client/bookkeeping/debits/upload')}
+              onClick={() => router.push(officeHref('/client/bookkeeping/debits/upload'))}
             >
               새 파일 업로드
             </UiButton>
@@ -347,7 +350,7 @@ export default function ClientBookkeepingDebitBatchesSection({ mode = 'history' 
                       type="button"
                       variant="secondary"
                       size="sm"
-                      onClick={() => router.push(`/client/bookkeeping/debits/history/${row.id}`)}
+                      onClick={() => router.push(officeHref(`/client/bookkeeping/debits/history/${row.id}`))}
                     >
                       상세보기
                     </UiButton>

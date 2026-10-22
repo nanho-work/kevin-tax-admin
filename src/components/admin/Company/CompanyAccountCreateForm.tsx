@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
@@ -214,7 +215,7 @@ export default function CompanyAccountCreateForm({
               />
             </Field>
             <Field label="비밀번호" required>
-              <input
+              <PasswordInput
                 name="password"
                 type="password"
                 value={form.password}

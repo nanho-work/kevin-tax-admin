@@ -1,5 +1,1 @@
-import ClientStaffAttendanceLeavePage from '@/components/client/staff/ClientStaffAttendanceLeavePage'
-
-export default function ClientStaffLeavePage() {
-  return <ClientStaffAttendanceLeavePage />
-}
+export { default } from '@/components/office/pages/staff/leave/page'

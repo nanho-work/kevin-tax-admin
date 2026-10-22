@@ -1,5 +1,5 @@
 // src/services/blogService.ts
-import { clientHttp } from '@/services/http'
+import { officeHttp as clientHttp } from '@/services/officeHttp'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
   BlogPostCreate, BlogPostResponse,

@@ -5,6 +5,7 @@
 
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import type { CreateStaffRequest } from '@/types/admin'
@@ -157,7 +158,7 @@ export default function StaffForm() {
                 </div>
                 <div className="flex flex-col w-full">
                     <label htmlFor="password" className="font-medium">비밀번호</label>
-                    <input
+                    <PasswordInput
                         id="password"
                         name="password"
                         value={form.password}

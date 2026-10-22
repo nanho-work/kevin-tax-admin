@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import useDebouncedSearch from '@/hooks/useDebouncedSearch'
@@ -155,7 +156,7 @@ export default function ClientAccountCreateSection() {
             value={form.login_id}
             onChange={(e) => setForm((prev) => ({ ...prev, login_id: e.target.value }))}
           />
-          <input
+          <PasswordInput
             className={inputClass}
             type="password"
             placeholder="password (필수)"

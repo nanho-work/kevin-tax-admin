@@ -1,3 +1,4 @@
+import { officeHttp } from '@/services/officeHttp'
 import { clientHttp, getClientAccessToken } from '@/services/http'
 import { createMultipartUploadAdapter, uploadViaAdapter } from '@/services/upload/multipartUpload'
 import type {
@@ -269,7 +270,7 @@ export async function fetchClientCompanyTaxList({
   business_type,
 }: FetchCompanyParams): Promise<PaginatedResponse<CompanyTaxDetail>> {
   const token = getClientAccessToken()
-  const response = await clientHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
+  const response = await officeHttp.get<PaginatedResponse<CompanyTaxDetail>>(`${BASE}/tax-info`, {
     params: { page, limit, keyword, category, business_type },
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })

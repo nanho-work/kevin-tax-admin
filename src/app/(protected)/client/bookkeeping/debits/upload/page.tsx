@@ -1,5 +1,1 @@
-import ClientBookkeepingDebitBatchesSection from '@/components/client/bookkeeping/debits/ClientBookkeepingDebitBatchesSection'
-
-export default function ClientBookkeepingDebitsUploadPage() {
-  return <ClientBookkeepingDebitBatchesSection mode="upload" />
-}
+export { default } from '@/components/office/pages/bookkeeping/debits/upload/page'

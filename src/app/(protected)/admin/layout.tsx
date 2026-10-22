@@ -1,5 +1,6 @@
 'use client'
 
+import { sidebarShellClass } from '@/utils/portalSidebarStyles'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import AdminSidebar from '@/components/admin/layout/AdminSidebar'
@@ -33,7 +34,7 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return
     if (!session) {
-      router.replace('/login/staff')
+      router.replace('/login')
     }
   }, [loading, session, router])
 
@@ -53,7 +54,7 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className={`relative z-30 h-full overflow-hidden transition-[width] duration-200 ${effectiveCollapsed ? 'w-14' : 'w-[260px]'}`}>
+      <div className={sidebarShellClass(effectiveCollapsed)}>
         <AdminSidebar
           collapsed={effectiveCollapsed}
           onToggleCollapse={() =>

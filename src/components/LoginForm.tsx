@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/services/admin/adminService'
@@ -77,7 +78,7 @@ export default function LoginForm() {
               비밀번호
             </label>
             <div className="relative">
-              <input
+              <PasswordInput
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 name="password"

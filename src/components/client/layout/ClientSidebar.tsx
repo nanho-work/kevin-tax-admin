@@ -1,5 +1,6 @@
 'use client'
 
+import { sidebarAsideClass, sidebarPanelClass } from '@/utils/portalSidebarStyles'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -42,8 +43,8 @@ const mailMenus = [
 ]
 
 const companyManagementMenus = [
-  { label: '고객사 일정', href: '/client/schedule' },
-  { label: '고객사 기본사항', href: '/client/companies' },
+  { label: '거래처 일정', href: '/client/schedule' },
+  { label: '거래처 관리', href: '/client/companies' },
   { label: '업무보드', href: '/client/workflow/board' },
   { label: '업무자료함', href: '/client/workflow/board/materials' },
 ]
@@ -73,7 +74,6 @@ const clientManagementMenus = [
   { label: '기준 단순 경비율 등록', href: '/client/client-management/expense-rate-base' },
   { label: '동의약관 관리', href: '/client/client-management/consent-terms' },
   { label: '메일운영대시보드', href: '/client/client-management/mail-ops-dashboard' },
-  { label: '블로그 목록', href: '/client/client-management/blog/list' },
   { label: 'GPT', href: '/client/client-management/gpt' },
 ]
 
@@ -87,7 +87,6 @@ const bookkeepingMenus = [
 ]
 
 const settingMenus = [
-  { label: '요금제/구독', href: '/client/setting/subscription' },
   { label: '비밀번호 변경', href: '/client/setting/account' },
   { label: '로그/보안', href: '/client/setting/security' },
 ]
@@ -189,7 +188,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     },
     {
       key: 'company',
-      label: '고객',
+      label: '거래처',
       href: '/client/companies',
       icon: Building2,
       active: hasCompanyManagementPath,
@@ -233,7 +232,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       ? [
           {
             key: 'client-management',
-            label: '클관',
+            label: '플랫폼',
             href: '/client/client-management/company-list',
             icon: ShieldUser,
             active: hasClientManagementPath,
@@ -247,7 +246,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       icon: Settings,
       active: hasSettingPath,
     },
-  ] as const
+  ].filter((item) => ['dashboard', 'client-management', 'setting'].includes(item.key))
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
     const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'approvals' | 'board' | 'docs' | 'bookkeeping' | 'setting' | 'client-management'
@@ -686,8 +685,8 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     })
 
   return (
-    <aside className={`flex h-full border-r border-neutral-200 bg-white ${collapsed || shouldHideSecondSidebar ? 'w-14' : 'w-full'}`}>
-      <div className="flex h-full w-14 flex-col border-r border-neutral-200 bg-white">
+    <aside className={sidebarAsideClass(collapsed || shouldHideSecondSidebar)}>
+      <div className="flex h-full w-14 shrink-0 flex-col border-r border-neutral-200 bg-white">
         <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
           <div className="space-y-1">
             {collapsedQuickMenus.map((item) => {
@@ -713,14 +712,14 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
         </nav>
       </div>
       {!collapsed && !shouldHideSecondSidebar ? (
-      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <nav className={sidebarPanelClass(activeRailSection === 'mail')}>
         <div className="mb-2 flex items-center justify-between px-1">
           <p className="text-xs font-medium text-neutral-500">메뉴</p>
         </div>
         <div className="flex flex-col gap-1">
         {activeRailSection === 'mail' ? (
         <div className="rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Mail className="h-4 w-4" />
               <span>메일</span>
@@ -956,23 +955,21 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'company' ? (
         <div className="order-3 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Building2 className="h-4 w-4" />
-              <span>업무(고객사)</span>
+              <span>거래처 관리</span>
             </span>
           </div>
           <div className="space-y-1 px-2 py-2">
               {companyManagementMenus.map((menu) => {
                 const active =
-                  menu.href === '/client/companies/new'
-                    ? pathname === menu.href
-                    : pathname === menu.href ||
-                      (pathname.startsWith('/client/companies/') && !pathname.startsWith('/client/companies/new'))
+                  pathname === menu.href ||
+                  (menu.href === '/client/companies' && pathname.startsWith('/client/companies/'))
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
+                      className={`rounded-md px-2 py-2 text-xs transition ${
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
@@ -987,7 +984,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'staff' ? (
         <div className="order-1 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Briefcase className="h-4 w-4" />
               <span>인사</span>
@@ -1000,7 +997,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
+                      className={`rounded-md px-2 py-2 text-xs transition ${
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
@@ -1022,7 +1019,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'approvals' ? (
         <div className="order-1 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <FileCheck2 className="h-4 w-4" />
               <span>전자결재</span>
@@ -1034,7 +1031,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
+                      className={`rounded-md px-2 py-2 text-xs transition ${
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
@@ -1049,7 +1046,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'bookkeeping' ? (
         <div className="order-4 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <FileText className="h-4 w-4" />
               <span>업무(기장)</span>
@@ -1063,7 +1060,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
+                      className={`rounded-md px-2 py-2 text-xs transition ${
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
@@ -1078,19 +1075,19 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'setting' ? (
         <div className="order-5 pt-2 rounded-lg bg-white">
-          <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+          <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
             <span className="inline-flex items-center gap-2">
               <Settings className="h-4 w-4" />
               <span>내 정보</span>
             </span>
           </div>
           <div className="space-y-1 px-2 py-2">
-              {settingMenus.map((menu) => {
+              {settingMenus.filter((menu) => menu.href !== '/client/setting/security' || canManageClients).map((menu) => {
                 const active = pathname === menu.href
                 return (
                   <Link key={menu.href} href={menu.href}>
                     <div
-                      className={`rounded-md px-3 py-2 text-xs transition ${
+                      className={`rounded-md px-2 py-2 text-xs transition ${
                         active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                       }`}
                     >
@@ -1105,10 +1102,10 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
 
         {activeRailSection === 'client-management' && !loading && canManageClients ? (
           <div className="order-6 pt-2 rounded-lg bg-white">
-            <div className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-neutral-700">
+            <div className="flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700">
               <span className="inline-flex items-center gap-2">
                 <ShieldUser className="h-4 w-4" />
-                <span>클라이언트 관리</span>
+                <span>플랫폼 관리</span>
               </span>
             </div>
             <div className="space-y-1 px-2 py-2">
@@ -1121,7 +1118,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
                   return (
                     <Link key={menu.href} href={menu.href}>
                       <div
-                        className={`rounded-md px-3 py-2 text-xs transition ${
+                        className={`rounded-md px-2 py-2 text-xs transition ${
                           active ? 'bg-neutral-100 font-medium text-neutral-900' : 'text-neutral-600 hover:bg-neutral-50'
                         }`}
                       >

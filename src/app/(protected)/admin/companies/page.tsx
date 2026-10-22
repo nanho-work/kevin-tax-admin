@@ -6,7 +6,7 @@ const CompanyList = dynamic(() => import('@/components/admin/Company/CompanyList
 export default function AdminCompanyPage() {
   return (
     <div className="min-w-0 overflow-x-auto">
-      <CompanyList createHref="/admin/companies/new" createLabel="고객사 등록" />
+      <CompanyList createHref="/admin/companies/new" createLabel="거래처 등록" />
     </div>
   )
 }

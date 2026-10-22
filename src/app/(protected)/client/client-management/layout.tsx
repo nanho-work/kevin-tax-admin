@@ -17,7 +17,7 @@ export default function ClientManagementLayout({
   useEffect(() => {
     if (loading) return
     if (!session) {
-      router.replace('/login/client')
+      router.replace('/login/master/login')
       return
     }
     if (!allowed) {

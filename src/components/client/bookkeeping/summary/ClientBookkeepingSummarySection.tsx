@@ -1,5 +1,7 @@
 'use client'
 
+import { useOfficeHref } from '@/utils/officeHref'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
@@ -17,6 +19,7 @@ function formatNumber(value?: number) {
 }
 
 export default function ClientBookkeepingSummarySection() {
+  const officeHref = useOfficeHref()
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState<number>(currentYear)
   const [startYear, setStartYear] = useState<number>(currentYear - 3)
@@ -262,7 +265,7 @@ export default function ClientBookkeepingSummarySection() {
                   <td className="px-3 py-3 text-right">{formatNumber(row.receivable_amount_sum)}</td>
                   <td className="px-3 py-3 text-center">
                     <Link
-                      href={`/client/bookkeeping/billings?target_month_from=${row.target_month}&target_month_to=${row.target_month}`}
+                      href={officeHref(`/client/bookkeeping/billings?target_month_from=${row.target_month}&target_month_to=${row.target_month}`)}
                       className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                     >
                       해당 월 보기

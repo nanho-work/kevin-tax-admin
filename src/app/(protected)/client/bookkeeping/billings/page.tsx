@@ -1,5 +1,1 @@
-import ClientBookkeepingBillingsSection from '@/components/client/bookkeeping/billings/ClientBookkeepingBillingsSection'
-
-export default function ClientBookkeepingBillingsPage() {
-  return <ClientBookkeepingBillingsSection />
-}
+export { default } from '@/components/office/pages/bookkeeping/billings/page'

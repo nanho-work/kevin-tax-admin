@@ -1,5 +1,1 @@
-import ClientStaffMenuPage from '@/components/client/staff/ClientStaffMenuPage'
-
-export default function ClientStaffAccountSecurityPage() {
-  return <ClientStaffMenuPage />
-}
+export { default } from '@/components/office/pages/staff/account-security/page'

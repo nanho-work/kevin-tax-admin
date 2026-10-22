@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { changeClientPassword } from '@/services/client/clientAuthService'
@@ -103,7 +104,7 @@ export default function ClientSettingAccountPage() {
           <div className="space-y-1">
             <label className="text-sm text-zinc-700">현재 비밀번호</label>
             <div className="relative">
-              <input
+              <PasswordInput
                 type={showCurrentPassword ? 'text' : 'password'}
                 className={`${inputClass} pr-16`}
                 value={currentPassword}
@@ -121,7 +122,7 @@ export default function ClientSettingAccountPage() {
           <div className="space-y-1">
             <label className="text-sm text-zinc-700">신규 비밀번호</label>
             <div className="relative">
-              <input
+              <PasswordInput
                 type={showNewPassword ? 'text' : 'password'}
                 className={`${inputClass} pr-16`}
                 value={newPassword}
@@ -153,7 +154,7 @@ export default function ClientSettingAccountPage() {
           <div className="space-y-1">
             <label className="text-sm text-zinc-700">신규 비밀번호 확인</label>
             <div className="relative">
-              <input
+              <PasswordInput
                 type={showConfirmPassword ? 'text' : 'password'}
                 className={`${inputClass} pr-16`}
                 value={confirmPassword}

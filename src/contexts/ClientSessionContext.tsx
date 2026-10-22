@@ -84,3 +84,5 @@ export function useClientSessionContext() {
   }
   return context
 }
+
+export function useOptionalClientSession() { return useContext(ClientSessionContext) }

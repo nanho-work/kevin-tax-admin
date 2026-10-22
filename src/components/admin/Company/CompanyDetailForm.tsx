@@ -1,5 +1,6 @@
 'use client'
 
+import PasswordInput from '@/components/common/PasswordInput'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -2104,7 +2105,7 @@ export default function CompanyDetailForm({
                       />
                     </Field>
                     <Field label="비밀번호">
-                      <input
+                      <PasswordInput
                         type="password"
                         className={inputClass}
                         value={companyAccountForm.password}
@@ -2173,7 +2174,7 @@ export default function CompanyDetailForm({
                           />
                         </Field>
                         <Field label="홈택스 비밀번호">
-                          <input
+                          <PasswordInput
                             type="password"
                             className={inputClass}
                             value={hometaxForm.hometax_password}
@@ -2213,7 +2214,7 @@ export default function CompanyDetailForm({
                   {supportsHometaxReveal && hasHometaxRegistered ? (
                     <div className="space-y-2">
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
-                        <input
+                        <PasswordInput
                           type="password"
                           className={inputClass}
                           placeholder="본인 계정 비밀번호 입력"

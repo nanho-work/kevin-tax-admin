@@ -88,3 +88,5 @@ export function useAdminSessionContext() {
   }
   return context
 }
+
+export function useOptionalAdminSession() { return useContext(AdminSessionContext) }
