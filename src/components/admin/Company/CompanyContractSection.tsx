@@ -27,7 +27,16 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [retry, setRetry] = useState(0)
+  const [memoUnlocked, setMemoUnlocked] = useState(false)
+  const [memoDraft, setMemoDraft] = useState('')
+  const [memoError, setMemoError] = useState('')
   const current = rows.find((r) => r.id === selected)
+  const memoDirty = memoDraft !== (current?.memo || '')
+  useEffect(() => {
+    setMemoDraft(current?.memo || '')
+    setMemoUnlocked(false)
+    setMemoError('')
+  }, [current?.id, current?.memo])
   useEffect(() => { if (creating) setEnabled(engagement === 'bookkeeping') }, [creating, engagement])
   useEffect(() => {
     if (!allowed || creating || !companyId) return
@@ -73,19 +82,31 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
     } catch (e) { setError(e instanceof Error && !('response' in e) ? e.message : getClientBookkeepingErrorMessage(e)) }
     finally { setSaving(false) }
   }
+  const saveMemo = async () => {
+    if (!current || !editable || !memoUnlocked || saving) return
+    setSaving(true); setMemoError(''); setMessage('')
+    try {
+      // Save only the memo so contract dates, fees and payroll settings remain untouched.
+      const saved = await updateBookkeepingContract(current.id, { memo: memoDraft || null })
+      setRows((prev) => prev.map((row) => row.id === saved.id ? saved : row))
+      setDraft(fromContract(saved)); setMemoDraft(saved.memo || ''); setMemoUnlocked(false)
+      setMessage('메모를 저장했습니다.')
+    } catch (e) { setMemoError(getClientBookkeepingErrorMessage(e)) }
+    finally { setSaving(false) }
+  }
   if (sessionLoading || !allowed) return null
   const showFields = creating ? enabled : editing
   const change = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((prev) => ({ ...prev, [key]: value }))
   return <section className="min-w-0">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-900">기장 계약</h3><p className="mt-1 text-xs text-slate-500">기장 계약 메뉴와 같은 계약정보입니다.</p></div>
-      {!creating && editable && !loading && !error && !editing ? <button type="button" className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700" onClick={() => { setEditing(true); setMessage('') }}>{current ? '계약 수정' : '계약 등록'}</button> : null}
-      {!creating && editable && !loading && !error && !editing && current ? <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600" onClick={() => { setSelected(null); setDraft(empty()); setEditing(true); setMessage('') }}>새 계약</button> : null}
+      {!creating && editable && !loading && !error && !editing && !memoUnlocked && !memoDirty ? <button type="button" className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700" onClick={() => { setEditing(true); setMessage('') }}>{current ? '계약 수정' : '계약 등록'}</button> : null}
+      {!creating && editable && !loading && !error && !editing && !memoUnlocked && !memoDirty && current ? <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600" onClick={() => { setSelected(null); setDraft(empty()); setEditing(true); setMessage('') }}>새 계약</button> : null}
     </div>
     {creating ? <label className="mb-4 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={enabled} disabled={disabled} onChange={(e) => setEnabled(e.target.checked)} />거래처 등록 시 기장계약 함께 등록</label> : null}
     {loading && !creating ? <p className="text-sm text-slate-500">계약정보를 불러오는 중입니다…</p> : null}
     {error ? <p role="alert" className="mb-3 text-sm text-rose-600">{error}{!editing && !creating ? <button type="button" className="ml-2 underline" onClick={() => setRetry((n) => n + 1)}>다시 조회</button> : null}</p> : null}
     {message ? <p role="status" className="mb-3 text-sm text-emerald-700">{message}</p> : null}
-    {!creating && !loading && rows.length > 0 ? <label className="mb-4 block text-xs text-slate-500">계약 선택<select aria-label="기장계약 선택" className={`${input} mt-1.5`} value={selected ?? ''} disabled={editing || saving} onChange={(e) => { const row = rows.find((r) => r.id === Number(e.target.value)); if (row) { setSelected(row.id); setDraft(fromContract(row)); setMessage('') } }}>
+    {!creating && !loading && rows.length > 0 ? <label className="mb-4 block text-xs text-slate-500">계약 선택<select aria-label="기장계약 선택" className={`${input} mt-1.5`} value={selected ?? ''} disabled={editing || saving || memoUnlocked || memoDirty} onChange={(e) => { const row = rows.find((r) => r.id === Number(e.target.value)); if (row) { setSelected(row.id); setDraft(fromContract(row)); setMessage('') } }}>
       {selected === null ? <option value="">새 계약</option> : null}
       {rows.map((row) => <option key={row.id} value={row.id}>{row.start_date || row.start_month} ~ {row.end_date || row.end_month || '진행중'} · {row.is_active ? '활성' : '비활성'} · v{row.version_no}</option>)}</select></label> : null}
     {showFields ? <fieldset disabled={saving || disabled} className="space-y-4 disabled:opacity-60"><div className="grid gap-4 sm:grid-cols-2">
@@ -99,11 +120,31 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => change('active', e.target.checked)} />계약 활성</label>
     </div>
       {selected ? <Field label="변경 사유"><input className={input} value={draft.reason} onChange={(e) => change('reason', e.target.value)} /></Field> : null}
-      <div className="border-t border-slate-100 pt-4"><Field label="계약 메모"><textarea rows={4} className={`${input} resize-y`} value={draft.memo} onChange={(e) => change('memo', e.target.value)} /></Field></div>
+      <div className="border-t border-slate-100 pt-4"><Field label="계약 메모"><textarea rows={4} maxLength={2000} className={`${input} resize-y`} value={draft.memo} onChange={(e) => change('memo', e.target.value)} /></Field></div>
       {creating ? <p className="text-xs text-slate-500">상단의 등록완료 버튼으로 거래처와 계약을 등록합니다.</p> : <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-4 py-2 text-xs" onClick={() => { const original = current || rows[0]; setSelected(original?.id ?? null); setDraft(original ? fromContract(original) : empty()); setEditing(false); setError('') }}>취소</button><button type="button" className="rounded-lg bg-sky-600 px-4 py-2 text-xs text-white" onClick={() => void save()}>{saving ? '저장 중…' : '계약 저장'}</button></div>}
     </fieldset> : !creating && !loading && !error ? current ? <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
       {[['신고주기', current.report_cycle === 'monthly' ? '매월' : current.report_cycle === 'semiannual' ? '반기' : '미지정'], ['급여일', current.payroll_day ? `${current.payroll_day}일` : '미지정'], ['급여 귀속 기준', current.payroll_basis === 'current_month' ? '당월 귀속 · 당월 지급' : current.payroll_basis === 'previous_month' ? '전월 귀속 · 당월 지급' : '미지정'], ['월 기장료 (공급가)', current.monthly_fee_supply == null ? '미지정' : `${current.monthly_fee_supply.toLocaleString()}원`], ['부가세', current.vat_included ? '포함' : '별도']].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{value}</dd></div>)}
-      <div className="border-t border-slate-100 pt-4 sm:col-span-2"><dt className="text-xs text-slate-500">계약 메모</dt><dd className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{current.memo || '-'}</dd></div>
+      <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+        <dt className="flex items-center justify-between gap-3">
+          <label htmlFor="contract-memo" className="text-xs font-medium text-slate-600">계약 메모</label>
+          {editable ? <button type="button" role="switch" aria-checked={memoUnlocked} aria-label="메모 수정 잠금 해제" disabled={saving || disabled}
+            onClick={() => setMemoUnlocked((value) => !value)} className="inline-flex items-center gap-2 rounded text-xs text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:opacity-50">
+            <span>{memoUnlocked ? '잠금 해제 · 수정 가능' : '잠금'}</span>
+            <span aria-hidden="true" className={`inline-flex h-5 w-9 items-center rounded-full p-0.5 transition-colors ${memoUnlocked ? 'bg-sky-600' : 'bg-slate-300'}`}><span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${memoUnlocked ? 'translate-x-4' : 'translate-x-0'}`} /></span>
+          </button> : null}
+        </dt>
+        <dd className="mt-2 space-y-2">
+          <textarea id="contract-memo" rows={4} maxLength={2000} value={memoDraft} readOnly={!editable || !memoUnlocked} disabled={saving || disabled}
+            onChange={(e) => setMemoDraft(e.target.value)} placeholder={editable ? '등록된 메모가 없습니다. 잠금을 해제하고 메모를 입력하세요.' : '등록된 메모가 없습니다.'}
+            className={`${input} resize-y leading-6 ${memoUnlocked ? '' : '!bg-slate-50 text-slate-600'}`} />
+          {memoError ? <p role="alert" className="text-xs text-rose-600">{memoError}</p> : null}
+          {memoDirty ? <p className="text-xs text-amber-700">저장하지 않은 메모가 있습니다.{!memoUnlocked ? ' 잠금을 해제한 뒤 저장해 주세요.' : ''}</p> : null}
+          {editable && (memoUnlocked || memoDirty) ? <div className="flex justify-end gap-2">
+            <button type="button" disabled={saving || disabled} onClick={() => { setMemoDraft(current.memo || ''); setMemoUnlocked(false); setMemoError('') }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 disabled:opacity-50">취소</button>
+            <button type="button" disabled={saving || disabled || !memoUnlocked || !memoDirty} onClick={() => void saveMemo()} className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50">{saving ? '저장 중…' : '메모 저장'}</button>
+          </div> : null}
+        </dd>
+      </div>
     </dl> : <p className="text-sm text-slate-500">등록된 기장계약이 없습니다.</p> : null}
   </section>
 })

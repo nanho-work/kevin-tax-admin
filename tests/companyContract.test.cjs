@@ -87,3 +87,51 @@ test('both customer and contract menus use the real admin token with the same co
   await api.createBookkeepingContract({ company_id: 12 })
   assert.equal(sent[2][0], 'client')
 })
+
+test('empty memo can be unlocked, entered and saved without changing contract fields', async () => {
+  calls = []; rank = 10
+  const root = createRoot(document.getElementById('root'))
+  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+  const memo = document.getElementById('contract-memo')
+  const toggle = document.querySelector('[role="switch"]')
+  assert.equal(memo.value, '')
+  assert.equal(memo.readOnly, true)
+  act(() => Simulate.click(toggle))
+  assert.equal(memo.readOnly, false)
+  act(() => { memo.value = '담당자와 급여일 확인'; Simulate.change(memo) })
+  act(() => Simulate.click(toggle))
+  assert.equal(memo.readOnly, true)
+  assert.equal(memo.value, '담당자와 급여일 확인')
+  assert.equal(document.querySelector('[aria-label="기장계약 선택"]').disabled, true)
+  act(() => Simulate.click(toggle))
+  await act(async () => click('메모 저장'))
+  const saved = calls.find(x => x[0] === 'update')
+  assert.equal(saved[1], 71)
+  assert.deepEqual(JSON.parse(JSON.stringify(saved[2])), { memo: '담당자와 급여일 확인' })
+  assert.equal(memo.readOnly, true)
+  assert.match(document.body.textContent, /100,000원/)
+  act(() => root.unmount())
+})
+
+test('failed memo save retains input and cancel restores the saved memo', async () => {
+  calls = []; rank = 10
+  const original = services.updateBookkeepingContract
+  services.updateBookkeepingContract = async () => { throw new Error('저장 실패') }
+  const root = createRoot(document.getElementById('root'))
+  try {
+    await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+    act(() => Simulate.click(document.querySelector('[role="switch"]')))
+    const memo = document.getElementById('contract-memo')
+    act(() => { memo.value = '유지할 입력'; Simulate.change(memo) })
+    await act(async () => click('메모 저장'))
+    assert.equal(memo.value, '유지할 입력')
+    assert.equal(memo.readOnly, false)
+    assert.match(document.querySelector('[role="alert"]').textContent, /저장 실패/)
+    act(() => click('취소'))
+    assert.equal(memo.value, '')
+    assert.equal(memo.readOnly, true)
+  } finally {
+    services.updateBookkeepingContract = original
+    act(() => root.unmount())
+  }
+})
