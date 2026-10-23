@@ -1,5 +1,6 @@
 'use client'
 
+import { HeaderBackProvider } from '@/contexts/HeaderBackContext'
 import { sidebarShellClass } from '@/utils/portalSidebarStyles'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -87,7 +88,7 @@ export default function ProtectedLayout({
   return (
     <AdminSessionProvider>
       <Suspense fallback={<p className="text-center mt-20 text-gray-500">로딩 중...</p>}>
-        <ProtectedShell>{children}</ProtectedShell>
+        <HeaderBackProvider><ProtectedShell>{children}</ProtectedShell></HeaderBackProvider>
       </Suspense>
     </AdminSessionProvider>
   )

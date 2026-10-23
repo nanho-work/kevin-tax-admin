@@ -1,8 +1,10 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useHeaderBackAction } from '@/contexts/HeaderBackContext'
 import BackButton from '@/components/common/BackButton'
+import { getPortalBackPath } from '@/utils/portalBackNavigation'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import HeaderActionButton from '@/components/common/HeaderActionButton'
 import { LogOut } from 'lucide-react'
@@ -75,18 +77,14 @@ function currentHeader(pathname: string): HeaderInfo {
 
 export default function ClientHeader() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const { parent, child } = currentHeader(pathname)
   const title = child ? `${parent} > ${child}` : parent
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
-  const backPath = (() => {
-    if (pathname.startsWith('/client/companies/')) return '/client/companies'
-    if (pathname.startsWith('/client/bookkeeping/debits/history/')) return '/client/bookkeeping/debits/history'
-    if (pathname.startsWith('/client/bookkeeping/debits/batches/')) return '/client/bookkeeping/debits/history'
-    if (pathname.startsWith('/client/client-management/blog/')) return '/client/client-management/blog/list'
-    return null
-  })()
+  const localBack = useHeaderBackAction()
+  const backPath = getPortalBackPath(pathname, searchParams)
 
   const handleLogout = async () => {
     if (loggingOut) return
@@ -104,14 +102,11 @@ export default function ClientHeader() {
     <header className="sticky top-0 z-20 border-b border-neutral-200 bg-sky-50/70 backdrop-blur">
       <div className="px-4 py-3">
         <div className="grid grid-cols-[1fr_auto] items-stretch gap-3">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {backPath || localBack ? <BackButton fallbackPath={backPath || pathname} onBack={localBack ?? undefined} iconOnly /> : null}
+            <div className="min-w-0">
             {backPath ? (
               <div className="flex items-center gap-2">
-                <BackButton
-                  fallbackPath={backPath}
-                  className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-                />
-                <span className="text-sm text-neutral-300">|</span>
                 <div className="truncate text-sm font-semibold text-neutral-900">{title}</div>
                 {unreadNotificationCount > 0 ? (
                   <span className="inline-flex h-5 items-center rounded-full bg-amber-100 px-2 text-[11px] font-medium text-amber-700">
@@ -129,6 +124,7 @@ export default function ClientHeader() {
                 ) : null}
               </div>
             )}
+            </div>
           </div>
           <div className="flex items-center gap-2 pr-7">
             <PortalNotificationBell

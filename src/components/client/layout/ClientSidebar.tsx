@@ -43,8 +43,8 @@ const mailMenus = [
 ]
 
 const companyManagementMenus = [
-  { label: '거래처 일정', href: '/client/schedule' },
   { label: '거래처 관리', href: '/client/companies' },
+  { label: '거래처 일정', href: '/client/schedule' },
   { label: '업무보드', href: '/client/workflow/board' },
   { label: '업무자료함', href: '/client/workflow/board/materials' },
 ]

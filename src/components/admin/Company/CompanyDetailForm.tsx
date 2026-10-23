@@ -6,6 +6,7 @@ import CompanyContractSection, { type CompanyContractHandle } from './CompanyCon
 import { createBookkeepingContract } from '@/services/client/clientBookkeepingService'
 import CompanyManagementFields from './CompanyManagementFields'
 import PasswordInput from '@/components/common/PasswordInput'
+import CompanyContactEditor, { type ContactInfo } from './CompanyContactEditor'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -500,11 +501,10 @@ export default function CompanyDetailForm({
   const [contactsApiAvailable, setContactsApiAvailable] = useState(true)
   const [contactSlots, setContactSlots] = useState<ContactSlotState[]>(CONTACT_SLOT_DEFAULTS)
   const [visibleContactSlotKeys, setVisibleContactSlotKeys] = useState<ContactSlotKey[]>(['main'])
-  const [editingContactKey, setEditingContactKey] = useState<ContactSlotKey | null>(null)
+  const [, setEditingContactKey] = useState<ContactSlotKey | null>(null)
   const [loadingContacts, setLoadingContacts] = useState(false)
   const [savingContactKey, setSavingContactKey] = useState<ContactSlotKey | null>(null)
   const [deletingContactKey, setDeletingContactKey] = useState<ContactSlotKey | null>(null)
-  const [openContactActionMenuKey, setOpenContactActionMenuKey] = useState<ContactSlotKey | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const customDocFileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -573,11 +573,6 @@ export default function CompanyDetailForm({
   const basicInfoLabelClass = '!font-medium !text-slate-500'
   const basicInfoContentClass = 'pt-1'
   const canEditContactsFields = isCreateMode ? true : editable
-  const contactEditableInputClass = canEditContactsFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
-
-  useEffect(() => {
-    setOpenContactActionMenuKey(null)
-  }, [editingContactKey, savingContactKey, deletingContactKey, loadingContacts, editMode])
 
   useEffect(() => {
     if (isCreateMode) {
@@ -1026,26 +1021,35 @@ export default function CompanyDetailForm({
     setContactSlots((prev) => prev.map((slot) => (slot.key === key ? updater(slot) : slot)))
   }
 
-  const handleSaveCompanyContact = async (slotKey: ContactSlotKey) => {
-    if (!createCompanyContactFn || !updateCompanyContactFn) return
-    const slot = contactSlots.find((item) => item.key === slotKey)
-    if (!slot) return
+  const handleSaveCompanyContact = async (slotKey: ContactSlotKey, info: ContactInfo): Promise<boolean> => {
+    if (!canEditContactsFields) return false
+    const savedSlot = contactSlots.find((item) => item.key === slotKey)
+    if (!savedSlot) return false
+    const slot = { ...savedSlot, ...info }
     const trimmedName = slot.name.trim()
     if (!trimmedName) {
       toast.error('담당자 이름을 입력해 주세요.')
-      return
+      return false
     }
+    if (isCreateMode) {
+      patchContactSlot(slotKey, prev => ({ ...prev, ...info, name: trimmedName }))
+      if (slotKey === 'main') {
+        setForm(prev => prev ? { ...prev, manager_name: trimmedName, manager_phone: info.phone.trim(), manager_email: info.email.trim() } : prev)
+      }
+      toast.success('담당자 정보를 입력했습니다. 거래처 등록 시 함께 저장됩니다.')
+      return true
+    }
+    if (!createCompanyContactFn || !updateCompanyContactFn) return false
     try {
       setSavingContactKey(slotKey)
       if (slot.contactId) {
         await updateCompanyContactFn(companyId, slot.contactId, {
           name: trimmedName,
-          department: slot.department.trim() || undefined,
-          position: slot.position.trim() || undefined,
-          phone: slot.phone.trim() || undefined,
-          email: slot.email.trim() || undefined,
+          department: slot.department.trim(),
+          position: slot.position.trim(),
+          phone: slot.phone.trim(),
+          email: slot.email.trim(),
           notify_mail: slot.notify_mail,
-          memo: slot.memo.trim() || undefined,
           contact_role: slot.role,
           priority: slot.priority,
         })
@@ -1053,12 +1057,11 @@ export default function CompanyDetailForm({
       } else {
         await createCompanyContactFn(companyId, {
           name: trimmedName,
-          department: slot.department.trim() || undefined,
-          position: slot.position.trim() || undefined,
-          phone: slot.phone.trim() || undefined,
-          email: slot.email.trim() || undefined,
+          department: slot.department.trim(),
+          position: slot.position.trim(),
+          phone: slot.phone.trim(),
+          email: slot.email.trim(),
           notify_mail: slot.notify_mail,
-          memo: slot.memo.trim() || undefined,
           contact_role: slot.role,
           priority: slot.priority,
         })
@@ -1079,10 +1082,26 @@ export default function CompanyDetailForm({
       }
       setEditingContactKey(null)
       await loadCompanyContacts()
+      return true
     } catch (error) {
       toast.error(extractApiDetail(error) || '담당자 저장 중 오류가 발생했습니다.')
+      return false
     } finally {
       setSavingContactKey(null)
+    }
+  }
+
+  const handleSaveContactMemo = async (slotKey: ContactSlotKey, memo: string): Promise<boolean> => {
+    const slot = contactSlots.find(item => item.key === slotKey)
+    if (!slot?.contactId || !updateCompanyContactFn || !canEditContactsFields) return false
+    try {
+      await updateCompanyContactFn(companyId, slot.contactId, { memo: memo.trim() })
+      patchContactSlot(slotKey, prev => ({ ...prev, memo: memo.trim() }))
+      toast.success('담당자 메모가 저장되었습니다.')
+      return true
+    } catch (error) {
+      toast.error(extractApiDetail(error) || '메모 저장 중 오류가 발생했습니다.')
+      return false
     }
   }
 
@@ -1994,244 +2013,29 @@ export default function CompanyDetailForm({
             }
           >
             <div className="grid grid-cols-1 gap-2">
-              {visibleContactSlots.map((slot) => {
-                const isListMode = Boolean(slot.contactId) && editingContactKey !== slot.key
-                return (
-                  <div
-                    key={slot.key}
-                    className={
-                      isListMode
-                        ? 'border-b border-slate-100 py-4 last:border-b-0'
-                        : 'space-y-3 border-b border-slate-100 py-4'
-                    }
-                  >
-                    {isListMode ? (
-                      <div className="space-y-1">
-                        <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
-                          <div className="flex items-center gap-2 sm:col-span-2"><span className="text-xs font-semibold text-slate-600">{slot.label}</span>
-                            {slot.key === 'main' ? (
-                              <span title="메인 담당자" className="inline-flex h-5 w-5 items-center justify-center">
-                                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                title={`${slot.key === 'backup' ? '서브 담당자' : '서브 담당자2'} · 클릭하면 메인으로 변경`}
-                                disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
-                                onClick={() => void handlePromoteByStar(slot.key as 'backup' | 'etc')}
-                                className="inline-flex h-5 w-5 items-center justify-center disabled:opacity-60"
-                              >
-                                <Star className="h-4 w-4 text-zinc-300 hover:text-amber-300" />
-                              </button>
-                            )}
-                          </div>
-                          <div className="min-w-0"><p className="text-[11px] text-slate-500">이름</p><p className="mt-1 break-words text-sm text-slate-800">{slot.name || '-'}</p></div>
-                          <div className="min-w-0"><p className="text-[11px] text-slate-500">연락처</p><p className="mt-1 break-words text-sm text-slate-800">{slot.phone || '-'}</p></div>
-                          <div className="min-w-0"><p className="text-[11px] text-slate-500">이메일</p><p className="mt-1 break-words text-sm text-slate-800">{slot.email || '-'}</p></div>
-                          <div className="min-w-0"><p className="text-[11px] text-slate-500">부서</p><p className="mt-1 break-words text-sm text-slate-800">{slot.department || '-'}</p></div>
-                          <div className="min-w-0"><p className="text-[11px] text-slate-500">직책</p><p className="mt-1 break-words text-sm text-slate-800">{slot.position || '-'}</p></div>
-                          <div><p className="text-[11px] text-slate-500">메일수신</p><p className="mt-1 text-sm text-slate-800">{slot.notify_mail ? '수신' : '미수신'}</p></div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-[0_minmax(0,1fr)_32px] items-start border-t border-slate-200/60 pt-3">
-                          <div />
-                          <div className="whitespace-pre-wrap break-words text-left text-xs leading-5 text-slate-500">{slot.memo || ''}</div>
-                          <div className="relative flex items-center justify-center">
-                            <button
-                              type="button"
-                              disabled={!canEditContactsFields}
-                              onClick={() =>
-                                setOpenContactActionMenuKey((prev) => (prev === slot.key ? null : slot.key))
-                              }
-                              aria-label={`${slot.label} 메뉴`}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-300 bg-white text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                            >
-                              ...
-                            </button>
-                            {openContactActionMenuKey === slot.key ? (
-                              <div className="absolute right-0 top-7 z-20 w-24 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
-                                <button
-                                  type="button"
-                                  disabled={!canEditContactsFields}
-                                  onClick={() => {
-                                    setOpenContactActionMenuKey(null)
-                                    setEditingContactKey(slot.key)
-                                  }}
-                                  className="flex h-8 w-full items-center px-3 text-left text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                                >
-                                  수정
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!canEditContactsFields || deletingContactKey === slot.key || loadingContacts}
-                                  onClick={() => {
-                                    setOpenContactActionMenuKey(null)
-                                    void handleDeleteCompanyContact(slot.key)
-                                  }}
-                                  className="flex h-8 w-full items-center px-3 text-left text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-                                >
-                                  {deletingContactKey === slot.key ? '처리중...' : '삭제'}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center">
-                          {slot.key === 'main' ? (
-                            <span title="메인 담당자" className="inline-flex h-5 w-5 items-center justify-center">
-                              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              title={`${slot.key === 'backup' ? '서브 담당자' : '서브 담당자2'} · 클릭하면 메인으로 변경`}
-                              disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
-                              onClick={() => void handlePromoteByStar(slot.key as 'backup' | 'etc')}
-                              className="inline-flex h-5 w-5 items-center justify-center disabled:opacity-60"
-                            >
-                              <Star className="h-4 w-4 text-zinc-300 hover:text-amber-300" />
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <input
-                            className={contactEditableInputClass}
-                            value={slot.name}
-                            readOnly={!canEditContactsFields}
-                            onChange={(e) =>
-                              patchContactSlot(slot.key, (prev) => {
-                                const nextName = e.target.value
-                                if (slot.key === 'main') {
-                                  setForm((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          manager_name: nextName,
-                                        }
-                                      : current
-                                  )
-                                }
-                                return { ...prev, name: nextName }
-                              })
-                            }
-                            placeholder="이름"
-                          />
-                          <input
-                            className={contactEditableInputClass}
-                            value={slot.phone}
-                            readOnly={!canEditContactsFields}
-                            onChange={(e) =>
-                              patchContactSlot(slot.key, (prev) => {
-                                const nextPhone = formatPhoneNumber(e.target.value)
-                                if (slot.key === 'main') {
-                                  setForm((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          manager_phone: nextPhone,
-                                        }
-                                      : current
-                                  )
-                                }
-                                return { ...prev, phone: nextPhone }
-                              })
-                            }
-                            placeholder="연락처"
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                          <input
-                            className={contactEditableInputClass}
-                            value={slot.email}
-                            readOnly={!canEditContactsFields}
-                            onChange={(e) =>
-                              patchContactSlot(slot.key, (prev) => {
-                                const nextEmail = e.target.value
-                                if (slot.key === 'main') {
-                                  setForm((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          manager_email: nextEmail,
-                                        }
-                                      : current
-                                  )
-                                }
-                                return { ...prev, email: nextEmail }
-                              })
-                            }
-                            placeholder="이메일"
-                          />
-                          <label className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-xs text-zinc-700">
-                            <input
-                              type="checkbox"
-                              checked={slot.notify_mail}
-                              disabled={!canEditContactsFields}
-                              onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, notify_mail: e.target.checked }))}
-                            />
-                            메일수신
-                          </label>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <input
-                            className={contactEditableInputClass}
-                            value={slot.department}
-                            readOnly={!canEditContactsFields}
-                            onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, department: e.target.value }))}
-                            placeholder="부서"
-                          />
-                          <input
-                            className={contactEditableInputClass}
-                            value={slot.position}
-                            readOnly={!canEditContactsFields}
-                            onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, position: e.target.value }))}
-                            placeholder="직책"
-                          />
-                        </div>
-                        <input
-                          className={contactEditableInputClass}
-                          value={slot.memo}
-                          readOnly={!canEditContactsFields}
-                          onChange={(e) => patchContactSlot(slot.key, (prev) => ({ ...prev, memo: e.target.value }))}
-                          placeholder="메모"
-                        />
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            disabled={!canEditContactsFields || savingContactKey === slot.key || loadingContacts}
-                            onClick={() => void handleSaveCompanyContact(slot.key)}
-                            className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                          >
-                            {savingContactKey === slot.key ? '저장중...' : slot.contactId ? '수정' : '등록'}
-                          </button>
-                          {slot.contactId ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={!canEditContactsFields}
-                                onClick={() => setEditingContactKey(null)}
-                                className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                              >
-                                취소
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canEditContactsFields || deletingContactKey === slot.key || loadingContacts}
-                                onClick={() => void handleDeleteCompanyContact(slot.key)}
-                                className="inline-flex h-8 items-center rounded-lg border border-rose-200 bg-white px-3 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-                              >
-                                {deletingContactKey === slot.key ? '처리중...' : '삭제'}
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )
-              })}
+              {visibleContactSlots.map(slot => (
+                <CompanyContactEditor
+                  key={`${slot.key}:${slot.contactId ?? 'new'}`}
+                  label={slot.label}
+                  contact={slot}
+                  editable={canEditContactsFields}
+                  busy={savingContactKey !== null || deletingContactKey !== null || loadingContacts}
+                  formatPhone={formatPhoneNumber}
+                  onSaveInfo={info => handleSaveCompanyContact(slot.key, info)}
+                  onSaveMemo={memo => handleSaveContactMemo(slot.key, memo)}
+                  onDelete={() => void handleDeleteCompanyContact(slot.key)}
+                  badge={slot.key === 'main' ? (
+                    <Star aria-label="메인 담당자" className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  ) : (
+                    <button type="button" title="메인 담당자로 변경"
+                      disabled={!canEditContactsFields || savingContactKey !== null || loadingContacts}
+                      onClick={() => void handlePromoteByStar(slot.key as 'backup' | 'etc')}
+                      className="inline-flex h-6 w-6 items-center justify-center disabled:opacity-50">
+                      <Star className="h-4 w-4 text-slate-300 hover:text-amber-400" />
+                    </button>
+                  )}
+                />
+              ))}
             </div>
           </Section>
 

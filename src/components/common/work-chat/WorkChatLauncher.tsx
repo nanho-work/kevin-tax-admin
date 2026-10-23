@@ -3604,6 +3604,7 @@ export default function WorkChatLauncher({ portalType, actor }: WorkChatLauncher
       {open && positionReady ? (
         <div
           ref={launcherRef}
+          data-work-chat-launcher
           className="fixed z-[80] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl"
           style={{
             width: launcherSize.width,

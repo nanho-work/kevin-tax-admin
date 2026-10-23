@@ -54,10 +54,10 @@ const menuSections: MenuSection[] = [
     key: 'companies',
     label: '업무',
     children: [
+      { label: '거래처 관리', href: '/admin/companies' },
       { label: '업무보드', href: '/admin/workflow/board' },
       { label: '업무자료함', href: '/admin/workflow/board/materials' },
       { label: '컨설트 툴', href: '/admin/workflow/consult' },
-      { label: '거래처 관리', href: '/admin/companies' },
       {
         label: '세목별 신고',
         href: '/admin/company-withholding',

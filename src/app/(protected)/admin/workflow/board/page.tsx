@@ -1,5 +1,6 @@
 'use client'
 
+import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
@@ -7,6 +8,8 @@ import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import TaskWorkGuide from '@/components/admin/workflow/TaskWorkGuide'
+import { useInPageBack } from '@/contexts/HeaderBackContext'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import {
@@ -156,7 +159,7 @@ export default function WorkflowBoardPage() {
   const scope: TaskBoardScope = pathname.startsWith('/client') ? 'client' : 'admin'
   const { confirm } = useConfirmDialog()
 
-  const [attributionMonth, setAttributionMonth] = useState('2026-03')
+  const [attributionMonth, setAttributionMonth] = useState(() => getMonthlyWorkPeriod().attribution)
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   const [includeExcluded, setIncludeExcluded] = useState(false)
   const [kindFilter, setKindFilter] = useState<TaskBoardKind>('all')
@@ -165,6 +168,15 @@ export default function WorkflowBoardPage() {
   const [sortOrder, setSortOrder] = useState<TaskBoardSortOrder | undefined>(undefined)
   const [keyword, setKeyword] = useState('')
   const deferredKeyword = useDeferredValue(keyword)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const month = params.get('attribution_month')
+    if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) setAttributionMonth(month)
+    const company = params.get('q')
+    if (company) setKeyword(company)
+  }, [])
+
 
   const [listRowsApi, setListRowsApi] = useState<TaskBoardListItem[]>([])
   const [listTotal, setListTotal] = useState(0)
@@ -217,6 +229,12 @@ export default function WorkflowBoardPage() {
 
   const [fileModalTaskId, setFileModalTaskId] = useState<number | null>(null)
   const [fileModalDocs, setFileModalDocs] = useState<FileItem[]>([])
+  useInPageBack(selectedCompanyId !== null, () => {
+    setSelectedCompanyId(null)
+    setFileModalTaskId(null)
+    setFileModalDocs([])
+  })
+
   const [fileUploadQueue, setFileUploadQueue] = useState<File[]>([])
   const [isUploadingTaskFiles, setIsUploadingTaskFiles] = useState(false)
   const [uploadingCardTaskId, setUploadingCardTaskId] = useState<number | null>(null)
@@ -1661,9 +1679,6 @@ export default function WorkflowBoardPage() {
                 <p className="text-xs text-zinc-500">귀속월 {attributionMonth} / 신고월 {reportMonth}</p>
               </div>
               <div className="flex items-center gap-2">
-                <UiButton size="sm" variant="soft" onClick={() => toast.success('저장(목업)')}>
-                  저장
-                </UiButton>
                 <UiButton
                   size="sm"
                   variant="tabInactive"
@@ -1678,8 +1693,7 @@ export default function WorkflowBoardPage() {
               </div>
             </div>
             <div className="mt-2 text-xs text-zinc-600">
-              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
-              <p>완료는 증빙 첨부 후 처리 권장</p>
+              <p>파일 업로드와 업무 상태 변경은 각각 즉시 저장됩니다.</p>
             </div>
           </header>
 
@@ -1705,7 +1719,7 @@ export default function WorkflowBoardPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {detailProcessItems.map((task) => {
                   const mode = task.execution_mode_snapshot ?? 'check_only'
                   const isDone = task.status === 'done'
@@ -1854,6 +1868,12 @@ export default function WorkflowBoardPage() {
                           </UiButton>
                         )}
                       </div>
+                      <TaskWorkGuide
+                        taskName={task.task_name}
+                        mode={mode}
+                        sourceName={hasLinkedSource ? sourceLabel : undefined}
+                        attributionMonth={attributionMonth}
+                      />
                     </article>
                   )
                 })}
@@ -1999,10 +2019,6 @@ export default function WorkflowBoardPage() {
                 </div>
               ) : null}
             </div>
-            <div className="text-xs text-zinc-600">
-              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
-              <p>완료는 증빙 첨부 후 처리 권장</p>
-            </div>
           </header>
 
           <div className="overflow-x-auto">
@@ -2025,6 +2041,9 @@ export default function WorkflowBoardPage() {
                       <span>상호</span>
                       {renderSortIcon('company_name')}
                     </button>
+                  </th>
+                  <th className="px-2 py-1.5 text-center font-semibold" style={{ width: '88px', minWidth: '88px' }}>
+                    담당자
                   </th>
                   <th className="px-1 py-1.5 text-center font-semibold" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
                     <button
@@ -2195,6 +2214,11 @@ export default function WorkflowBoardPage() {
                         >
                           {row.company_name}
                         </button>
+                      </td>
+                      <td className="px-2 py-1.5 text-center text-zinc-600" style={{ width: '88px', minWidth: '88px' }}>
+                        <span className="block max-w-[120px] truncate" title={row.assignee_name || '담당자 미지정'}>
+                          {row.assignee_name || <span className="text-zinc-400">미지정</span>}
+                        </span>
                       </td>
                       <td className="px-1 py-1.5 text-center" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
                         {isEditMode ? (
@@ -2406,8 +2430,8 @@ export default function WorkflowBoardPage() {
                     <td
                       colSpan={
                         isEditMode
-                          ? 7 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
-                          : 10 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
+                          ? 8 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
+                          : 11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
                       }
                       className="px-2 py-16 text-center text-zinc-400"
                     >
@@ -2420,8 +2444,8 @@ export default function WorkflowBoardPage() {
                     <td
                       colSpan={
                         isEditMode
-                          ? 7 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
-                          : 10 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
+                          ? 8 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
+                          : 11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
                       }
                       className="px-2 py-16 text-center text-zinc-400"
                     >
@@ -2432,17 +2456,23 @@ export default function WorkflowBoardPage() {
               </tbody>
             </table>
           </div>
-          {!isEditMode && !listLoading && listTotal > 0 ? (
-            <div className="mt-2 flex items-center justify-center">
-              <Pagination
-                page={listPage}
-                total={listTotal}
-                limit={TASK_BOARD_LIST_PAGE_SIZE}
-                onPageChange={setListPage}
-                className="mt-0"
-              />
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-zinc-100 pt-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
+            <div className="order-2 min-w-0 text-xs leading-5 text-zinc-500 xl:order-1">
+              <p>편집에서는 거래처별 업무를 선택하고, 상세에서는 파일 등록과 완료 처리를 합니다.</p>
+              <p>체크만 업무는 완료 버튼으로, 파일 필수 업무는 파일 등록 후 완료해 주세요.</p>
             </div>
-          ) : null}
+            {!isEditMode && !listLoading && listTotal > 0 ? (
+              <div className="order-1 justify-self-center xl:order-2">
+                <Pagination
+                  page={listPage}
+                  total={listTotal}
+                  limit={TASK_BOARD_LIST_PAGE_SIZE}
+                  onPageChange={setListPage}
+                  className="mt-0"
+                />
+              </div>
+            ) : null}
+          </div>
         </section>
       )}
 
@@ -2739,10 +2769,11 @@ export default function WorkflowBoardPage() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 text-xs text-zinc-600">
-              <p>메인 화면은 전체 현황, 상세 화면은 해당 업무만 노출됩니다.</p>
-              <p>완료는 증빙 첨부 후 처리 권장</p>
-            </div>
+            <TaskWorkGuide
+              taskName={fileModalTask.task_name}
+              mode={fileModalTask.execution_mode_snapshot ?? 'check_only'}
+              attributionMonth={attributionMonth}
+            />
           </div>
         </div>
       ) : null}

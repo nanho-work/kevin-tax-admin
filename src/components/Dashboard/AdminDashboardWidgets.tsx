@@ -1,5 +1,13 @@
 'use client'
 
+import { DASHBOARD_COLUMNS, DASHBOARD_ROW_HEIGHT, DASHBOARD_GAP, decodeDashboardGrid, encodeDashboardGrid, scaleDashboardCatalog } from '@/utils/dashboardGrid'
+import { applyDashboardWidgetSizes } from '@/utils/dashboardWidgetSizes'
+import DashboardWidgetMoveSurface from './DashboardWidgetMoveSurface'
+import DashboardWidgetResizeHandles from './DashboardWidgetResizeHandles'
+import MonthlyWorkProgressWidget from './MonthlyWorkProgressWidget'
+import DashboardWidgetToolbar from './DashboardWidgetToolbar'
+import dashboardStyles from './DashboardWidgets.module.css'
+import { dashboardStorageKey, readLocalDashboardItems, restoreDashboardItems, mergeDashboardVisibility, writeLocalDashboardItems } from '@/utils/dashboardLayoutState'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Briefcase, CalendarCheck2, CheckSquare, FileText, GripVertical, ListTodo, Mail, NotebookPen, Trash2, UserCheck2 } from 'lucide-react'
@@ -103,6 +111,7 @@ type DragPayload = {
 }
 
 const HEADER_WIDGET_ORDER = [
+  'monthly_work_progress',
   'my_attendance',
   'my_leave_balance',
   'approval_pending',
@@ -115,12 +124,12 @@ const HEADER_WIDGET_ORDER = [
 ] as const
 
 const EXCLUDED_WIDGET_KEYS = new Set(['mail_ops_summary', 'tax_schedule_due'])
-const GRID_COLS = 12
-const ROW_HEIGHT = 84
-const GRID_GAP = 16
-const CARD_BASE_CLASS = 'rounded-md border border-zinc-200 bg-white px-4 py-3 shadow-sm'
-const ADMIN_LOCAL_LAYOUT_STORAGE_KEY = 'admin-dashboard-unmanaged-layout-v1'
+const GRID_COLS = DASHBOARD_COLUMNS
+const ROW_HEIGHT = DASHBOARD_ROW_HEIGHT
+const GRID_GAP = DASHBOARD_GAP
+const CARD_BASE_CLASS = 'min-w-0 rounded-xl border border-slate-200/80 bg-white px-4 py-4'
 const ADMIN_LOCAL_FALLBACK_WIDGETS: DashboardWidgetCatalogItem[] = [
+  { widget_id: -3001, widget_key: 'monthly_work_progress', title: '이번 달 업무 진행', description: '업무보드 진행 현황과 미완료 거래처', required_permission_code: null, default_w: 5, default_h: 4, min_w: 3, min_h: 3, max_w: 12, max_h: 10, supports_mobile: true },
   {
     widget_id: -1001,
     widget_key: 'work_post_inbox',
@@ -177,65 +186,6 @@ function withAdminFallbackCatalog(items: DashboardWidgetCatalogItem[]): Dashboar
     }
   }
   return Array.from(map.values())
-}
-
-type LocalUnmanagedLayoutMap = Record<
-  string,
-  Pick<DashboardUserLayoutItem, 'grid_x' | 'grid_y' | 'grid_w' | 'grid_h' | 'visible' | 'sort_order'>
->
-
-function readLocalUnmanagedLayout(): LocalUnmanagedLayoutMap {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = window.localStorage.getItem(ADMIN_LOCAL_LAYOUT_STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as LocalUnmanagedLayoutMap
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-function writeLocalUnmanagedLayout(map: LocalUnmanagedLayoutMap) {
-  if (typeof window === 'undefined') return
-  if (Object.keys(map).length === 0) {
-    window.localStorage.removeItem(ADMIN_LOCAL_LAYOUT_STORAGE_KEY)
-    return
-  }
-  window.localStorage.setItem(ADMIN_LOCAL_LAYOUT_STORAGE_KEY, JSON.stringify(map))
-}
-
-function applyLocalUnmanagedLayout(items: DashboardUserLayoutItem[]): DashboardUserLayoutItem[] {
-  const localMap = readLocalUnmanagedLayout()
-  return items.map((item) => {
-    const local = localMap[item.widget_key]
-    if (!local || item.widget_id > 0) return item
-    return {
-      ...item,
-      grid_x: local.grid_x,
-      grid_y: local.grid_y,
-      grid_w: local.grid_w,
-      grid_h: local.grid_h,
-      visible: local.visible,
-      sort_order: local.sort_order,
-    }
-  })
-}
-
-function buildLocalUnmanagedLayout(items: DashboardUserLayoutItem[]): LocalUnmanagedLayoutMap {
-  const map: LocalUnmanagedLayoutMap = {}
-  for (const item of items) {
-    if (item.widget_id > 0) continue
-    map[item.widget_key] = {
-      grid_x: item.grid_x,
-      grid_y: item.grid_y,
-      grid_w: item.grid_w,
-      grid_h: item.grid_h,
-      visible: item.visible,
-      sort_order: item.sort_order,
-    }
-  }
-  return map
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -307,53 +257,7 @@ function sanitizeLayoutItems(items: DashboardUserLayoutItem[]): DashboardUserLay
 }
 
 function applyPreferredWidgetSizes(items: DashboardUserLayoutItem[]): DashboardUserLayoutItem[] {
-  return items.map((item) => {
-    if (item.widget_key === 'my_attendance') {
-      return {
-        ...item,
-        grid_w: 3,
-        grid_h: 2,
-        min_w: Math.max(3, item.min_w),
-        min_h: Math.max(2, item.min_h),
-        max_w: 3,
-        max_h: 2,
-      }
-    }
-    if (item.widget_key === 'mail_unread') {
-      return {
-        ...item,
-        grid_w: 4,
-        grid_h: 3,
-        min_w: Math.max(4, item.min_w),
-        min_h: Math.max(3, item.min_h),
-        max_w: Math.max(4, item.max_w),
-        max_h: Math.max(3, item.max_h),
-      }
-    }
-    if (item.widget_key === 'memo_widget') {
-      return {
-        ...item,
-        grid_w: 3,
-        grid_h: 4,
-        min_w: Math.max(3, item.min_w),
-        min_h: Math.max(4, item.min_h),
-        max_w: 3,
-        max_h: 4,
-      }
-    }
-    if (item.widget_key === 'checklist_widget') {
-      return {
-        ...item,
-        grid_w: 2,
-        grid_h: 4,
-        min_w: Math.max(2, item.min_w),
-        min_h: Math.max(4, item.min_h),
-        max_w: 2,
-        max_h: 4,
-      }
-    }
-    return item
-  })
+  return applyDashboardWidgetSizes(items, 'admin')
 }
 
 type ChecklistItem = {
@@ -366,9 +270,9 @@ type ChecklistItem = {
 function renderSimpleCountCard(title: string, count?: number, subtitle?: string) {
   return (
     <div className="h-full">
-      <p className="text-xs font-medium text-zinc-500">{title}</p>
-      <p className="mt-2 text-3xl font-semibold text-zinc-900">{(count ?? 0).toLocaleString('ko-KR')}</p>
-      {subtitle ? <p className="mt-1 text-xs text-zinc-500">{subtitle}</p> : null}
+      <p data-widget-title title="끌어서 위젯 이동" className="w-fit cursor-grab touch-none select-none text-sm font-semibold text-slate-800 active:cursor-grabbing">{title}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums text-slate-900">{(count ?? 0).toLocaleString('ko-KR')}</p>
+      {subtitle ? <p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p> : null}
     </div>
   )
 }
@@ -419,6 +323,8 @@ function findAutoGridPosition(items: DashboardUserLayoutItem[], width: number, h
 
 export default function AdminDashboardWidgets() {
   const router = useRouter()
+  const [resizing, setResizing] = useState(false)
+  const [moving, setMoving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [layout, setLayout] = useState<DashboardUserLayoutResponse | null>(null)
@@ -446,12 +352,18 @@ export default function AdminDashboardWidgets() {
   const [checklistDraftText, setChecklistDraftText] = useState('')
   const [isAttendanceProfileImageBroken, setIsAttendanceProfileImageBroken] = useState(false)
   const [attendanceSubmitting, setAttendanceSubmitting] = useState<'check-in' | 'check-out' | null>(null)
+  const layoutSaveLock = useRef(false)
+  const savedLayoutItems = useRef<DashboardUserLayoutItem[]>([])
+  const localLayoutKey = useRef('')
   const gridRef = useRef<HTMLElement | null>(null)
   const mailWidgetListWrapRef = useRef<HTMLDivElement | null>(null)
   const checklistInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
   const [checklistPendingFocusId, setChecklistPendingFocusId] = useState<number | null>(null)
   const memoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const memoLastSavedSignatureRef = useRef('')
+  const memoSaveQueue = useRef<Promise<void>>(Promise.resolve())
+  const checklistToggleLocks = useRef(new Set<number>())
+  const checklistWriteQueue = useRef<Promise<void>>(Promise.resolve())
   const checklistTextSaveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout> | undefined>>({})
 
   useEffect(() => {
@@ -469,13 +381,10 @@ export default function AdminDashboardWidgets() {
           bg_color: note.bg_color || '#FFF9C4',
           font_size: Number(note.font_size) || 14,
         })
+        setMemoInitialized(true)
       })
       .catch(() => {
-        // keep local defaults
-      })
-      .finally(() => {
-        if (!mounted) return
-        setMemoInitialized(true)
+        if (mounted) toast.error('메모를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 자동 저장은 중지됩니다.')
       })
     return () => {
       mounted = false
@@ -494,7 +403,7 @@ export default function AdminDashboardWidgets() {
     if (signature === memoLastSavedSignatureRef.current) return
     if (memoSaveTimerRef.current) clearTimeout(memoSaveTimerRef.current)
     memoSaveTimerRef.current = setTimeout(() => {
-      void patchAdminDashboardNote(payload)
+      memoSaveQueue.current = memoSaveQueue.current.then(() => patchAdminDashboardNote(payload))
         .then((saved) => {
           memoLastSavedSignatureRef.current = JSON.stringify({
             content: saved.content || '',
@@ -504,7 +413,7 @@ export default function AdminDashboardWidgets() {
           })
         })
         .catch(() => {
-          // no toast: autosave background failure
+          toast.error('메모를 저장하지 못했습니다. 내용을 복사해 두고 다시 시도해 주세요.')
         })
     }, 400)
     return () => {
@@ -534,7 +443,7 @@ export default function AdminDashboardWidgets() {
         .sort((a: ChecklistItem, b: ChecklistItem) => (a.sortOrder - b.sortOrder) || (a.id - b.id))
       setChecklistItems(mapped)
     } catch {
-      // keep empty mock-safe state
+      toast.error('체크리스트를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.')
     }
   }, [checklistWorkDate])
 
@@ -574,7 +483,7 @@ export default function AdminDashboardWidgets() {
 
   const rowCount = useMemo(() => {
     const maxBottom = visibleItems.reduce((acc, item) => Math.max(acc, item.grid_y + item.grid_h), 0)
-    return Math.max(8, maxBottom + 2)
+    return Math.max(1, maxBottom)
   }, [visibleItems])
 
   const loadWidgetData = useCallback(async (items: DashboardUserLayoutItem[]) => {
@@ -860,81 +769,19 @@ export default function AdminDashboardWidgets() {
       getAdminDashboardWidgetCatalog(),
     ])
 
-    const filteredLayoutItems = (layoutRes.items || [])
-      .filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
-      .sort((a, b) => (a.sort_order - b.sort_order) || a.widget_id - b.widget_id)
     const filteredCatalog = withAdminFallbackCatalog(
       (catalogRes.items || []).filter((row) => !EXCLUDED_WIDGET_KEYS.has(row.widget_key))
     )
 
-    let mergedItems = filteredLayoutItems
-    const hasWorkPostWidget = mergedItems.some((item) => item.widget_key === 'work_post_inbox')
-    if (!hasWorkPostWidget) {
-      const widgetMeta = filteredCatalog.find((row) => row.widget_key === 'work_post_inbox')
-      if (widgetMeta) {
-        const maxBottom = mergedItems.reduce((acc, item) => Math.max(acc, item.grid_y + item.grid_h), 0)
-        mergedItems = [
-          ...mergedItems,
-          {
-            widget_id: widgetMeta.widget_id,
-            widget_key: widgetMeta.widget_key,
-            title: widgetMeta.title,
-            description: widgetMeta.description,
-            required_permission_code: widgetMeta.required_permission_code,
-            grid_x: 0,
-            grid_y: maxBottom,
-            grid_w: widgetMeta.default_w,
-            grid_h: widgetMeta.default_h,
-            visible: true,
-            sort_order: mergedItems.length,
-            config_json: null,
-            min_w: widgetMeta.min_w,
-            min_h: widgetMeta.min_h,
-            max_w: widgetMeta.max_w,
-            max_h: widgetMeta.max_h,
-            supports_mobile: widgetMeta.supports_mobile,
-          },
-        ]
-      }
-    }
+    localLayoutKey.current = dashboardStorageKey(layoutRes)
+    const restored = restoreDashboardItems(layoutRes, filteredCatalog, readLocalDashboardItems(localLayoutKey.current), ['work_post_inbox']).map(decodeDashboardGrid)
+    savedLayoutItems.current = restored
+    const sanitizedItems = sanitizeLayoutItems(applyPreferredWidgetSizes(restored.filter(
+      item => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key)
+    )))
 
-    // Restore unmanaged fallback widgets (widget_id < 0) from local layout map,
-    // because these widgets are not persisted to server layout payload.
-    const localUnmanaged = readLocalUnmanagedLayout()
-    const fallbackUnmanaged = filteredCatalog.filter((row) => row.widget_id < 0)
-    for (const widgetMeta of fallbackUnmanaged) {
-      const local = localUnmanaged[widgetMeta.widget_key]
-      const alreadyExists = mergedItems.some((item) => item.widget_key === widgetMeta.widget_key)
-      if (!local || alreadyExists) continue
-      mergedItems = [
-        ...mergedItems,
-        {
-          widget_id: widgetMeta.widget_id,
-          widget_key: widgetMeta.widget_key,
-          title: widgetMeta.title,
-          description: widgetMeta.description,
-          required_permission_code: widgetMeta.required_permission_code,
-          grid_x: local.grid_x,
-          grid_y: local.grid_y,
-          grid_w: local.grid_w,
-          grid_h: local.grid_h,
-          visible: local.visible,
-          sort_order: local.sort_order,
-          config_json: null,
-          min_w: widgetMeta.min_w,
-          min_h: widgetMeta.min_h,
-          max_w: widgetMeta.max_w,
-          max_h: widgetMeta.max_h,
-          supports_mobile: widgetMeta.supports_mobile,
-        },
-      ]
-    }
-
-    const sanitizedItems = sanitizeLayoutItems(
-      applyPreferredWidgetSizes(applyLocalUnmanagedLayout(mergedItems))
-    )
     setLayout({ ...layoutRes, items: sanitizedItems })
-    setCatalog(filteredCatalog)
+    setCatalog(filteredCatalog.map(scaleDashboardCatalog))
     setDraftItems(sanitizedItems)
     void loadWidgetData(sanitizedItems).catch(() => {
       // ignore: each widget loader already has fallback handling
@@ -964,7 +811,7 @@ export default function AdminDashboardWidgets() {
 
     const recalc = (height: number) => {
       const headerHeight = 31
-      const rowHeight = 31
+      const rowHeight = 35
       const maxRows = 8
       const minRows = 2
       const next = Math.max(minRows, Math.min(maxRows, Math.floor((height - headerHeight) / rowHeight)))
@@ -1038,86 +885,71 @@ export default function AdminDashboardWidgets() {
 
   const handlePersistLayoutItems = useCallback(
     async (items: DashboardUserLayoutItem[], silent: boolean) => {
-      if (items.length === 0) return
+      if (layoutSaveLock.current) return false
+      layoutSaveLock.current = true
       setSaving(true)
       try {
         const normalizedItems = normalizeSortOrder(items)
-        writeLocalUnmanagedLayout(buildLocalUnmanagedLayout(normalizedItems))
+        const allItems = mergeDashboardVisibility(savedLayoutItems.current, normalizedItems)
         await saveAdminDashboardWidgetLayout(
           {
             replace_all: true,
-            items: normalizedItems
+            items: allItems
               .filter((item) => item.widget_id > 0)
+              .map(encodeDashboardGrid)
               .map((item, index) => ({
                 widget_key: item.widget_key,
                 grid_x: item.grid_x,
                 grid_y: item.grid_y,
                 grid_w: item.grid_w,
                 grid_h: item.grid_h,
-                visible: true,
+                visible: item.visible,
                 sort_order: index,
                 config_json: item.config_json ?? {},
               })),
           },
           deviceType
         )
+        const hasNewWidget = normalizedItems.some(item => !savedLayoutItems.current.some(old => old.widget_key === item.widget_key && old.visible))
+        savedLayoutItems.current = allItems
+        if (!writeLocalDashboardItems(localLayoutKey.current, allItems.map(encodeDashboardGrid))) {
+          toast.error('브라우저 설정 때문에 보조 위젯 설정을 보관하지 못했습니다. 새로고침하면 되돌아갈 수 있습니다.')
+        }
         setLayout((prev) => (prev ? { ...prev, items: normalizedItems } : prev))
         setDraftItems(normalizedItems)
+        if (hasNewWidget) await loadWidgetData(normalizedItems).catch(() => undefined)
         if (!silent) toast.success('대시보드 레이아웃을 저장했습니다.')
+        return true
       } catch {
-        toast.error(silent ? '위젯 위치 저장에 실패했습니다.' : '레이아웃 저장에 실패했습니다.')
+        toast.error('위젯 설정을 저장하지 못했습니다. 기존 설정을 유지합니다.')
+        return false
       } finally {
+        layoutSaveLock.current = false
         setSaving(false)
       }
     },
-    [deviceType]
+    [deviceType, loadWidgetData]
   )
 
-  const handleGridDrop = useCallback((event: React.DragEvent<HTMLElement>) => {
-    event.preventDefault()
-    if (!gridRef.current) return
+  const handleWidgetResize = useCallback(async (key: string, width: number, height: number) => {
+    if (layoutSaveLock.current) return
+    const next = (layout?.items || []).filter(item => item.visible).map(item => item.widget_key === key ? {
+      ...item, grid_w: clamp(width, item.min_w, Math.min(item.max_w, GRID_COLS - item.grid_x)),
+      grid_h: clamp(height, item.min_h, item.max_h),
+      config_json: { ...item.config_json, _dashboard_size_custom: true },
+    } : item)
+    await handlePersistLayoutItems(normalizeSortOrder(resolveCollisions(next, key)), true)
+  }, [layout?.items, handlePersistLayoutItems])
 
-    const raw = event.dataTransfer.getData('application/dashboard-widget')
-    if (!raw) return
-
-    let payload: DragPayload
-    try {
-      payload = JSON.parse(raw) as DragPayload
-    } catch {
-      return
-    }
-
-    const rect = gridRef.current.getBoundingClientRect()
-    const cellWidth = (rect.width - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS
-    const rowSpan = ROW_HEIGHT + GRID_GAP
-    const relX = event.clientX - rect.left
-    const relY = event.clientY - rect.top
-    const rawX = Math.floor(relX / (cellWidth + GRID_GAP))
-    const rawY = Math.floor(relY / rowSpan)
-    const targetX = clamp(rawX, 0, GRID_COLS - 1)
-    const targetY = Math.max(0, rawY)
-
-    if (!editMode) {
-      const sourceItems = (layout?.items || [])
-        .filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
-        .sort((a, b) => (a.sort_order - b.sort_order) || a.widget_id - b.widget_id)
-      if (sourceItems.length === 0) return
-      if (payload.source !== 'existing') return
-      const nextItems = buildDroppedItems(sourceItems, payload, targetX, targetY)
-      setLayout((prev) => (prev ? { ...prev, items: nextItems } : prev))
-      setDraftItems(nextItems)
-      void handlePersistLayoutItems(nextItems, true)
-      return
-    }
-    handleDropToCell(payload, targetX, targetY)
-  }, [buildDroppedItems, editMode, handleDropToCell, handlePersistLayoutItems, layout?.items])
+  const handleWidgetMove = useCallback(async (key: string, x: number, y: number) => {
+    if (layoutSaveLock.current) return
+    const source = (layout?.items || []).filter(item => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
+    const next = buildDroppedItems(source, {widgetKey: key, source: 'existing'}, x, y)
+    await handlePersistLayoutItems(next, true)
+  }, [layout?.items, buildDroppedItems, handlePersistLayoutItems])
 
   const handleSaveLayout = useCallback(async () => {
-    if (draftItems.length === 0) {
-      toast.error('최소 1개 이상의 위젯이 필요합니다.')
-      return
-    }
-    await handlePersistLayoutItems(draftItems, false)
+    if (!(await handlePersistLayoutItems(draftItems, false))) return
     setEditMode(false)
     await loadDashboard()
   }, [draftItems, handlePersistLayoutItems, loadDashboard])
@@ -1152,6 +984,12 @@ export default function AdminDashboardWidgets() {
         max_h: meta.max_h,
         supports_mobile: meta.supports_mobile,
       }
+      const saved = savedLayoutItems.current.find(item => item.widget_key === widgetKey)
+      if (saved) {
+        appended.grid_w = saved.grid_w
+        appended.grid_h = saved.grid_h
+        appended.config_json = saved.config_json
+      }
       return sanitizeLayoutItems(applyPreferredWidgetSizes([...items, appended]))
     }
 
@@ -1164,14 +1002,14 @@ export default function AdminDashboardWidgets() {
       .filter((item) => item.visible && !EXCLUDED_WIDGET_KEYS.has(item.widget_key))
       .sort((a, b) => (a.sort_order - b.sort_order) || a.widget_id - b.widget_id)
     const nextItems = applyToggle(sourceItems)
-    setLayout((prev) => (prev ? { ...prev, items: nextItems } : prev))
-    setDraftItems(nextItems)
     void handlePersistLayoutItems(nextItems, true)
   }, [catalogByKey, editMode, handlePersistLayoutItems, layout?.items])
 
   const renderWidgetBody = useCallback(
     (item: DashboardUserLayoutItem) => {
       switch (item.widget_key) {
+        case 'monthly_work_progress':
+          return <MonthlyWorkProgressWidget scope="admin" />
         case 'my_attendance': {
           const data = widgetData.my_attendance
           const leaveData = widgetData.my_leave_balance
@@ -1180,9 +1018,9 @@ export default function AdminDashboardWidgets() {
             ? resolveApiAssetUrl(profile?.profileImageUrl)
             : null
           return (
-            <div className="h-full">
+            <div className={dashboardStyles.attendance}>
               <div className="flex items-center justify-between gap-2">
-                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                <div data-widget-title title="끌어서 위젯 이동" className="inline-flex cursor-grab touch-none select-none items-center gap-2 text-sm font-semibold text-slate-800 active:cursor-grabbing">
                   <UserCheck2 className="h-4 w-4 text-zinc-600" />
                   <span>근태</span>
                 </div>
@@ -1212,45 +1050,41 @@ export default function AdminDashboardWidgets() {
                   )}
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <div className="h-[64px] w-[84px] overflow-hidden rounded-md border border-transparent bg-transparent">
-                  <div className="mx-auto h-full w-3/4 overflow-hidden rounded-full">
-                    {profileImageUrl ? (
-                      <img
-                        src={profileImageUrl}
-                        alt={profile?.name || '프로필'}
-                        className="block h-full w-full object-contain"
-                        onError={() => setIsAttendanceProfileImageBroken(true)}
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[13px] font-semibold text-zinc-500">
-                        {(profile?.name || '-').slice(0, 1)}
-                      </div>
-                    )}
-                  </div>
+              <div className={dashboardStyles.attendanceProfile}>
+                <div className={dashboardStyles.attendancePhoto}>
+                  {profileImageUrl ? (
+                    <img src={profileImageUrl} alt={profile?.name || '프로필'}
+                      className="h-full w-full object-cover"
+                      onError={() => setIsAttendanceProfileImageBroken(true)} />
+                  ) : <span>{(profile?.name || '-').slice(0, 1)}</span>}
                 </div>
-                <div className="flex h-[64px] flex-1 flex-col items-start justify-center rounded-md border border-transparent bg-transparent px-2 py-1.5 text-[11px] leading-4 text-zinc-700">
-                  <p className="truncate text-[14px]" title={`${profile?.name || '-'} ${profile?.position || ''}`.trim()}>
-                    <span className="text-[15px] font-bold">{profile?.name || '-'}</span>
-                    <span className="ml-1 font-normal">{profile?.position || ''}</span>
-                  </p>
-                </div>
+                <p className={dashboardStyles.attendanceName} title={`${profile?.name || '-'} ${profile?.position || ''}`.trim()}>
+                  <strong>{profile?.name || '-'}</strong>
+                  <span className="ml-1">{profile?.position || ''}</span>
+                </p>
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-1.5">
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
-                  <p className="text-[9px] text-zinc-500">휴가 D-day</p>
+              {(data?.checkIn || data?.checkOut || leaveData?.nextLeave) && (
+                <div className={dashboardStyles.attendanceDetails}>
+                  {data?.checkIn && <p><span>오늘 출근</span><strong>{formatKSTDateTime(data.checkIn)}</strong></p>}
+                  {data?.checkOut && <p><span>오늘 퇴근</span><strong>{formatKSTDateTime(data.checkOut)}</strong></p>}
+                  {leaveData?.nextLeave && <p><span>다음 휴가</span><strong>{formatKSTDate(leaveData.nextLeave.startDate)}</strong></p>}
+                </div>
+              )}
+              <div className={dashboardStyles.attendanceLeave}>
+                <div className="border-r border-slate-100 px-2 py-1 text-center last:border-r-0">
+                  <p className="text-[11px] text-slate-500">휴가 D-day</p>
                   <p className="mt-1 text-[13px] font-semibold text-zinc-900">
                     {leaveData?.nextLeave ? `D-${leaveData.nextLeave.dDay}` : '-'}
                   </p>
                 </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
-                  <p className="text-[9px] text-zinc-500">부여휴가</p>
+                <div className="border-r border-slate-100 px-2 py-1 text-center last:border-r-0">
+                  <p className="text-[11px] text-slate-500">부여휴가</p>
                   <p className="mt-1 text-[13px] font-semibold text-zinc-900">
                     {Number(leaveData?.granted || 0).toLocaleString('ko-KR')}일
                   </p>
                 </div>
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-center">
-                  <p className="text-[9px] text-zinc-500">잔여휴가</p>
+                <div className="border-r border-slate-100 px-2 py-1 text-center last:border-r-0">
+                  <p className="text-[11px] text-slate-500">잔여휴가</p>
                   <p className="mt-1 text-[13px] font-semibold text-zinc-900">
                     {Number(leaveData?.remaining || 0).toLocaleString('ko-KR')}일
                   </p>
@@ -1263,14 +1097,14 @@ export default function AdminDashboardWidgets() {
           const data = widgetData.my_leave_balance
           return (
             <div className="h-full">
-              <p className="text-xs font-medium text-zinc-500">내 연차</p>
+              <p data-widget-title title="끌어서 위젯 이동" className="w-fit cursor-grab touch-none select-none text-xs font-medium text-zinc-500">내 연차</p>
               <div className="mt-2 space-y-1 text-[11px] leading-4 text-zinc-700">
-                <p>부여일수(granted_days): {Number(data?.granted || 0).toLocaleString('ko-KR')}</p>
-                <p>잔여일수(remaining_days): {Number(data?.remaining || 0).toLocaleString('ko-KR')}</p>
-                <p>다음휴가ID(request_id): {data?.nextLeave?.requestId ?? '-'}</p>
-                <p>시작일(start_date): {data?.nextLeave ? formatKSTDate(data.nextLeave.startDate) : '-'}</p>
-                <p>종료일(end_date): {data?.nextLeave ? formatKSTDate(data.nextLeave.endDate) : '-'}</p>
-                <p>D-day(d_day): {data?.nextLeave ? data.nextLeave.dDay : '-'}</p>
+                <p>부여 연차: {Number(data?.granted || 0).toLocaleString('ko-KR')}</p>
+                <p>잔여 연차: {Number(data?.remaining || 0).toLocaleString('ko-KR')}</p>
+                <p>휴가 번호: {data?.nextLeave?.requestId ?? '-'}</p>
+                <p>시작일: {data?.nextLeave ? formatKSTDate(data.nextLeave.startDate) : '-'}</p>
+                <p>종료일: {data?.nextLeave ? formatKSTDate(data.nextLeave.endDate) : '-'}</p>
+                <p>휴가까지: {data?.nextLeave ? data.nextLeave.dDay : '-'}</p>
               </div>
             </div>
           )
@@ -1299,7 +1133,7 @@ export default function AdminDashboardWidgets() {
           return (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between gap-2">
-                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                <div data-widget-title title="끌어서 위젯 이동" className="inline-flex cursor-grab touch-none select-none items-center gap-2 text-sm font-semibold text-slate-800 active:cursor-grabbing">
                   <Mail className="h-4 w-4 text-zinc-600" />
                   <span>메일</span>
                 </div>
@@ -1334,7 +1168,7 @@ export default function AdminDashboardWidgets() {
                   </button>
                 </div>
               </div>
-              <div className="mt-2 flex-1 space-y-1.5">
+              <div className="mt-2 min-h-0 flex-1 space-y-1.5">
                 {activeItems.length > 0 ? (
                   <div
                     ref={mailWidgetListWrapRef}
@@ -1360,12 +1194,12 @@ export default function AdminDashboardWidgets() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-6 text-center text-xs text-zinc-500">
+                  <div className="rounded-lg bg-slate-50/70 px-3 py-6 text-center text-xs leading-5 text-slate-400">
                     {listLabel} 신규 메일이 없습니다.
                   </div>
                 )}
               </div>
-              <div className="mt-1 grid grid-cols-3 items-center">
+              <div className="mt-1 grid shrink-0 grid-cols-3 items-center">
                 <div />
                 {activeCount > pageSize ? (
                   <Pagination
@@ -1399,6 +1233,8 @@ export default function AdminDashboardWidgets() {
         case 'work_post_inbox':
           return (
             <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between gap-2">
+              <div data-widget-title title="끌어서 위젯 이동" className="shrink-0 inline-flex cursor-grab touch-none select-none items-center gap-2 text-sm font-semibold text-slate-800 active:cursor-grabbing"><Briefcase className="h-4 w-4 text-slate-500" />업무 소식</div>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -1419,6 +1255,7 @@ export default function AdminDashboardWidgets() {
                   업무지시 {Number(widgetData.work_post_inbox?.taskTotal || 0)}
                 </button>
               </div>
+              </div>
               <div className="mt-2 flex-1 space-y-1">
                 {(workPostTab === 'notice'
                   ? widgetData.work_post_inbox?.noticeItems || []
@@ -1432,7 +1269,7 @@ export default function AdminDashboardWidgets() {
                         `/admin/staff/work-posts?source_type=work_post&source_id=${post.post_id}`
                       )
                     }
-                    className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-left hover:border-zinc-300"
+                    className="w-full border-b border-slate-100 px-1 py-3 text-left transition hover:bg-slate-50 last:border-b-0"
                   >
                     <p className="line-clamp-1 text-xs font-medium text-zinc-800">{post.title}</p>
                     <p className="mt-0.5 text-[11px] text-zinc-500">
@@ -1444,7 +1281,7 @@ export default function AdminDashboardWidgets() {
                   ? widgetData.work_post_inbox?.noticeItems || []
                   : widgetData.work_post_inbox?.taskItems || []
                 ).length === 0 ? (
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-6 text-center text-xs text-zinc-500">
+                  <div className="rounded-lg bg-slate-50/70 px-3 py-6 text-center text-xs leading-5 text-slate-400">
                     표시할 {workPostTab === 'notice' ? '공지사항' : '업무지시'}이 없습니다.
                   </div>
                 ) : null}
@@ -1478,7 +1315,8 @@ export default function AdminDashboardWidgets() {
               })
           }
 
-          const createAfter = (index: number) => {
+          const createAfter = (targetId: number) => {
+            const index = checklistItems.findIndex(item => item.id === targetId)
             const base = checklistItems[index]
             if (!base || base.text.trim().length === 0) return
             void createAdminDashboardChecklistItem({
@@ -1496,10 +1334,12 @@ export default function AdminDashboardWidgets() {
               })
           }
 
-          const removeAt = (index: number) => {
+          const removeAt = (targetId: number) => {
+            const index = checklistItems.findIndex(item => item.id === targetId)
             const target = checklistItems[index]
             if (!target?.id) return
             const prevRow = checklistItems[index - 1] ?? checklistItems[index + 1] ?? null
+            clearTimeout(checklistTextSaveTimersRef.current[target.id])
             void deleteAdminDashboardChecklistItem(target.id)
               .then(async () => {
                 await loadChecklistByDate()
@@ -1519,16 +1359,18 @@ export default function AdminDashboardWidgets() {
               const row = checklistItems.find((item) => item.id === targetId)
               const sortOrder = row?.sortOrder ?? 0
               if (text.trim().length === 0) return
-              void patchAdminDashboardChecklistItem(targetId, {
+              checklistWriteQueue.current = checklistWriteQueue.current.then(() => patchAdminDashboardChecklistItem(targetId, {
                 content: text,
                 sort_order: sortOrder,
-              }).catch(() => {
-                // silent autosave failure
+              })).then(() => undefined).catch(() => {
+                toast.error('체크리스트 내용을 저장하지 못했습니다. 내용을 복사해 두고 다시 시도해 주세요.')
               })
             }, 350)
           }
 
           const toggleDone = (targetId: number) => {
+            if (checklistToggleLocks.current.has(targetId)) return
+            checklistToggleLocks.current.add(targetId)
             const row = checklistItems.find((item) => item.id === targetId)
             const nextDone = !Boolean(row?.done)
             setChecklistItems((prev) => prev.map((item) => (item.id === targetId ? { ...item, done: nextDone } : item)))
@@ -1536,14 +1378,15 @@ export default function AdminDashboardWidgets() {
               is_done: nextDone,
               sort_order: row?.sortOrder ?? 0,
             }).catch(() => {
-              toast.error('체크 상태 저장에 실패했습니다.')
-            })
+              setChecklistItems(prev => prev.map(item => item.id === targetId ? { ...item, done: Boolean(row?.done) } : item))
+              toast.error('체크 상태 저장에 실패했습니다. 기존 상태로 되돌렸습니다.')
+            }).finally(() => checklistToggleLocks.current.delete(targetId))
           }
 
           return (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between">
-                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                <div data-widget-title title="끌어서 위젯 이동" className="inline-flex cursor-grab touch-none select-none items-center gap-2 text-sm font-semibold text-slate-800 active:cursor-grabbing">
                   <CheckSquare className="h-4 w-4 text-zinc-600" />
                   <span>체크</span>
                 </div>
@@ -1560,7 +1403,7 @@ export default function AdminDashboardWidgets() {
               </div>
               <p className="mt-1 text-[10px] text-zinc-500">{checklistWorkDate}</p>
               <div className="mt-2 flex-1 space-y-1 overflow-auto pr-1">
-                {visibleRows.map((row, index) => (
+                {visibleRows.map((row) => (
                   <div key={row.id} className="grid grid-cols-[14px_minmax(0,1fr)_16px] items-center gap-1">
                     <input
                       type="checkbox"
@@ -1577,12 +1420,12 @@ export default function AdminDashboardWidgets() {
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           event.preventDefault()
-                          createAfter(index)
+                          createAfter(row.id)
                           return
                         }
                         if (event.key === 'Backspace' && row.text.trim().length === 0) {
                           event.preventDefault()
-                          removeAt(index)
+                          removeAt(row.id)
                         }
                       }}
                       placeholder="할 일 입력"
@@ -1592,7 +1435,7 @@ export default function AdminDashboardWidgets() {
                     />
                     <button
                       type="button"
-                      onClick={() => removeAt(index)}
+                      onClick={() => removeAt(row.id)}
                       className="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
                       title="항목 삭제"
                     >
@@ -1648,7 +1491,7 @@ export default function AdminDashboardWidgets() {
           return (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between gap-2">
-                <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-800">
+                <div data-widget-title title="끌어서 위젯 이동" className="inline-flex cursor-grab touch-none select-none items-center gap-2 text-sm font-semibold text-slate-800 active:cursor-grabbing">
                   <NotebookPen className="h-4 w-4 text-zinc-600" />
                   <span>메모</span>
                 </div>
@@ -1689,6 +1532,7 @@ export default function AdminDashboardWidgets() {
                 </div>
               </div>
               <textarea
+                disabled={!memoInitialized}
                 value={memoText}
                 onChange={(event) => setMemoText(event.target.value)}
                 placeholder="메모를 입력하세요."
@@ -1697,14 +1541,14 @@ export default function AdminDashboardWidgets() {
                   backgroundColor: memoBgColor,
                   fontSize: `${memoFontSize}px`,
                 }}
-                className="mt-2 h-full min-h-0 w-full resize-none rounded-md border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-sky-300"
+                className="mt-3 min-h-0 w-full flex-1 resize-none rounded-lg border border-transparent px-3 py-3 text-sm leading-6 outline-none focus:border-sky-300"
               />
             </div>
           )
         default:
           return (
             <div className="h-full">
-              <p className="text-xs font-medium text-zinc-500">준비 중인 위젯</p>
+              <p data-widget-title title="끌어서 위젯 이동" className="w-fit cursor-grab touch-none select-none text-xs font-medium text-zinc-500">준비 중인 위젯</p>
               <p className="mt-2 text-sm text-zinc-700">{item.title}</p>
               <p className="mt-1 text-xs text-zinc-500">{item.widget_key}</p>
             </div>
@@ -1720,6 +1564,7 @@ export default function AdminDashboardWidgets() {
       mailWidgetPageByTab,
       mailWidgetTab,
       mailWidgetVisibleRows,
+      memoInitialized,
       memoBgColor,
       memoFontSize,
       memoText,
@@ -1734,7 +1579,10 @@ export default function AdminDashboardWidgets() {
 
   return (
     <main className="space-y-3">
-      <div className="relative pr-12">
+      <DashboardWidgetToolbar items={headerToggleItems} visibleKeys={visibleItems.map(item => item.widget_key)}
+        saving={saving} disabled={loading || !!error || resizing || moving}
+        onToggle={handleHeaderToggleWidget} />
+      <div className="relative">
         {loading ? (
           <div className="px-1 py-8 text-center text-sm text-zinc-500">
             위젯 레이아웃을 불러오는 중입니다.
@@ -1751,100 +1599,45 @@ export default function AdminDashboardWidgets() {
           </div>
         ) : null}
 
+
         {!loading && !error && visibleItems.length > 0 ? (
           <section
             ref={gridRef}
-            className={`relative grid grid-cols-12 gap-4 auto-rows-[84px] ${editMode ? 'outline outline-[1px] outline-dashed outline-zinc-300 p-1' : ''}`}
-            onDragOver={(event) => {
-              event.preventDefault()
-            }}
-            onDrop={(event) => {
-              handleGridDrop(event)
-            }}
+            className={`${dashboardStyles.grid} relative grid grid-cols-[repeat(24,minmax(0,1fr))] gap-4 auto-rows-[34px] ${editMode ? 'outline outline-[1px] outline-dashed outline-zinc-300 p-1' : ''}`}
             style={{
               minHeight: rowCount * ROW_HEIGHT + (rowCount - 1) * GRID_GAP,
-              backgroundImage: editMode
+              backgroundImage: (resizing || moving)
                 ? 'linear-gradient(to right, rgba(161,161,170,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(161,161,170,0.18) 1px, transparent 1px)'
                 : 'none',
-              backgroundSize: editMode ? `calc((100% - ${GRID_GAP * (GRID_COLS - 1)}px) / ${GRID_COLS}) ${ROW_HEIGHT + GRID_GAP}px` : 'auto',
+              backgroundSize: (resizing || moving) ? `calc((100% + ${GRID_GAP}px) / ${GRID_COLS}) ${ROW_HEIGHT + GRID_GAP}px` : 'auto',
             }}
           >
             {visibleItems.map((item) => (
               <article
                 key={item.widget_id}
-                className={`${CARD_BASE_CLASS} relative group ${editMode ? 'cursor-grab border-indigo-200' : ''}`}
+                data-widget={item.widget_key}
+                className={`${CARD_BASE_CLASS} ${dashboardStyles.card} relative group ${editMode ? 'cursor-grab border-indigo-200' : ''}`}
                 style={{
+                  '--widget-height': `${item.grid_h * ROW_HEIGHT + (item.grid_h - 1) * GRID_GAP}px`,
                   gridColumn: `${item.grid_x + 1} / span ${item.grid_w}`,
                   gridRow: `${item.grid_y + 1} / span ${item.grid_h}`,
-                }}
+                } as React.CSSProperties}
               >
-                {!editMode ? (
-                  <button
-                    type="button"
-                    draggable={!saving}
-                    onDragStart={(event) => {
-                      const payload: DragPayload = { widgetKey: item.widget_key, source: 'existing' }
-                      event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
-                      event.dataTransfer.effectAllowed = 'move'
-                      const card = (event.currentTarget as HTMLElement).closest('article')
-                      if (card) {
-                        event.dataTransfer.setDragImage(card, 24, 16)
-                      }
-                    }}
-                    className="absolute left-2 top-2 z-10 inline-flex h-5 w-5 cursor-grab items-center justify-center rounded border border-zinc-200 bg-white/90 text-zinc-500 opacity-0 transition hover:bg-zinc-100 group-hover:opacity-100"
-                    title="위젯 위치 이동"
-                  >
-                    <GripVertical className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-                {editMode ? (
-                  <div
-                    className="mb-2 flex cursor-grab select-none items-center gap-1"
-                    draggable={!saving}
-                    onDragStart={(event) => {
-                      const payload: DragPayload = { widgetKey: item.widget_key, source: 'existing' }
-                      event.dataTransfer.setData('application/dashboard-widget', JSON.stringify(payload))
-                      event.dataTransfer.effectAllowed = 'move'
-                      const card = (event.currentTarget as HTMLElement).closest('article')
-                      if (card) {
-                        event.dataTransfer.setDragImage(card, 24, 16)
-                      }
-                    }}
-                  >
-                    <GripVertical className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                    <p className="truncate text-[11px] text-zinc-500">{item.title}</p>
-                  </div>
-                ) : null}
-                {renderWidgetBody(item)}
+                {<DashboardWidgetResizeHandles
+                  title={item.widget_key === 'my_attendance' ? '근태' : item.title} width={item.grid_w} height={item.grid_h} disabled={saving || moving}
+                  minWidth={item.min_w} maxWidth={item.max_w} minHeight={item.min_h} maxHeight={item.max_h}
+                  onResize={(width, height) => handleWidgetResize(item.widget_key, width, height)} onActive={setResizing} />}
+                <DashboardWidgetMoveSurface className={dashboardStyles.body}
+                  x={item.grid_x} y={item.grid_y} width={item.grid_w} disabled={saving || resizing || moving}
+                  onActive={setMoving} onMove={(x,y) => handleWidgetMove(item.widget_key,x,y)}>
+                  {renderWidgetBody(item)}
+                </DashboardWidgetMoveSurface>
               </article>
             ))}
           </section>
         ) : null}
 
-        <aside className="absolute right-0 top-0">
-          <div className="flex flex-col items-center gap-1 rounded-md border border-zinc-200 bg-white px-1 py-1">
-            {headerToggleItems.map((row) => {
-              const active = visibleItems.some((item) => item.widget_key === row.widget_key)
-              const Icon = getWidgetHeaderIcon(row.widget_key)
-              return (
-                <button
-                  key={row.widget_key}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void handleHeaderToggleWidget(row.widget_key)}
-                  title={`${row.title} ${active ? '숨기기' : '표시'}`}
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition ${
-                    active
-                      ? 'border-sky-200 bg-sky-100 text-sky-700'
-                      : 'border-zinc-200 bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              )
-            })}
-          </div>
-        </aside>
+
       </div>
     </main>
   )

@@ -2,7 +2,9 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
+import { useHeaderBackAction } from '@/contexts/HeaderBackContext'
 import BackButton from '@/components/common/BackButton'
+import { getPortalBackPath } from '@/utils/portalBackNavigation'
 import PortalNotificationBell from '@/components/common/PortalNotificationBell'
 import HeaderActionButton from '@/components/common/HeaderActionButton'
 import { LogOut, LogIn } from 'lucide-react'
@@ -92,18 +94,8 @@ const Header = () => {
     return '어드민'
   }, [pathname, searchParams])
 
-  const backPath = useMemo(() => {
-    if (pathname.startsWith('/admin/companies/') && pathname !== '/admin/companies/new') return '/admin/companies'
-    if (pathname.startsWith('/admin/companies/new')) return '/admin/companies'
-    if (pathname.startsWith('/admin/companies/account/new')) return '/admin/companies/account'
-    if (
-      pathname.startsWith('/admin/company-withholding/') &&
-      !['/admin/company-withholding/business', '/admin/company-withholding/vat', '/admin/company-withholding/income-tax', '/admin/company-withholding/corporate-tax'].includes(pathname)
-    ) {
-      return '/admin/company-withholding/business'
-    }
-    return null
-  }, [pathname])
+  const localBack = useHeaderBackAction()
+  const backPath = getPortalBackPath(pathname, searchParams)
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -216,17 +208,14 @@ const Header = () => {
     <header className="sticky top-0 z-30 border-b border-neutral-200 bg-sky-50/70 backdrop-blur">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {backPath || localBack ? <BackButton fallbackPath={backPath || pathname} onBack={localBack ?? undefined} iconOnly /> : null}
+            <div className="min-w-0">
             <div className="text-sm font-semibold text-neutral-900">
               {companyName || 'KEVIN TAX ADMIN'}
             </div>
             {backPath ? (
               <div className="mt-1 flex items-center gap-2">
-                <BackButton
-                  fallbackPath={backPath}
-                  className="inline-flex h-7 items-center rounded-md border border-zinc-300 px-2.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
-                />
-                <span className="text-xs text-neutral-300">|</span>
                 <span className="truncate text-xs text-neutral-500">{currentLabel}</span>
                 {unreadNotificationCount > 0 ? (
                   <span className="inline-flex h-5 items-center rounded-full bg-amber-100 px-2 text-[11px] font-medium text-amber-700">
@@ -244,6 +233,7 @@ const Header = () => {
                 ) : null}
               </div>
             )}
+            </div>
           </div>
           <div className="flex items-center gap-2 pr-7">
             <div className="hidden items-center gap-2.5 text-xs lg:flex">

@@ -764,3 +764,24 @@ export async function fetchTaskFileDownloadUrl(
   })
   return res.data
 }
+
+
+export interface TaskFileArchiveResponse {
+  total: number
+  page: number
+  size: number
+  items: TaskBoardFileItem[]
+  groups: { company_id: number; company_name: string; task_name: string; file_count: number; latest_uploaded_at: string | null }[]
+  summary: TaskBoardFilesSummaryResponse
+  companies: { id: number; name: string }[]
+  tasks: string[]
+  years: number[]
+}
+
+export async function fetchTaskFileArchive(
+  scope: TaskBoardScope,
+  params: TaskBoardFilesListParams & { company_id?: number; grouped?: boolean }
+): Promise<TaskFileArchiveResponse> {
+  const res = await getHttp(scope).get<TaskFileArchiveResponse>(`${getBase(scope)}/task-files/archive`, { params })
+  return res.data
+}

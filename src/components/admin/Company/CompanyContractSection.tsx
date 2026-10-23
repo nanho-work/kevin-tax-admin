@@ -120,7 +120,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => change('active', e.target.checked)} />계약 활성</label>
     </div>
       {selected ? <Field label="변경 사유"><input className={input} value={draft.reason} onChange={(e) => change('reason', e.target.value)} /></Field> : null}
-      <div className="border-t border-slate-100 pt-4"><Field label="계약 메모"><textarea rows={4} maxLength={2000} className={`${input} resize-y`} value={draft.memo} onChange={(e) => change('memo', e.target.value)} /></Field></div>
+      <div className="border-t border-slate-100 pt-4"><Field label="계약 메모"><textarea rows={6} maxLength={2000} className={`${input} resize-y`} value={draft.memo} onChange={(e) => change('memo', e.target.value)} /></Field></div>
       {creating ? <p className="text-xs text-slate-500">상단의 등록완료 버튼으로 거래처와 계약을 등록합니다.</p> : <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-4 py-2 text-xs" onClick={() => { const original = current || rows[0]; setSelected(original?.id ?? null); setDraft(original ? fromContract(original) : empty()); setEditing(false); setError('') }}>취소</button><button type="button" className="rounded-lg bg-sky-600 px-4 py-2 text-xs text-white" onClick={() => void save()}>{saving ? '저장 중…' : '계약 저장'}</button></div>}
     </fieldset> : !creating && !loading && !error ? current ? <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
       {[['신고주기', current.report_cycle === 'monthly' ? '매월' : current.report_cycle === 'semiannual' ? '반기' : '미지정'], ['급여일', current.payroll_day ? `${current.payroll_day}일` : '미지정'], ['급여 귀속 기준', current.payroll_basis === 'current_month' ? '당월 귀속 · 당월 지급' : current.payroll_basis === 'previous_month' ? '전월 귀속 · 당월 지급' : '미지정'], ['월 기장료 (공급가)', current.monthly_fee_supply == null ? '미지정' : `${current.monthly_fee_supply.toLocaleString()}원`], ['부가세', current.vat_included ? '포함' : '별도']].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{value}</dd></div>)}
@@ -134,7 +134,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
           </button> : null}
         </dt>
         <dd className="mt-2 space-y-2">
-          <textarea id="contract-memo" rows={4} maxLength={2000} value={memoDraft} readOnly={!editable || !memoUnlocked} disabled={saving || disabled}
+          <textarea id="contract-memo" rows={6} maxLength={2000} value={memoDraft} readOnly={!editable || !memoUnlocked} disabled={saving || disabled}
             onChange={(e) => setMemoDraft(e.target.value)} placeholder={editable ? '등록된 메모가 없습니다. 잠금을 해제하고 메모를 입력하세요.' : '등록된 메모가 없습니다.'}
             className={`${input} resize-y leading-6 ${memoUnlocked ? '' : '!bg-slate-50 text-slate-600'}`} />
           {memoError ? <p role="alert" className="text-xs text-rose-600">{memoError}</p> : null}

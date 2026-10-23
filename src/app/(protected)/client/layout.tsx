@@ -1,5 +1,6 @@
 'use client'
 
+import { HeaderBackProvider } from '@/contexts/HeaderBackContext'
 import { sidebarShellClass } from '@/utils/portalSidebarStyles'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -83,7 +84,7 @@ export default function ClientLayout({
   return (
     <ClientSessionProvider>
       <Suspense fallback={<p className="mt-20 text-center text-gray-500">로딩 중...</p>}>
-        <ProtectedClientShell>{children}</ProtectedClientShell>
+        <HeaderBackProvider><ProtectedClientShell>{children}</ProtectedClientShell></HeaderBackProvider>
       </Suspense>
     </ClientSessionProvider>
   )

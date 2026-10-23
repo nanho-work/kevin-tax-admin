@@ -11,32 +11,13 @@ import { formatKSTDate } from '@/utils/dateTime'
 import {
   fetchTaskFileDownloadUrl,
   fetchTaskFilePreviewUrl,
-  fetchTaskFilesSummary,
+  fetchTaskFileArchive,
   getTaskBoardErrorMessage,
-  listAllTaskFiles,
-  listCompanyTaskFiles,
-  listTaskBoards,
-  type TaskBoardListItem,
   type TaskBoardScope,
-  type TaskBoardFileItem,
-  type TaskBoardFilesSummaryResponse,
+  type TaskFileArchiveResponse,
 } from '@/services/workflowTaskBoard'
 
 type ViewMode = 'monthly' | 'yearly'
-
-type CompanyOption = {
-  id: number
-  name: string
-}
-
-type YearlyRow = {
-  key: string
-  companyName: string
-  year: string
-  taskName: string
-  fileCount: number
-  latestUploadedAt: string
-}
 
 const PAGE_SIZE = 20
 
@@ -56,11 +37,6 @@ function getKstNowParts() {
 
 function pad2(value: number) {
   return String(value).padStart(2, '0')
-}
-
-function nextYm(year: number, month: number): string {
-  if (month === 12) return `${year + 1}-01`
-  return `${year}-${pad2(month + 1)}`
 }
 
 function formatBytes(bytes?: number | null): string {
@@ -112,7 +88,7 @@ function IconTooltipButton({
       aria-label={label}
     >
       {children}
-      <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity delay-500 group-hover:opacity-100">
+      <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-900 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity delay-500 group-hover:opacity-100 group-focus-visible:opacity-100">
         {label}
       </span>
     </button>
@@ -132,167 +108,78 @@ export default function WorkflowBoardMaterialsPage() {
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
 
-  const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([])
-  const [rows, setRows] = useState<TaskBoardFileItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [summary, setSummary] = useState<TaskBoardFilesSummaryResponse | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [archive, setArchive] = useState<TaskFileArchiveResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
+  const [annualFiles, setAnnualFiles] = useState(false)
   const [previewingEntryId, setPreviewingEntryId] = useState<number | null>(null)
   const [downloadingEntryId, setDownloadingEntryId] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearch(keyword.trim()); setPage(1) }, 250)
+    return () => clearTimeout(timer)
+  }, [keyword])
 
   const monthParam = viewMode === 'monthly' ? focusMonth : undefined
-  const yearParam = focusYear
-  const taskNameParam = taskFilter === 'all' ? undefined : taskFilter
-  const keywordParam = keyword.trim() || undefined
-
-  useEffect(() => {
-    setPage(1)
-  }, [viewMode, focusYear, focusMonth, companyFilter, taskFilter, keyword])
-
+  const showFiles = viewMode === 'monthly' || annualFiles
   useEffect(() => {
     let cancelled = false
-    const run = async () => {
-      try {
-        const attribution = `${focusYear}-${pad2(monthParam ?? 1)}`
-        const report = nextYm(focusYear, monthParam ?? 1)
-        const res = await listTaskBoards(scope, {
-          attribution_month: attribution,
-          report_month: report,
-          include_excluded: true,
-          incomplete_only: false,
-          page: 1,
-          size: 100,
-        })
-        if (cancelled) return
-        const options: CompanyOption[] = res.items.map((item: TaskBoardListItem) => ({
-          id: item.company_id,
-          name: item.company_name,
-        }))
-        setCompanyOptions(options)
-      } catch {
-        if (!cancelled) setCompanyOptions([])
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [focusYear, monthParam, scope])
-
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      setLoading(true)
-      try {
-        const params = {
-          year: yearParam,
-          month: monthParam,
-          task_name: taskNameParam,
-          q: keywordParam,
-          page,
-          size: PAGE_SIZE,
-        }
-        const fileRes =
-          companyFilter === 'all'
-            ? await listAllTaskFiles(scope, params)
-            : await listCompanyTaskFiles(scope, Number(companyFilter), params)
-        const summaryRes = await fetchTaskFilesSummary(scope, {
-          year: yearParam,
-          month: monthParam,
-          task_name: taskNameParam,
-          q: keywordParam,
-        })
-        if (cancelled) return
-        setRows(fileRes.items || [])
-        setTotal(fileRes.total || 0)
-        setSummary(summaryRes)
-      } catch (error) {
-        if (!cancelled) {
-          setRows([])
-          setTotal(0)
-          setSummary(null)
-          toast.error(getTaskBoardErrorMessage(error))
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [companyFilter, keywordParam, monthParam, page, scope, taskNameParam, yearParam])
-
-  const taskOptions = useMemo(
-    () => ['all', ...Array.from(new Set(rows.map((row) => row.task_name).filter(Boolean) as string[]))],
-    [rows]
-  )
-
-  const yearOptions = useMemo(() => {
-    const years = Array.from(
-      new Set(rows.map((row) => Number((row.attribution_month || '').slice(0, 4))).filter((year) => Number.isFinite(year)))
-    ) as number[]
-    const base = years.length > 0 ? years : [focusYear]
-    return base.sort((a, b) => a - b).map((year) => String(year))
-  }, [focusYear, rows])
-
-  const yearlyRows = useMemo<YearlyRow[]>(() => {
-    const grouped = new Map<string, YearlyRow>()
-    rows.forEach((row) => {
-      const year = (row.attribution_month || '').slice(0, 4) || String(focusYear)
-      const taskName = row.task_name || '-'
-      const companyName = row.company_name || '-'
-      const key = `${companyName}:${year}:${taskName}`
-      const existing = grouped.get(key)
-      if (!existing) {
-        grouped.set(key, {
-          key,
-          companyName,
-          year,
-          taskName,
-          fileCount: 1,
-          latestUploadedAt: row.uploaded_at || '-',
-        })
-        return
-      }
-      existing.fileCount += 1
-      if ((row.uploaded_at || '') > existing.latestUploadedAt) {
-        existing.latestUploadedAt = row.uploaded_at || existing.latestUploadedAt
-      }
+    setLoading(true)
+    setError('')
+    fetchTaskFileArchive(scope, {
+      year: focusYear, month: monthParam,
+      company_id: companyFilter === 'all' ? undefined : Number(companyFilter),
+      task_name: taskFilter === 'all' ? undefined : taskFilter,
+      q: search || undefined, grouped: !showFiles, page, size: PAGE_SIZE,
+    }).then(result => {
+      if (cancelled) return
+      setArchive(result)
+      if (result.page !== page) setPage(result.page)
+    }).catch(reason => {
+      if (!cancelled) setError(getTaskBoardErrorMessage(reason))
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
     })
-    return Array.from(grouped.values())
-  }, [focusYear, rows])
+    return () => { cancelled = true }
+  }, [scope, focusYear, monthParam, companyFilter, taskFilter, search, showFiles, page, reload])
 
-  const moveYear = (delta: number) => setFocusYear((prev) => prev + delta)
+  const companyOptions = archive?.companies ?? []
+  const taskOptions = ['all', ...Array.from(new Set([...(archive?.tasks ?? []), ...(taskFilter === 'all' ? [] : [taskFilter])]))]
+  const yearOptions = Array.from(new Set([kstNow.year, focusYear, ...(archive?.years ?? [])])).sort((a, b) => b - a)
+  const rows = archive?.items ?? []
+  const yearlyRows = archive?.groups ?? []
+  const summary = loading || error ? null : archive?.summary
+  const total = archive?.total ?? 0
+
+  const changeView = (mode: ViewMode) => { setViewMode(mode); setAnnualFiles(false); setPage(1) }
+  const moveYear = (delta: number) => { setFocusYear(Math.max(1900, Math.min(9999, focusYear + delta))); setPage(1) }
   const moveMonth = (delta: number) => {
-    setFocusMonth((prevMonth) => {
-      const next = prevMonth + delta
-      if (next < 1) {
-        setFocusYear((prevYear) => prevYear - 1)
-        return 12
-      }
-      if (next > 12) {
-        setFocusYear((prevYear) => prevYear + 1)
-        return 1
-      }
-      return next
-    })
+    const date = new Date(focusYear, focusMonth - 1 + delta, 1)
+    if (date.getFullYear() < 1900 || date.getFullYear() > 9999) return
+    setFocusYear(date.getFullYear())
+    setFocusMonth(date.getMonth() + 1)
+    setPage(1)
   }
+  const resetFilters = () => { setCompanyFilter('all'); setTaskFilter('all'); setKeyword(''); setSearch(''); setPage(1); setAnnualFiles(false) }
 
   const handlePreviewFile = async (docsEntryId: number | null | undefined) => {
     if (!docsEntryId) {
       toast.error('미리보기할 파일 정보가 없습니다.')
       return
     }
+    const tab = window.open('about:blank', '_blank')
+    if (!tab) { toast.error('팝업을 허용한 후 다시 시도해 주세요.'); return }
+    tab.opener = null
     setPreviewingEntryId(docsEntryId)
     try {
       const res = await fetchTaskFilePreviewUrl(scope, docsEntryId)
       if (!res.preview_url) {
-        toast.error('미리보기 URL을 가져오지 못했습니다.')
-        return
+        throw new Error('미리보기 URL을 가져오지 못했습니다.')
       }
-      window.open(res.preview_url, '_blank', 'noopener,noreferrer')
+      tab.location.replace(res.preview_url)
     } catch (error) {
+      tab.close()
       toast.error(getTaskBoardErrorMessage(error))
     } finally {
       setPreviewingEntryId(null)
@@ -304,15 +191,18 @@ export default function WorkflowBoardMaterialsPage() {
       toast.error('다운로드할 파일 정보가 없습니다.')
       return
     }
+    const tab = window.open('about:blank', '_blank')
+    if (!tab) { toast.error('팝업을 허용한 후 다시 시도해 주세요.'); return }
+    tab.opener = null
     setDownloadingEntryId(docsEntryId)
     try {
       const res = await fetchTaskFileDownloadUrl(scope, docsEntryId)
       if (!res.download_url) {
-        toast.error('다운로드 URL을 가져오지 못했습니다.')
-        return
+        throw new Error('다운로드 URL을 가져오지 못했습니다.')
       }
-      window.open(res.download_url, '_blank', 'noopener,noreferrer')
+      tab.location.replace(res.download_url)
     } catch (error) {
+      tab.close()
       toast.error(getTaskBoardErrorMessage(error))
     } finally {
       setDownloadingEntryId(null)
@@ -321,12 +211,20 @@ export default function WorkflowBoardMaterialsPage() {
 
   return (
     <div className="space-y-4 px-4 pb-6 pt-4">
-      <section className="rounded-xl border border-zinc-200 bg-white p-4">
-        <div className="mb-3 grid grid-cols-[auto_1fr_auto] items-center gap-3">
+      <section className="bg-white p-4 sm:p-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-900">업무자료함</h1>
+            <p className="mt-1 text-sm text-zinc-500">업무보드에 연결된 파일을 귀속월 기준으로 조회합니다.</p>
+          </div>
+          <UiButton onClick={() => setReload(value => value + 1)} disabled={loading}>새로고침</UiButton>
+        </div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-1">
             <button
               type="button"
-              onClick={() => setViewMode('monthly')}
+              onClick={() => changeView('monthly')}
+              aria-pressed={viewMode === 'monthly'}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
                 viewMode === 'monthly' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
               }`}
@@ -335,7 +233,8 @@ export default function WorkflowBoardMaterialsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('yearly')}
+              onClick={() => changeView('yearly')}
+              aria-pressed={viewMode === 'yearly'}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
                 viewMode === 'yearly' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
               }`}
@@ -347,11 +246,11 @@ export default function WorkflowBoardMaterialsPage() {
           <div className="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
             {viewMode === 'yearly' ? (
               <>
-                <button type="button" onClick={() => moveYear(-1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
+                <button type="button" aria-label="이전 연도" onClick={() => moveYear(-1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
                   {'<'}
                 </button>
                 <div className="min-w-[88px] text-center text-sm font-semibold text-zinc-900">{focusYear}</div>
-                <button type="button" onClick={() => moveYear(1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
+                <button type="button" aria-label="다음 연도" onClick={() => moveYear(1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
                   {'>'}
                 </button>
               </>
@@ -359,7 +258,8 @@ export default function WorkflowBoardMaterialsPage() {
               <>
                 <select
                   value={String(focusYear)}
-                  onChange={(event) => setFocusYear(Number(event.target.value))}
+                  aria-label="귀속 연도"
+                  onChange={(event) => { setFocusYear(Number(event.target.value)); setPage(1) }}
                   className="h-7 rounded border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
                 >
                   {yearOptions.map((year) => (
@@ -368,11 +268,11 @@ export default function WorkflowBoardMaterialsPage() {
                     </option>
                   ))}
                 </select>
-                <button type="button" onClick={() => moveMonth(-1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
+                <button type="button" aria-label="이전 월" onClick={() => moveMonth(-1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
                   {'<'}
                 </button>
                 <div className="min-w-[54px] text-center text-sm font-semibold text-zinc-900">{pad2(focusMonth)}월</div>
-                <button type="button" onClick={() => moveMonth(1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
+                <button type="button" aria-label="다음 월" onClick={() => moveMonth(1)} className="h-7 rounded border border-zinc-300 px-2 text-xs text-zinc-700 hover:bg-white">
                   {'>'}
                 </button>
                 <span className="text-xs font-medium text-zinc-500">귀속월</span>
@@ -381,15 +281,15 @@ export default function WorkflowBoardMaterialsPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <article className="min-w-[88px] rounded-md border border-zinc-200 bg-white px-2 py-1">
+            <article className="min-w-[80px] px-3 py-1">
               <div className="text-[11px] text-zinc-500">파일 수</div>
               <div className="text-sm font-semibold text-zinc-900">{summary?.total_files ?? '-'}</div>
             </article>
-            <article className="min-w-[96px] rounded-md border border-zinc-200 bg-white px-2 py-1">
+            <article className="min-w-[96px] px-3 py-1">
               <div className="text-[11px] text-zinc-500">총 용량</div>
-              <div className="text-sm font-semibold text-zinc-900">{formatBytes(Number(summary?.total_size_bytes ?? 0))}</div>
+              <div className="text-sm font-semibold text-zinc-900">{summary ? formatBytes(Number(summary.total_size_bytes ?? 0)) : '-'}</div>
             </article>
-            <article className="min-w-[88px] rounded-md border border-zinc-200 bg-white px-2 py-1">
+            <article className="min-w-[80px] px-3 py-1">
               <div className="text-[11px] text-zinc-500">업체 수</div>
               <div className="text-sm font-semibold text-zinc-900">{summary?.companies_count ?? '-'}</div>
             </article>
@@ -401,7 +301,7 @@ export default function WorkflowBoardMaterialsPage() {
             업체
             <select
               value={companyFilter}
-              onChange={(event) => setCompanyFilter(event.target.value)}
+              onChange={(event) => { setCompanyFilter(event.target.value); setPage(1) }}
               className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-800"
             >
               <option value="all">전체 업체</option>
@@ -416,7 +316,7 @@ export default function WorkflowBoardMaterialsPage() {
             진행업무
             <select
               value={taskFilter}
-              onChange={(event) => setTaskFilter(event.target.value)}
+              onChange={(event) => { setTaskFilter(event.target.value); setPage(1) }}
               className="h-9 rounded-md border border-zinc-300 px-2 text-sm text-zinc-800"
             >
               {taskOptions.map((option) => (
@@ -433,53 +333,68 @@ export default function WorkflowBoardMaterialsPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      <section className="overflow-hidden bg-white" aria-busy={loading}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 text-sm">
+          <span className="text-zinc-500">{focusYear}년 {viewMode === 'monthly' ? `${focusMonth}월` : '전체'} · {showFiles ? '파일 목록' : '업체·업무별 집계'}{!loading && !error ? ` · ${total.toLocaleString()}건` : ''}</span>
+          <div className="flex gap-2">
+            {viewMode === 'yearly' && <UiButton size="sm" onClick={() => { setAnnualFiles(!annualFiles); setPage(1) }}>{annualFiles ? '연간 집계 보기' : '연간 파일 보기'}</UiButton>}
+            <UiButton size="sm" onClick={resetFilters}>필터 초기화</UiButton>
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full table-fixed text-sm">
-            <thead className="bg-zinc-100 text-zinc-700">
+          <table className="w-full min-w-[1050px] table-fixed text-sm">
+            <thead className="bg-zinc-50 text-zinc-700">
               <tr>
                 <th className="w-40 px-3 py-2 text-center font-medium">업체</th>
                 <th className="w-16 px-3 py-2 text-center font-medium">연도</th>
-                {viewMode === 'monthly' ? (
+                {showFiles ? (
                   <>
                     <th className="w-14 px-3 py-2 text-center font-medium">월</th>
-                    <th className="w-52 px-3 py-2 text-center font-medium">진행업무</th>
-                    <th className="px-3 py-2 text-center font-medium">업로드</th>
-                    <th className="w-28 px-3 py-2 text-center font-medium">업로더</th>
+                    <th className="w-40 px-3 py-2 text-center font-medium">진행업무</th>
+                    <th className="w-64 px-3 py-2 text-left font-medium">파일명</th>
+                    <th className="w-28 px-3 py-2 text-center font-medium">등록자</th>
                     <th className="w-36 px-3 py-2 text-center font-medium">업로드일</th>
                   </>
                 ) : (
                   <>
-                    <th className="w-52 px-3 py-2 text-center font-medium">진행업무</th>
+                    <th className="w-40 px-3 py-2 text-center font-medium">진행업무</th>
                     <th className="w-20 px-3 py-2 text-center font-medium">파일수</th>
                     <th className="w-40 px-3 py-2 text-center font-medium">최종 업로드</th>
                   </>
                 )}
-                <th className="w-36 px-3 py-2 text-center font-medium">액션</th>
+                <th className="w-24 px-3 py-2 text-center font-medium">파일 열기</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {error ? (
+                <tr><td colSpan={showFiles ? 8 : 6} className="px-4 py-10 text-center">
+                  <p role="alert" className="mb-3 text-rose-600">{error}</p>
+                  <UiButton onClick={() => setReload(value => value + 1)}>다시 시도</UiButton>
+                </td></tr>
+              ) : loading ? (
                 <tr>
-                  <td colSpan={viewMode === 'monthly' ? 8 : 7} className="px-3 py-8 text-center text-sm text-zinc-500">
+                  <td colSpan={showFiles ? 8 : 6} className="px-3 py-8 text-center text-sm text-zinc-500">
                     불러오는 중...
                   </td>
                 </tr>
-              ) : (viewMode === 'monthly' ? rows.length : yearlyRows.length) === 0 ? (
+              ) : (showFiles ? rows.length : yearlyRows.length) === 0 ? (
                 <tr>
-                  <td colSpan={viewMode === 'monthly' ? 8 : 7} className="px-3 py-8 text-center text-sm text-zinc-500">
-                    조회 결과가 없습니다.
+                  <td colSpan={showFiles ? 8 : 6} className="px-3 py-8 text-center text-sm text-zinc-500">
+                    선택한 조건에 연결된 파일이 없습니다. 기간이나 필터를 변경해 주세요.
                   </td>
                 </tr>
-              ) : viewMode === 'monthly' ? (
+              ) : showFiles ? (
                 rows.map((row, index) => (
-                  <tr key={`${row.docs_entry_id ?? 'na'}-${index}`} className="border-t border-zinc-100 text-zinc-800">
+                  <tr key={`${row.docs_entry_id ?? 'na'}-${index}`} className="border-t border-zinc-100 text-zinc-800 hover:bg-zinc-50/70">
                     <td className="truncate px-3 py-2 text-center">{row.company_name || '-'}</td>
                     <td className="px-3 py-2 text-center">{(row.attribution_month || '').slice(0, 4) || '-'}</td>
                     <td className="px-3 py-2 text-center">{(row.attribution_month || '').slice(5, 7) || '-'}</td>
                     <td className="truncate px-3 py-2 text-center">{row.task_name || '-'}</td>
-                    <td className="truncate px-3 py-2 text-center" title={row.file_name || row.title || ''}>
-                      {row.file_name || row.title || '-'}
+                    <td className="px-3 py-3 text-left">
+                      <div className="truncate font-medium" title={row.file_name || row.title || ''}>{row.file_name || row.title || '-'}</div>
+                      <div className="mt-0.5 truncate text-xs text-zinc-500" title={row.title || ''}>
+                        {row.title && row.title !== row.file_name ? row.title + ' · ' : ''}{formatBytes(row.size_bytes)}
+                      </div>
                     </td>
                     <td className="truncate px-3 py-2 text-center">{row.uploader_name || row.uploaded_by_type || '-'}</td>
                     <td className="px-3 py-2 text-center">{row.uploaded_at ? formatKSTDate(row.uploaded_at) : '-'}</td>
@@ -489,7 +404,7 @@ export default function WorkflowBoardMaterialsPage() {
                           <IconTooltipButton
                             label={previewingEntryId === row.docs_entry_id ? '불러오는 중...' : '새창 보기'}
                             onClick={() => void handlePreviewFile(row.docs_entry_id)}
-                            disabled={!row.docs_entry_id || previewingEntryId === row.docs_entry_id}
+                            disabled={!row.docs_entry_id || previewingEntryId !== null}
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </IconTooltipButton>
@@ -497,7 +412,7 @@ export default function WorkflowBoardMaterialsPage() {
                         <IconTooltipButton
                           label={downloadingEntryId === row.docs_entry_id ? '불러오는 중...' : '다운로드'}
                           onClick={() => void handleDownloadFile(row.docs_entry_id)}
-                          disabled={!row.docs_entry_id || downloadingEntryId === row.docs_entry_id}
+                          disabled={!row.docs_entry_id || downloadingEntryId !== null}
                         >
                           <Download className="h-3.5 w-3.5" />
                         </IconTooltipButton>
@@ -507,14 +422,14 @@ export default function WorkflowBoardMaterialsPage() {
                 ))
               ) : (
                 yearlyRows.map((row) => (
-                  <tr key={row.key} className="border-t border-zinc-100 text-zinc-800">
-                    <td className="truncate px-3 py-2 text-center">{row.companyName}</td>
-                    <td className="px-3 py-2 text-center">{row.year}</td>
-                    <td className="truncate px-3 py-2 text-center">{row.taskName}</td>
-                    <td className="px-3 py-2 text-center">{row.fileCount}건</td>
-                    <td className="px-3 py-2 text-center">{row.latestUploadedAt}</td>
+                  <tr key={`${row.company_id}:${row.task_name}`} className="border-t border-zinc-100 text-zinc-800 hover:bg-zinc-50/70">
+                    <td className="truncate px-3 py-2 text-center">{row.company_name}</td>
+                    <td className="px-3 py-2 text-center">{focusYear}</td>
+                    <td className="truncate px-3 py-2 text-center">{row.task_name}</td>
+                    <td className="px-3 py-2 text-center">{row.file_count}건</td>
+                    <td className="px-3 py-2 text-center">{row.latest_uploaded_at ? formatKSTDate(row.latest_uploaded_at) : '-'}</td>
                     <td className="px-3 py-2 text-center">
-                      -
+                      <UiButton size="sm" onClick={() => { setCompanyFilter(String(row.company_id)); setTaskFilter(row.task_name); setAnnualFiles(true); setPage(1) }}>파일 보기</UiButton>
                     </td>
                   </tr>
                 ))
@@ -525,7 +440,7 @@ export default function WorkflowBoardMaterialsPage() {
       </section>
 
       <div className="pt-1">
-        <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={setPage} />
+        {!loading && !error && total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={setPage} />}
       </div>
     </div>
   )

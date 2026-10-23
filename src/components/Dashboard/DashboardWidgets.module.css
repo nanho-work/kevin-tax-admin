@@ -1,0 +1,64 @@
+@media (max-width: 1023px) {
+  .grid {
+    display: flex;
+    flex-direction: column;
+    min-height: 0 !important;
+  }
+
+  .grid > article {
+    min-width: 0;
+    height: var(--widget-height);
+    min-height: 180px;
+  }
+
+  .grid > article button[draggable] {
+    display: none;
+  }
+}
+
+.card {
+  overflow: hidden;
+  transition: border-color 160ms ease;
+}
+
+.body {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.body > div > div:first-child {
+  flex-shrink: 0;
+}
+
+.card:focus-within {
+  border-color: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+}
+
+.card[data-widget='my_attendance'] {
+  padding: 10px;
+  container-type: size;
+  container-name: attendance;
+}
+.card[data-widget='my_attendance'] .body { overflow: hidden; }
+.attendance { height: 100%; display: flex; flex-direction: column; gap: 2px; }
+.attendanceProfile { flex: 1; min-height: 42px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.attendancePhoto { width: clamp(24px, calc(100cqh - 94px), 100px); aspect-ratio: 1; flex-shrink: 0; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #f1f5f9; color: #64748b; }
+.attendanceName { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: #334155; }
+.attendanceLeave { margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-shrink: 0; }
+.attendanceLeave > div { padding: 0 2px; }
+.attendanceLeave p { white-space: nowrap; }
+.attendanceDetails { display: none; }
+/* Compact height uses a horizontal profile; all taller sizes share the same portrait layout. */
+@container attendance (max-height: 130px) {
+  .attendanceProfile { min-height: 32px; flex-direction: row; justify-content: flex-start; gap: 10px; }
+  .attendancePhoto { width: 28px; }
+  .attendanceName { min-width: 0; }
+  .attendanceLeave > div { padding: 0 2px; }
+  .attendanceLeave p { font-size: 11px; line-height: 16px; }
+  .attendanceLeave p + p { margin-top: 2px; }
+}
