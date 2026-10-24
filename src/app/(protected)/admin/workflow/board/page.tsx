@@ -183,9 +183,12 @@ export default function WorkflowBoardPage() {
   const [listPage, setListPage] = useState(1)
   const [listLoading, setListLoading] = useState(false)
   const [listLoaded, setListLoaded] = useState(false)
+  const [listPeriod, setListPeriod] = useState('')
+  const [baseCatalogReady, setBaseCatalogReady] = useState(false)
+  const [processCatalogReady, setProcessCatalogReady] = useState(false)
   const [listReloadKey, setListReloadKey] = useState(0)
 
-  const [customColumns, setCustomColumns] = useState<CustomColumn[]>(() => seedCustomColumns())
+  const [savedCustomColumns, setCustomColumns] = useState<CustomColumn[]>(() => seedCustomColumns())
   const [columnCatalog, setColumnCatalog] = useState<ColumnCatalogItem[]>(() => seedColumnCatalog())
   const [companyColumnChecks, setCompanyColumnChecks] = useState<Record<string, boolean>>({})
   const [, setManualMajorColumns] = useState<MajorColumn[]>([])
@@ -251,12 +254,21 @@ export default function WorkflowBoardPage() {
     [listRows, selectedCompanyId]
   )
 
+  // Editing offers the full catalog; saved monthly items only control checks.
+  const customColumns = useMemo<CustomColumn[]>(() => isEditMode
+    ? columnCatalog.map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name }))
+    : savedCustomColumns, [isEditMode, columnCatalog, savedCustomColumns])
+  const [checksReady, setChecksReady] = useState(false)
+  const [checkError, setCheckError] = useState('')
+  const [checksMonth, setChecksMonth] = useState('')
+  const checklistBlocked = listLoading || listPeriod !== attributionMonth || !baseCatalogReady || !processCatalogReady || !checksReady || checksMonth !== attributionMonth || isSavingChecklist
+
   const majorColumns = useMemo<MajorColumn[]>(
     () =>
       processTemplateCatalog
-        .filter((item) => selectedMajorTemplateIds.includes(item.id))
+        .filter((item) => isEditMode || selectedMajorTemplateIds.includes(item.id))
         .map((item) => ({ id: item.id, name: item.name })),
-    [processTemplateCatalog, selectedMajorTemplateIds]
+    [processTemplateCatalog, selectedMajorTemplateIds, isEditMode]
   )
 
   const processFileOnlyTemplateOptions = useMemo(
@@ -415,11 +427,13 @@ export default function WorkflowBoardPage() {
           size: effectiveSize,
         })
         if (cancelled) return
+        setListPeriod(attributionMonth)
         setListRowsApi(res.items || [])
         setListTotal(Number(res.total || 0))
         setListLoaded(true)
       } catch (error) {
         if (cancelled) return
+        setListPeriod('')
         setListRowsApi([])
         setListTotal(0)
         setListLoaded(true)
@@ -508,12 +522,14 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const loadTemplateCatalog = async () => {
+      setBaseCatalogReady(false)
       try {
         const res = await listGlobalTaskTemplates(scope, {
           includeInactive: false,
           templateKind: 'base',
         })
         if (cancelled) return
+        setBaseCatalogReady(true)
         setColumnCatalog(
           (res.items || []).map((item) => ({
             id: `template-${item.id}`,
@@ -525,6 +541,7 @@ export default function WorkflowBoardPage() {
       } catch {
         if (cancelled) return
         setColumnCatalog([])
+        toast.error('기준업무 목록을 불러오지 못했습니다. 새로고침해 주세요.')
       }
     }
     void loadTemplateCatalog()
@@ -536,6 +553,7 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const loadProcessTemplateCatalog = async () => {
+      setProcessCatalogReady(false)
       try {
         const res = await listGlobalTaskTemplates(scope, {
           includeInactive: false,
@@ -556,11 +574,13 @@ export default function WorkflowBoardPage() {
             (item.source_template_id ? templateNameById.get(item.source_template_id)?.trim() || null : null),
         }))
         const sorted = mapped.sort((a, b) => (a.sortOrder === b.sortOrder ? a.name.localeCompare(b.name, 'ko') : a.sortOrder - b.sortOrder))
+        setProcessCatalogReady(true)
         setProcessTemplateCatalog(sorted)
         setManualMajorColumns(sorted.map((item) => ({ id: item.id, name: item.name })))
       } catch {
         if (cancelled) return
         setProcessTemplateCatalog([])
+        toast.error('업무진행 목록을 불러오지 못했습니다. 새로고침해 주세요.')
       }
     }
     void loadProcessTemplateCatalog()
@@ -635,7 +655,10 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     const hydrateChecklistChecksFromSavedItems = async () => {
-      if ((!customColumns.length && !majorColumns.length) || !listRowsApi.length) return
+      setChecksReady(false)
+      setCheckError('')
+      if (listPeriod !== attributionMonth) return
+      let failed = false
 
       const nextColumnChecks: Record<string, boolean> = {}
       const nextMajorChecks: Record<string, boolean> = {}
@@ -675,12 +698,18 @@ export default function WorkflowBoardPage() {
                 nextMajorCompletedAt[key] = doneCompletedAtByNorm.get(norm) ?? null
               })
             } catch {
-              // noop
+              failed = true
             }
           })
       )
 
       if (cancelled) return
+      if (failed) {
+        setCheckError('업무 선택 상태를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 저장은 차단됩니다.')
+        return
+      }
+      setChecksMonth(attributionMonth)
+      setChecksReady(true)
       setCompanyColumnChecks((prev) => ({ ...prev, ...nextColumnChecks }))
       setCompanyMajorChecks((prev) => ({ ...prev, ...nextMajorChecks }))
       setCompanyMajorCompletedAt((prev) => ({ ...prev, ...nextMajorCompletedAt }))
@@ -689,7 +718,7 @@ export default function WorkflowBoardPage() {
     return () => {
       cancelled = true
     }
-  }, [scope, listRowsApi, customColumns, majorColumns])
+  }, [scope, attributionMonth, listPeriod, listRowsApi, customColumns, majorColumns])
 
   useEffect(() => {
     let cancelled = false
@@ -790,13 +819,13 @@ export default function WorkflowBoardPage() {
   }
 
   const toggleCompanyColumnValue = (companyId: number, columnId: string) => {
-    if (!isEditMode) return
+    if (!isEditMode || checklistBlocked) return
     const key = getColumnCheckKey(companyId, columnId)
     setCompanyColumnChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   const toggleColumnAll = (columnId: string) => {
-    if (!isEditMode) return
+    if (!isEditMode || checklistBlocked) return
     const activeRows = listRows.filter((row) => !row.is_excluded)
     const allChecked = activeRows.length > 0 && activeRows.every((row) => companyColumnChecks[getColumnCheckKey(row.company_id, columnId)])
     setCompanyColumnChecks((prev) => {
@@ -810,13 +839,13 @@ export default function WorkflowBoardPage() {
   }
 
   const toggleCompanyMajorValue = (companyId: number, columnId: string) => {
-    if (!isEditMode) return
+    if (!isEditMode || checklistBlocked) return
     const key = getMajorCheckKey(companyId, columnId)
     setCompanyMajorChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   const toggleMajorColumnAll = (columnId: string) => {
-    if (!isEditMode) return
+    if (!isEditMode || checklistBlocked) return
     const activeRows = listRows.filter((row) => !row.is_excluded)
     const allChecked =
       activeRows.length > 0 && activeRows.every((row) => companyMajorChecks[getMajorCheckKey(row.company_id, columnId)])
@@ -1309,7 +1338,10 @@ export default function WorkflowBoardPage() {
   }
 
   const saveChecklistSelections = async () => {
-    if (isSavingChecklist) return false
+    if (checklistBlocked) {
+      toast.error(checkError || '업무 선택 상태를 불러온 후 저장해 주세요.')
+      return false
+    }
     const processExecutionModeByNormName = new Map<string, TaskExecutionMode>()
     const processSourceTaskNameByNormName = new Map<string, string>()
     processTemplateCatalog.forEach((item) => {
@@ -1631,7 +1663,7 @@ export default function WorkflowBoardPage() {
     row: TaskBoardListItem,
     nextReportCycle: 'monthly' | 'semiannual'
   ) => {
-    if (!isEditMode) return
+    if (!isEditMode || checklistBlocked) return
     if (row.is_excluded) return
     if (updatingReportCycleCompanyId != null) return
     if ((row.report_cycle || null) === nextReportCycle) {
@@ -1999,11 +2031,12 @@ export default function WorkflowBoardPage() {
                   setIsEditMode(false)
                   showEditModeNotice('저장 완료')
                 }}
-                disabled={isSavingChecklist}
+                disabled={isSavingChecklist || (isEditMode && checklistBlocked)}
               >
                 {isEditMode ? (isSavingChecklist ? '저장 중...' : '편집 완료') : '편집'}
               </UiButton>
 
+              {checkError ? <span role="alert" className="text-xs text-red-600">{checkError}</span> : null}
               {isSavingChecklist ? <span className="text-xs font-medium text-sky-700">저장 중...</span> : null}
               {!isSavingChecklist && editModeNotice ? <span className="text-xs font-medium text-zinc-600">{editModeNotice}</span> : null}
 
@@ -2299,6 +2332,7 @@ export default function WorkflowBoardPage() {
                             ) : isEditMode ? (
                               <button
                                 type="button"
+                                disabled={checklistBlocked}
                                 onClick={() => toggleCompanyColumnValue(row.company_id, column.id)}
                                 className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
                                   checked ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-zinc-300 bg-white text-zinc-500'
@@ -2338,7 +2372,7 @@ export default function WorkflowBoardPage() {
                                     checked ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-zinc-300 bg-white text-zinc-500'
                                   }`}
                                   title={checked ? '선택됨' : '해당없음'}
-                                  disabled={!isEditMode}
+                                  disabled={!isEditMode || checklistBlocked}
                                 >
                                   {checked ? '✓' : ''}
                                 </button>
