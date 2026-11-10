@@ -109,6 +109,11 @@ const menuSections: MenuSection[] = [
       { label: '프로필', href: '/admin/staff/profile' },
     ],
   },
+  { key: 'blog', label: '블로그', children: [
+    { label: '블로그 목록', href: '/admin/office/blog/list' },
+    { label: '블로그 쓰기', href: '/admin/office/blog/create' },
+    { label: '자동 글쓰기', href: '/admin/office/blog/auto-write' },
+  ] },
   { key: 'office', label: '사무소 관리', children: [
     { label: '직원·조직·권한', href: '/admin/office/staff' },
     { label: '가입 승인', href: '/admin/office/staff/signup-requests' },
@@ -117,13 +122,14 @@ const menuSections: MenuSection[] = [
     { label: '결재 문서', href: '/admin/staff/documents' },
     { label: '근태·연차 관리', href: '/admin/office/staff/leave' },
     { label: '직원 계정 보안', href: '/admin/office/staff/account-security' },
-    { label: '블로그 목록', href: '/admin/office/blog/list' },
     { label: '요금제·구독', href: '/admin/office/setting/subscription' },
+    { label: 'AI 계정 연결', href: '/admin/office/setting/ai' },
   ] },
 ]
 
 function getActiveSection(pathname: string, searchParams: URLSearchParams): string {
   if (pathname.startsWith('/admin/office/bookkeeping')) return 'bookkeeping'
+  if (pathname.startsWith('/admin/office/blog')) return 'blog'
   if (pathname.startsWith('/admin/office')) return 'office'
   if (pathname.startsWith('/admin/staff/work-posts')) {
     const postType = (searchParams.get('post_type') || '').toLowerCase()
@@ -196,7 +202,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   const { session, loading: sessionLoading } = useAdminSessionContext()
   const { confirm } = useConfirmDialog()
 
-  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office'>('dashboard')
+  const [activeRailSection, setActiveRailSection] = useState<'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'blog' | 'office'>('dashboard')
   const [mailAccounts, setMailAccounts] = useState<Array<{ id: number; email: string; account_scope: 'company' | 'personal' }>>([])
   const [mailAccountCounts, setMailAccountCounts] = useState<Record<number, { all: number; inboxUnread: number; sent: number; trash: number }>>({})
   const [mailFoldersByAccount, setMailFoldersByAccount] = useState<Record<number, Array<{ id: number; name: string }>>>({})
@@ -239,7 +245,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
   useEffect(() => {
     const activeKey = getActiveSection(pathname, searchParams)
     if (!activeKey) return
-    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office')
+    setActiveRailSection(activeKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'blog' | 'office')
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -419,11 +425,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       icon: Briefcase,
       active: activeSection === 'leave',
     },
+    ...(getAdminRoleRank(session) === 1 ? [{ key: 'blog', label: '블로그', href: '/admin/office/blog/list', icon: SquarePen, active: activeSection === 'blog' }] : []),
     ...(getAdminRoleRank(session) === 1 ? [{ key: 'office', label: '사무소', href: '/admin/office/staff', icon: Settings, active: activeSection === 'office' }] : []),
   ] as const
 
   const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
-    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'office'
+    const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'blog' | 'office'
 
     // 같은 아이콘 재클릭:
     // - 2단 열림 상태면 닫기(페이지 유지)
@@ -679,7 +686,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       )
     })
 
-  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection && (!['office', 'bookkeeping'].includes(section.key) || getAdminRoleRank(session) === 1))
+  const sectionsToRender = menuSections.filter((section) => section.key === activeRailSection && (!['office', 'bookkeeping', 'blog'].includes(section.key) || getAdminRoleRank(session) === 1))
 
   return (
     <aside className={sidebarAsideClass(collapsed || shouldHideSecondSidebar)}>

@@ -61,7 +61,9 @@ const Header = () => {
         ? `업무 > 거래처 관리 > ${companyNameFromQuery}`
         : '업무 > 거래처 관리 > 상세'
     }
-    if (pathname.startsWith('/admin/office/blog')) return '사무소 관리 > 블로그'
+    if (pathname === '/admin/office/blog/auto-write') return '블로그 > 자동 글쓰기'
+    if (pathname === '/admin/office/blog/create') return '블로그 > 블로그 쓰기'
+    if (pathname.startsWith('/admin/office/blog')) return '블로그'
     if (pathname.startsWith('/admin/office/bookkeeping')) return '사무소 관리 > 기장·청구·수금'
     if (pathname.startsWith('/admin/office/setting/subscription')) return '사무소 관리 > 요금제·구독'
     if (pathname.startsWith('/admin/office/staff')) return '사무소 관리 > 직원·조직·근태'
