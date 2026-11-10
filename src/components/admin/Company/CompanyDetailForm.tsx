@@ -1,4 +1,5 @@
 'use client'
+import CompanyTaskDefaultsSection, { type CompanyTaskDefaultsHandle } from './CompanyTaskDefaultsSection'
 
 import { useManagementSession } from '@/contexts/ManagementSession'
 import { getClientRoleRank } from '@/utils/roleRank'
@@ -440,6 +441,7 @@ export default function CompanyDetailForm({
   const [activeTab, setActiveTab] = useState<'basic' | 'contract' | 'documents'>('basic')
   const management = useManagementSession()
   const canManageContract = Boolean(management.session) && getClientRoleRank(management.session) <= 10
+  const taskDefaultsRef = useRef<CompanyTaskDefaultsHandle>(null)
   const contractRef = useRef<CompanyContractHandle>(null)
   const createdCompanyIdRef = useRef<number | null>(null)
   const [createdCompanyId, setCreatedCompanyId] = useState<number | null>(null)
@@ -1530,6 +1532,7 @@ export default function CompanyDetailForm({
                         setSaving(true)
                         setRegistrationError('')
                         const payload: CompanyCreateRequest = {
+                          task_defaults: taskDefaultsRef.current?.prepare(),
                           manager_name: (contactSlots.find((slot) => slot.key === 'main')?.name || form.manager_name || '').trim() || undefined,
                           manager_phone: (contactSlots.find((slot) => slot.key === 'main')?.phone || form.manager_phone || '').trim() || undefined,
                           manager_email: (contactSlots.find((slot) => slot.key === 'main')?.email || form.manager_email || '').trim() || undefined,
@@ -1647,6 +1650,7 @@ export default function CompanyDetailForm({
       </div>
           {registrationError ? <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{registrationError}{createdCompanyId ? <button type="button" className="ml-2 underline" onClick={() => router.push(`${listPath}/${createdCompanyId}`)}>등록된 거래처 보기</button> : null}</div> : null}
       <div id="company-panel-basic" role="tabpanel" aria-labelledby="company-tab-basic" hidden={activeTab !== 'basic'}>
+      <CompanyTaskDefaultsSection ref={taskDefaultsRef} companyId={companyId} creating={isCreateMode} editable={!!editable} />
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-5">
         <div className="min-w-0 space-y-8 divide-y divide-slate-100 [&>section:not(:first-child)]:pt-6 xl:col-span-3">
           <Section

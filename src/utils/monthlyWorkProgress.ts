@@ -14,7 +14,7 @@ export function summarizeMonthlyWork(rows: TaskBoardListItem[]) {
   return {
     done, todo, percent: done + todo ? Math.round(done / (done + todo) * 100) : null,
     na: eligible.reduce((sum, row) => sum + Math.max(0, row.total_count - row.done_count - row.todo_count), 0),
-    unregistered: eligible.filter(row => !row.board_id || row.total_count === 0).length,
+    unregistered: eligible.filter(row => !row.board_id || (row.total_count === 0 && !row.default_version_id)).length,
     pending: eligible.filter(row => row.todo_count > 0).sort((a, b) => b.todo_count - a.todo_count || a.company_name.localeCompare(b.company_name, 'ko')),
   }
 }

@@ -147,6 +147,7 @@ export interface CompanyUpdateRequest {
 }
 
 export interface CompanyCreateRequest {
+  task_defaults?: import('@/services/workflowTaskBoard').CompanyTaskDefaultsInput
   engagement_type?: 'bookkeeping' | 'one_off' | null
   assigned_admin_id?: number | null
   company_name: string

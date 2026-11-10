@@ -1775,19 +1775,7 @@ export default function WorkflowBoardPage() {
                 <span className="ml-2 text-xs text-zinc-500">신고월 {reportMonth}</span>
               </div>
 
-              {(
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-600">
-                  목록 보기
-                  <select aria-label="목록 표시 개수" value={pageSize}
-                    disabled={isEditMode || !preferenceReady || preferenceSaving}
-                    onChange={event => void changePageSize(event.target.value as TaskBoardPageSize)}
-                    className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50">
-                    <option value="10">10개</option><option value="20">20개</option>
-                    <option value="40">40개</option><option value="all">전체</option>
-                  </select>
-                  {preferenceSaving && <span role="status">저장 중</span>}
-                </label>
-              )}
+
               {(
                 <label className="ml-2 inline-flex items-center gap-1 text-xs text-zinc-700">
                   <input disabled={isEditMode} type="checkbox" checked={incompleteOnly} onChange={(event) => setIncompleteOnly(event.target.checked)} />
@@ -1891,8 +1879,8 @@ export default function WorkflowBoardPage() {
               {isSavingChecklist ? <span className="text-xs font-medium text-sky-700">저장 중...</span> : null}
               {!isSavingChecklist && editModeNotice ? <span className="text-xs font-medium text-zinc-600">{editModeNotice}</span> : null}
 
-              {(
-                <div className="ml-auto w-full max-w-xs">
+              <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+                <div className="min-w-0 flex-1 sm:w-64 sm:flex-none">
                   <UiSearchInput
                     value={keyword}
                     onChange={value => { if (!isEditMode) setKeyword(value) }}
@@ -1901,7 +1889,18 @@ export default function WorkflowBoardPage() {
                     inputClassName="text-xs"
                   />
                 </div>
-              )}
+                <label className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-zinc-600">
+                  목록 보기
+                  <select aria-label="목록 표시 개수" value={pageSize}
+                    disabled={isEditMode || !preferenceReady || preferenceSaving}
+                    onChange={event => void changePageSize(event.target.value as TaskBoardPageSize)}
+                    className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50">
+                    <option value="10">10개</option><option value="20">20개</option>
+                    <option value="40">40개</option><option value="all">전체</option>
+                  </select>
+                  {preferenceSaving && <span role="status">저장 중</span>}
+                </label>
+              </div>
             </div>
           </header>
 
@@ -1962,12 +1961,14 @@ export default function WorkflowBoardPage() {
                     <th
                       key={column.id}
                       className="px-1 py-2 text-center font-semibold"
+                      style={['근로', '퇴직', '사업', '기타', '일용'].includes(column.name.trim()) ? { paddingLeft: 4.5, paddingRight: 4.5 } : undefined}
                     >
+                      <div className={styles.taskHeading} title={column.name}>
                       {isEditMode ? (
                         <button
                           type="button"
                           onClick={() => toggleColumnAll(column.id)}
-                          className={`rounded border px-1.5 py-0.5 text-[11px] font-medium transition ${
+                          className={`w-full rounded border px-0 py-0.5 text-[11px] font-medium transition ${
                             columnAllCheckedMap[column.id]
                               ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                               : 'border-zinc-300 bg-white text-zinc-700 hover:border-sky-300 hover:text-sky-700'
@@ -1979,10 +1980,11 @@ export default function WorkflowBoardPage() {
                           </span>
                         </button>
                       ) : (
-                        <span className="block px-1.5 py-0.5 text-[11px] leading-tight">
+                        <span className="block px-0 py-0.5 text-[11px] leading-tight">
                           {column.name}
                         </span>
                       )}
+                      </div>
                     </th>
                   ))}
                   {
@@ -2015,7 +2017,7 @@ export default function WorkflowBoardPage() {
                             key={column.id}
                             className="px-1 py-1.5 text-center font-semibold"
                           >
-                            <span className="block leading-tight">
+                            <span className={styles.taskHeading} title={column.name}>
                               {column.name}
                             </span>
                           </th>
@@ -2055,6 +2057,7 @@ export default function WorkflowBoardPage() {
                         >
                           {row.company_name}
                         </button>
+                        <span className="block text-[10px] text-zinc-400">{row.default_version_id ? `기본 설정 v${row.default_version_id} · 월별 수정 가능` : '기존 월별 설정'}</span>
                       </td>
                       <td className="px-2 py-1.5 text-center text-zinc-600">
                         <span className="block whitespace-nowrap" title={row.assignee_name || '담당자 미지정'}>
@@ -2130,6 +2133,7 @@ export default function WorkflowBoardPage() {
                           <td
                             key={`${row.company_id}:${column.id}`}
                             className="px-1 py-2 text-center"
+                            style={['근로', '퇴직', '사업', '기타', '일용'].includes(column.name.trim()) ? { paddingLeft: 4.5, paddingRight: 4.5 } : undefined}
                           >
                             {row.is_excluded ? (
                               <span className="text-zinc-400">-</span>
@@ -2182,7 +2186,7 @@ export default function WorkflowBoardPage() {
                           return (
                                 <td
                                   key={`${row.company_id}:${column.id}`}
-                                  className="min-w-[150px] px-1 py-2 text-center"
+                                  className="px-1 py-2 text-center"
                                 >
                                   {row.is_excluded ? (
                                     <span className="text-zinc-400">-</span>
@@ -2190,13 +2194,13 @@ export default function WorkflowBoardPage() {
                                     isEditMode ? (
                                       <select aria-label={`${row.company_name} ${column.name} 대상 설정`}
                                         disabled={checklistBlocked}
-                                        className="rounded border border-zinc-300 bg-white px-1 py-1 text-xs"
+                                        className="w-20 rounded border border-zinc-300 bg-white px-1 py-1 text-xs"
                                         value={targetModes[getMajorCheckKey(row.company_id, column.id)] ?? 'auto'}
                                         onChange={event => {
                                           dirtyCompanies.current.add(row.company_id)
                                           setTargetModes(prev => ({ ...prev, [getMajorCheckKey(row.company_id, column.id)]: event.target.value as TaskTargetMode }))
                                         }}>
-                                        <option value="auto">자동 · {checked ? '대상' : '해당없음'}</option>
+                                        <option value="auto">자동</option>
                                         <option value="required">대상</option>
                                         <option value="excluded">대상 제외</option>
                                       </select>
@@ -2206,9 +2210,9 @@ export default function WorkflowBoardPage() {
                                         aria-label={`${row.company_name} ${column.name} ${completedAt ? '완료 취소' : '완료 처리'}`}
                                         title={completedAt ? `완료 ${formatKSTDate(completedAt)} · 클릭하여 취소` : '미완료 · 클릭하여 처리'}
                                         className={`rounded px-2 py-1 text-xs disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                        {monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]?.status === 'done' ? `✓ ${completedAt ? formatKSTDate(completedAt) : '완료'}` : '✕ 미완료'}
+                                        {monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]?.status === 'done' ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
                                       </button>
-                                    ) : <span className="text-xs text-zinc-400" title="해당없음">— 해당없음</span>
+                                    ) : <span className="text-xs text-zinc-400" title="해당없음">해당없음</span>
 
                                   )}
                                 </td>

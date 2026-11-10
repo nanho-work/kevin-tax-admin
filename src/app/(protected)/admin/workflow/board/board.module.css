@@ -28,8 +28,8 @@
   font-size: 0.75rem;
 }
 .table th, .table td {
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
+  padding-left: 4px;
+  padding-right: 4px;
   white-space: nowrap;
   border-right: 1px solid #e9e9ed;
   border-bottom: 1px solid #e9e9ed;
@@ -41,4 +41,15 @@
   z-index: 30;
   background: #f4f4f5;
   box-shadow: 0 1px 0 #d4d4d8;
+}
+
+/* Size workflow columns from their body values, not long task names. */
+.taskHeading {
+  display: block;
+  contain: inline-size;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+  font-size: 11px;
+  line-height: 1.4;
 }

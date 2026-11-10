@@ -19,6 +19,7 @@ export type TaskBoardSortBy =
 export type TaskBoardSortOrder = 'asc' | 'desc'
 
 export interface TaskBoardListItem {
+  default_version_id?: number | null
   company_id: number
   company_name: string
   company_kind: 'corporate' | 'individual' | 'unknown' | string
@@ -798,4 +799,23 @@ export async function getTaskBoardPreference(scope: TaskBoardScope) {
 }
 export async function saveTaskBoardPreference(scope: TaskBoardScope, page_size: TaskBoardPageSize) {
   return (await getHttp(scope).put<{page_size: TaskBoardPageSize}>(`${getBase(scope)}/task-boards/preference`, { page_size })).data
+}
+
+export interface CompanyTaskDefaultsInput {
+  effective_month: string
+  end_month?: string | null
+  enabled: boolean
+  template_ids: number[]
+  expected_version_id?: number | null
+}
+export interface CompanyTaskDefaultsResult {
+  configured: boolean
+  latest_version_id: number | null
+  versions: (CompanyTaskDefaultsInput & { id: number; created_at: string })[]
+}
+export async function getCompanyTaskDefaults(scope: TaskBoardScope, companyId: number) {
+  return (await getHttp(scope).get<CompanyTaskDefaultsResult>(`${getBase(scope)}/${companyId}/task-defaults`)).data
+}
+export async function saveCompanyTaskDefaults(scope: TaskBoardScope, companyId: number, payload: CompanyTaskDefaultsInput) {
+  return (await getHttp(scope).put<CompanyTaskDefaultsResult>(`${getBase(scope)}/${companyId}/task-defaults`, payload)).data
 }
