@@ -41,6 +41,7 @@ export interface TaskBoardListItem {
 }
 
 export interface TaskBoardListResponse {
+  targeting_version?: number
   total: number
   page: number
   size: number
@@ -86,7 +87,11 @@ export interface TaskBoardEnsureResponse {
 
 export type TaskItemStatus = 'not_started' | 'in_progress' | 'done' | 'na'
 
+export type TaskTargetMode = 'auto' | 'required' | 'excluded'
+
 export interface TaskBoardItem {
+  target_mode: TaskTargetMode | null
+  target_active: boolean
   id: number
   board_id: number
   template_id?: number | null
@@ -126,6 +131,7 @@ export interface TaskBoardItemUpdateRequest {
 }
 
 export interface TaskBoardItemBulkUpsertPayloadItem {
+  target_mode?: TaskTargetMode
   template_id?: number | null
   task_name: string
   selected: boolean
@@ -784,4 +790,12 @@ export async function fetchTaskFileArchive(
 ): Promise<TaskFileArchiveResponse> {
   const res = await getHttp(scope).get<TaskFileArchiveResponse>(`${getBase(scope)}/task-files/archive`, { params })
   return res.data
+}
+
+export type TaskBoardPageSize = '10' | '20' | '40' | 'all'
+export async function getTaskBoardPreference(scope: TaskBoardScope) {
+  return (await getHttp(scope).get<{page_size: TaskBoardPageSize}>(`${getBase(scope)}/task-boards/preference`)).data
+}
+export async function saveTaskBoardPreference(scope: TaskBoardScope, page_size: TaskBoardPageSize) {
+  return (await getHttp(scope).put<{page_size: TaskBoardPageSize}>(`${getBase(scope)}/task-boards/preference`, { page_size })).data
 }

@@ -1,5 +1,8 @@
 'use client'
 
+import styles from './board.module.css'
+import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
+
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
@@ -26,6 +29,10 @@ import {
   listGlobalTaskTemplates,
   listTaskBoardItems,
   listTaskBoards,
+  getTaskBoardPreference,
+  saveTaskBoardPreference,
+  type TaskBoardPageSize,
+  type TaskTargetMode,
   listTaskItemDocs,
   listTaskTemplates,
   patchTaskBoardExclude,
@@ -128,13 +135,7 @@ function splitByChars(value: string, chunkSize: number): string[] {
   return chunks
 }
 
-function splitByTwoChars(value: string): string[] {
-  return splitByChars(value, 2)
-}
 
-function splitByFourChars(value: string): string[] {
-  return splitByChars(value, 4)
-}
 
 function getExecutionModeLabel(mode: TaskExecutionMode) {
   if (mode === 'file_only') return '파일 필수'
@@ -143,7 +144,6 @@ function getExecutionModeLabel(mode: TaskExecutionMode) {
 }
 
 const TEMPLATE_COLUMN_PREFIX = 'template-col-'
-const TASK_BOARD_LIST_PAGE_SIZE = 10
 const TASK_BOARD_EDIT_PAGE_SIZE = 100
 
 function seedCustomColumns(): CustomColumn[] {
@@ -181,6 +181,34 @@ export default function WorkflowBoardPage() {
   const [listRowsApi, setListRowsApi] = useState<TaskBoardListItem[]>([])
   const [listTotal, setListTotal] = useState(0)
   const [listPage, setListPage] = useState(1)
+  const [pageSize, setPageSize] = useState<TaskBoardPageSize>('all')
+  const [preferenceReady, setPreferenceReady] = useState(false)
+  const [preferenceSaving, setPreferenceSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setPreferenceReady(false)
+    setPageSize('all')
+    setListPage(1)
+    getTaskBoardPreference(scope).then(result => {
+      if (!cancelled) { setPageSize(result.page_size); setListPage(1) }
+    }).catch(() => {
+      if (!cancelled) toast.error('목록 보기 설정을 불러오지 못했습니다. 전체 목록으로 표시합니다.')
+    }).finally(() => { if (!cancelled) setPreferenceReady(true) })
+    return () => { cancelled = true }
+  }, [scope])
+
+  const changePageSize = async (value: TaskBoardPageSize) => {
+    if (preferenceSaving) return
+    setPreferenceSaving(true)
+    try {
+      await saveTaskBoardPreference(scope, value)
+      setListPage(1)
+      setPageSize(value)
+    } catch {
+      toast.error('보기 설정을 저장하지 못했습니다. 다시 선택해 주세요.')
+    } finally { setPreferenceSaving(false) }
+  }
   const [listLoading, setListLoading] = useState(false)
   const [listLoaded, setListLoaded] = useState(false)
   const [listPeriod, setListPeriod] = useState('')
@@ -218,6 +246,23 @@ export default function WorkflowBoardPage() {
   const editNoticeTimerRef = useRef<number | null>(null)
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const boardViewportRef = useRef<HTMLDivElement>(null)
+  const [boardViewportHeight, setBoardViewportHeight] = useState<number>()
+
+  useEffect(() => {
+    if (selectedCompanyId) return
+    const main = boardViewportRef.current?.closest('main')
+    if (!main) return
+    const updateHeight = () => {
+      const css = getComputedStyle(main)
+      setBoardViewportHeight(main.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom))
+    }
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(main)
+    return () => observer.disconnect()
+  }, [selectedCompanyId])
+
   const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null)
   const [detailItems, setDetailItems] = useState<TaskBoardItem[]>([])
   const [detailTemplates, setDetailTemplates] = useState<TaskTemplateItem[]>([])
@@ -254,21 +299,30 @@ export default function WorkflowBoardPage() {
     [listRows, selectedCompanyId]
   )
 
-  // Editing offers the full catalog; saved monthly items only control checks.
-  const customColumns = useMemo<CustomColumn[]>(() => isEditMode
-    ? columnCatalog.map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name }))
-    : savedCustomColumns, [isEditMode, columnCatalog, savedCustomColumns])
+  const customColumns = useMemo<CustomColumn[]>(() =>
+    columnCatalog.map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name })), [columnCatalog])
+  const [targetModes, setTargetModes] = useState<Record<string, TaskTargetMode>>({})
+  const [monthlyItems, setMonthlyItems] = useState<Record<string, TaskBoardItem>>({})
+  const dirtyCompanies = useRef(new Set<number>())
+  const [completingKey, setCompletingKey] = useState<string | null>(null)
+  useEffect(() => {
+    dirtyCompanies.current.clear()
+    setTargetModes({})
+    setMonthlyItems({})
+  }, [attributionMonth, scope])
+
   const [checksReady, setChecksReady] = useState(false)
+  const [targetingReady, setTargetingReady] = useState(false)
   const [checkError, setCheckError] = useState('')
   const [checksMonth, setChecksMonth] = useState('')
-  const checklistBlocked = listLoading || listPeriod !== attributionMonth || !baseCatalogReady || !processCatalogReady || !checksReady || checksMonth !== attributionMonth || isSavingChecklist
+  const checklistBlocked = !targetingReady || listLoading || listPeriod !== attributionMonth || !baseCatalogReady || !processCatalogReady || !checksReady || checksMonth !== attributionMonth || isSavingChecklist
 
   const majorColumns = useMemo<MajorColumn[]>(
     () =>
       processTemplateCatalog
-        .filter((item) => isEditMode || selectedMajorTemplateIds.includes(item.id))
+
         .map((item) => ({ id: item.id, name: item.name })),
-    [processTemplateCatalog, selectedMajorTemplateIds, isEditMode]
+    [processTemplateCatalog]
   )
 
   const processFileOnlyTemplateOptions = useMemo(
@@ -332,32 +386,6 @@ export default function WorkflowBoardPage() {
     return entries
   }, [assigneeFilterId, listRowsApi])
 
-  const workColumnWidthMap = useMemo(() => {
-    const map: Record<string, number> = {}
-    customColumns.forEach((column) => {
-      map[column.id] = 36
-    })
-    return map
-  }, [customColumns])
-
-  const noColumnWidth = useMemo(() => {
-    const digitLength = Math.max(String(Math.max(1, listRows.length)).length, 2)
-    return Math.min(44, Math.max(34, digitLength * 8 + 12))
-  }, [listRows.length])
-
-  const kindColumnWidth = useMemo(() => {
-    const longest = Math.max('구분'.length, ...listRows.map((row) => mapCompanyKindToLabel(row.company_kind).length))
-    return Math.min(72, Math.max(44, longest * 10 + 14))
-  }, [listRows])
-
-  const nameColumnWidth = useMemo(() => {
-    const longest = Math.max('상호'.length, ...listRows.map((row) => (row.company_name || '').trim().length))
-    return Math.min(320, Math.max(140, longest * 11 + 26))
-  }, [listRows])
-  const baseCriteriaColumnWidth = 64
-  const majorColumnWidth = 56
-  const majorColumnListWidth = 84
-
   const fileModalTask = useMemo(
     () => (fileModalTaskId ? detailItems.find((task) => task.id === fileModalTaskId) ?? null : null),
     [detailItems, fileModalTaskId]
@@ -397,23 +425,25 @@ export default function WorkflowBoardPage() {
 
   useEffect(() => {
     setListPage(1)
-  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, isEditMode, sortBy, sortOrder])
+  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder])
 
   useEffect(() => {
     let cancelled = false
+    if (!preferenceReady) return
     const loadList = async () => {
       try {
         setListLoading(true)
-        const effectiveQuery = isEditMode ? undefined : deferredKeyword.trim() || undefined
-        const effectiveKind: TaskBoardKind = isEditMode ? 'all' : kindFilter
-        const effectiveAssigneeId = isEditMode ? undefined : assigneeFilterId !== 'all' ? Number(assigneeFilterId) : undefined
-        const effectiveIncompleteOnly = isEditMode ? false : incompleteOnly
-        const effectiveIncludeExcluded = isEditMode ? true : includeExcluded
+        const effectiveQuery = deferredKeyword.trim() || undefined
+        const effectiveKind: TaskBoardKind = kindFilter
+        const effectiveAssigneeId = assigneeFilterId !== 'all' ? Number(assigneeFilterId) : undefined
+        const effectiveIncompleteOnly = incompleteOnly
+        const effectiveIncludeExcluded = includeExcluded
         const effectiveSortBy = sortBy
         const effectiveSortOrder = sortOrder
-        const effectivePage = isEditMode ? 1 : listPage
-        const effectiveSize = isEditMode ? TASK_BOARD_EDIT_PAGE_SIZE : TASK_BOARD_LIST_PAGE_SIZE
-        const res = await listTaskBoards(scope, {
+        const loadAll = pageSize === 'all'
+        const effectivePage = loadAll ? 1 : listPage
+        const effectiveSize = loadAll ? TASK_BOARD_EDIT_PAGE_SIZE : Number(pageSize)
+        const params = {
           attribution_month: attributionMonth,
           report_month: reportMonth,
           q: effectiveQuery,
@@ -425,10 +455,21 @@ export default function WorkflowBoardPage() {
           order: effectiveSortOrder,
           page: effectivePage,
           size: effectiveSize,
-        })
+        }
+        const res = await listTaskBoards(scope, params)
+        const items = [...(res.items || [])]
+        if (loadAll) {
+          for (let page = 2; items.length < res.total; page += 1) {
+            if (cancelled) return
+            const next = await listTaskBoards(scope, { ...params, page })
+            if (!next.items.length) break
+            items.push(...next.items)
+          }
+        }
         if (cancelled) return
+        setTargetingReady(res.targeting_version === 1)
         setListPeriod(attributionMonth)
-        setListRowsApi(res.items || [])
+        setListRowsApi(items)
         setListTotal(Number(res.total || 0))
         setListLoaded(true)
       } catch (error) {
@@ -446,7 +487,7 @@ export default function WorkflowBoardPage() {
     return () => {
       cancelled = true
     }
-  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, isEditMode, sortBy, sortOrder, listPage, listReloadKey])
+  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, preferenceReady])
 
   useEffect(() => {
     let cancelled = false
@@ -660,6 +701,8 @@ export default function WorkflowBoardPage() {
       if (listPeriod !== attributionMonth) return
       let failed = false
 
+      const nextModes: Record<string, TaskTargetMode> = {}
+      const nextItems: Record<string, TaskBoardItem> = {}
       const nextColumnChecks: Record<string, boolean> = {}
       const nextMajorChecks: Record<string, boolean> = {}
       const nextMajorCompletedAt: Record<string, string | null> = {}
@@ -683,7 +726,10 @@ export default function WorkflowBoardPage() {
               const doneCompletedAtByNorm = new Map<string, string>()
               ;(res.items || []).forEach((item) => {
                 const normName = normalizeText(item.task_name || '')
-                if (normName) selectedTaskNormNames.add(normName)
+                if (normName) {
+                  nextItems[`${row.company_id}:${normName}`] = item
+                  if (item.target_active !== false && item.status !== 'na') selectedTaskNormNames.add(normName)
+                }
                 if (normName && item.status === 'done' && item.completed_at) {
                   doneCompletedAtByNorm.set(normName, item.completed_at)
                 }
@@ -695,6 +741,7 @@ export default function WorkflowBoardPage() {
                 const key = getMajorCheckKey(row.company_id, column.id)
                 const norm = normalizeText(column.name)
                 nextMajorChecks[key] = selectedTaskNormNames.has(norm)
+                nextModes[key] = nextItems[`${row.company_id}:${norm}`]?.target_mode ?? 'auto'
                 nextMajorCompletedAt[key] = doneCompletedAtByNorm.get(norm) ?? null
               })
             } catch {
@@ -708,10 +755,12 @@ export default function WorkflowBoardPage() {
         setCheckError('업무 선택 상태를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 저장은 차단됩니다.')
         return
       }
+      setTargetModes(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextModes).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
+      setMonthlyItems(prev => ({ ...prev, ...nextItems }))
       setChecksMonth(attributionMonth)
       setChecksReady(true)
-      setCompanyColumnChecks((prev) => ({ ...prev, ...nextColumnChecks }))
-      setCompanyMajorChecks((prev) => ({ ...prev, ...nextMajorChecks }))
+      setCompanyColumnChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextColumnChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
+      setCompanyMajorChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextMajorChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
       setCompanyMajorCompletedAt((prev) => ({ ...prev, ...nextMajorCompletedAt }))
     }
     void hydrateChecklistChecksFromSavedItems()
@@ -820,6 +869,7 @@ export default function WorkflowBoardPage() {
 
   const toggleCompanyColumnValue = (companyId: number, columnId: string) => {
     if (!isEditMode || checklistBlocked) return
+    dirtyCompanies.current.add(companyId)
     const key = getColumnCheckKey(companyId, columnId)
     setCompanyColumnChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -831,6 +881,7 @@ export default function WorkflowBoardPage() {
     setCompanyColumnChecks((prev) => {
       const next = { ...prev }
       activeRows.forEach((row) => {
+        dirtyCompanies.current.add(row.company_id)
         next[getColumnCheckKey(row.company_id, columnId)] = !allChecked
       })
       return next
@@ -1338,298 +1389,85 @@ export default function WorkflowBoardPage() {
   }
 
   const saveChecklistSelections = async () => {
-    if (checklistBlocked) {
-      toast.error(checkError || '업무 선택 상태를 불러온 후 저장해 주세요.')
-      return false
-    }
-    const processExecutionModeByNormName = new Map<string, TaskExecutionMode>()
-    const processSourceTaskNameByNormName = new Map<string, string>()
-    processTemplateCatalog.forEach((item) => {
-      processExecutionModeByNormName.set(normalizeText(item.name), item.executionMode)
-      if (item.sourceTaskName?.trim()) {
-        processSourceTaskNameByNormName.set(normalizeText(item.name), item.sourceTaskName.trim())
-      }
-    })
-
-    const activeColumnIdSet = new Set(customColumns.map((column) => column.id))
-    const baseTargets = columnCatalog.map((item) => ({
-      taskName: item.name,
-      columnId: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`,
-      templateKind: 'base' as const,
-      executionMode: undefined as TaskExecutionMode | undefined,
-    }))
-    const processTargets = majorColumns.map((item) => ({
-      taskName: item.name,
-      columnId: item.id,
-      templateKind: 'process' as const,
-      executionMode: processExecutionModeByNormName.get(normalizeText(item.name)) ?? ('check_only' as TaskExecutionMode),
-      sourceTaskName: processSourceTaskNameByNormName.get(normalizeText(item.name)) ?? null,
-    }))
-    const allTargets = [...baseTargets, ...processTargets]
-
-    if (!allTargets.length) return true
-
-    const hydrateProcessSourceLabelsFromItems = (items: TaskBoardItem[]) => {
-      const sourceByTaskNameNorm = new Map<string, string | null>()
-      items.forEach((item) => {
-        const norm = normalizeText(item.task_name || '')
-        if (!norm) return
-        sourceByTaskNameNorm.set(norm, item.source_task_name?.trim() || null)
-      })
-      setProcessTemplateCatalog((prev) =>
-        prev.map((item) => {
-          const sourceTaskName = sourceByTaskNameNorm.get(normalizeText(item.name))
-          if (typeof sourceTaskName === 'undefined') return item
-          return { ...item, sourceTaskName }
-        })
-      )
-    }
-
+    if (checklistBlocked) return false
+    setIsSavingChecklist(true)
     try {
-      setIsSavingChecklist(true)
-      await Promise.all(
-        listRows
-          .filter((row) => !row.is_excluded)
-          .map(async (row) => {
-            const hasAnySelected = allTargets.some((target) => {
-              if (target.templateKind === 'base') {
-                return (
-                  activeColumnIdSet.has(target.columnId) &&
-                  Boolean(companyColumnChecks[getColumnCheckKey(row.company_id, target.columnId)])
-                )
-              }
-              return Boolean(companyMajorChecks[getMajorCheckKey(row.company_id, target.columnId)])
-            })
-
-            let boardId = row.board_id ?? null
-            if (!boardId) {
-              if (!hasAnySelected) return
-              const ensured = await ensureTaskBoard(scope, row.company_id, {
-                attribution_month: attributionMonth,
-                report_month: reportMonth,
-                copy_from_previous: true,
-              })
-              boardId = ensured.board.id
-            }
-
-            const rowTemplateRes = await listTaskTemplates(scope, row.company_id, {
-              includeInactive: false,
-            })
-            const rowTemplateIdByKindAndNormName = new Map<string, number>()
-            ;(rowTemplateRes.items || []).forEach((template) => {
-              const kind = template.template_kind === 'process' ? 'process' : 'base'
-              rowTemplateIdByKindAndNormName.set(`${kind}:${normalizeText(template.task_name)}`, template.id)
-            })
-            const ensureTemplateIdForTask = async (
-              taskName: string,
-              templateKind: 'base' | 'process',
-              executionMode?: TaskExecutionMode
-            ) => {
-              const norm = normalizeText(taskName)
-              const key = `${templateKind}:${norm}`
-              const found = rowTemplateIdByKindAndNormName.get(key)
-              if (typeof found === 'number') return found
-              const created = await createTaskTemplate(scope, row.company_id, {
-                task_name: taskName,
-                sort_order: 100,
-                template_kind: templateKind,
-                execution_mode: templateKind === 'process' ? executionMode ?? 'check_only' : undefined,
-              })
-              rowTemplateIdByKindAndNormName.set(key, created.id)
-              return created.id
-            }
-
-            const existingItemsRes = await listTaskBoardItems(scope, row.company_id, boardId)
-            const existingItemIdByNormName = new Map<string, number>()
-            const existingItemByNormName = new Map<string, TaskBoardItem>()
-            ;(existingItemsRes.items || []).forEach((item) => {
-              const norm = normalizeText(item.task_name || '')
-              if (!norm) return
-              existingItemIdByNormName.set(norm, item.id)
-              existingItemByNormName.set(norm, item)
-            })
-
-            const itemsPayload = await Promise.all(
-              allTargets.map(async (target) => {
-                const selected =
-                  target.templateKind === 'base'
-                    ? activeColumnIdSet.has(target.columnId) &&
-                      Boolean(companyColumnChecks[getColumnCheckKey(row.company_id, target.columnId)])
-                    : Boolean(companyMajorChecks[getMajorCheckKey(row.company_id, target.columnId)])
-                if (!selected) {
-                  const matchedTemplateId = rowTemplateIdByKindAndNormName.get(
-                    `${target.templateKind}:${normalizeText(target.taskName)}`
-                  )
-                  return {
-                    template_id: typeof matchedTemplateId === 'number' ? matchedTemplateId : null,
-                    task_name: target.taskName,
-                    selected: false,
-                  }
-                }
-                const matchedTemplateId = await ensureTemplateIdForTask(
-                  target.taskName,
-                  target.templateKind,
-                  target.executionMode
-                )
-                const sourceNormName =
-                  target.templateKind === 'process' && target.sourceTaskName
-                    ? normalizeText(target.sourceTaskName)
-                    : ''
-                const currentItem = existingItemByNormName.get(normalizeText(target.taskName))
-                const sourceItemId = sourceNormName ? existingItemIdByNormName.get(sourceNormName) : undefined
-                const payload: {
-                  template_id: number
-                  task_name: string
-                  selected: true
-                  source_item_id?: number | null
-                } = {
-                  template_id: matchedTemplateId,
-                  task_name: target.taskName,
-                  selected: true,
-                }
-                if (sourceNormName) {
-                  // source_task_name이 있어도 item_id를 못 찾은 경우에는 기존 연동을 보존합니다.
-                  if (typeof sourceItemId === 'number') {
-                    payload.source_item_id = sourceItemId
-                  } else if (currentItem?.source_item_id != null) {
-                    payload.source_item_id = currentItem.source_item_id
-                  }
-                } else if (currentItem?.source_item_id != null) {
-                  // 기존 연동을 명시 해제할 때만 null을 전송합니다.
-                  payload.source_item_id = null
-                }
-                return payload
-              })
-            )
-
-            try {
-              const firstUpsert = await bulkUpsertTaskBoardItems(
-                scope,
-                row.company_id,
-                boardId,
-                {
-                  items: itemsPayload,
-                },
-                {
-                  returnItems: row.company_id === selectedCompanyId,
-                }
-              )
-              if (row.company_id === selectedCompanyId && firstUpsert.items) {
-                setDetailItems(firstUpsert.items)
-                hydrateProcessSourceLabelsFromItems(firstUpsert.items)
-              }
-              const linkedProcessTargets = processTargets.filter((target) => target.sourceTaskName)
-              if (linkedProcessTargets.length > 0) {
-                const refreshedItems = firstUpsert.items ?? (await listTaskBoardItems(scope, row.company_id, boardId)).items ?? []
-                const refreshedItemIdByNormName = new Map<string, number>()
-                const refreshedItemByNormName = new Map<string, TaskBoardItem>()
-                ;(refreshedItems || []).forEach((item) => {
-                  const norm = normalizeText(item.task_name || '')
-                  if (!norm) return
-                  refreshedItemIdByNormName.set(norm, item.id)
-                  refreshedItemByNormName.set(norm, item)
-                })
-
-                const sourceLinkPayload = await Promise.all(
-                  linkedProcessTargets.map(async (target) => {
-                    const selected = Boolean(companyMajorChecks[getMajorCheckKey(row.company_id, target.columnId)])
-                    if (!selected) {
-                      return {
-                        task_name: target.taskName,
-                        selected: false,
-                      }
-                    }
-                    const templateId = await ensureTemplateIdForTask(
-                      target.taskName,
-                      target.templateKind,
-                      target.executionMode
-                    )
-                    const sourceNormName = target.sourceTaskName ? normalizeText(target.sourceTaskName) : ''
-                    const sourceItemId = sourceNormName ? refreshedItemIdByNormName.get(sourceNormName) : undefined
-                    const currentItem = refreshedItemByNormName.get(normalizeText(target.taskName))
-                    const payload: {
-                      template_id: number
-                      task_name: string
-                      selected: true
-                      source_item_id?: number | null
-                    } = {
-                      template_id: templateId,
-                      task_name: target.taskName,
-                      selected: true,
-                    }
-                    if (sourceNormName) {
-                      if (typeof sourceItemId === 'number') {
-                        payload.source_item_id = sourceItemId
-                      } else if (currentItem?.source_item_id != null) {
-                        payload.source_item_id = currentItem.source_item_id
-                      }
-                    } else if (currentItem?.source_item_id != null) {
-                      payload.source_item_id = null
-                    }
-                    return payload
-                  })
-                )
-                const secondUpsert = await bulkUpsertTaskBoardItems(
-                  scope,
-                  row.company_id,
-                  boardId,
-                  {
-                    items: sourceLinkPayload,
-                  },
-                  {
-                    returnItems: row.company_id === selectedCompanyId,
-                  }
-                )
-                if (row.company_id === selectedCompanyId && secondUpsert.items) {
-                  setDetailItems(secondUpsert.items)
-                  hydrateProcessSourceLabelsFromItems(secondUpsert.items)
-                }
-              }
-            } catch (error) {
-              const status = (error as { response?: { status?: number } })?.response?.status
-              if (status !== 404) throw error
-
-              // fallback: 서버에 bulk-upsert가 아직 반영되지 않은 경우 기존 단건 CRUD로 저장
-              const existing = await listTaskBoardItems(scope, row.company_id, boardId)
-              const byTemplateId = new Map<number, TaskBoardItem>()
-              const byNameNorm = new Map<string, TaskBoardItem>()
-              ;(existing.items || []).forEach((item) => {
-                if (typeof item.template_id === 'number') byTemplateId.set(item.template_id, item)
-                byNameNorm.set(normalizeText(item.task_name), item)
-              })
-
-              await Promise.all(
-                itemsPayload.map(async (item) => {
-                  const existingItem =
-                    (typeof item.template_id === 'number' ? byTemplateId.get(item.template_id) : undefined) ??
-                    byNameNorm.get(normalizeText(item.task_name))
-
-                  if (item.selected) {
-                    if (!existingItem) {
-                      await createTaskBoardItem(scope, row.company_id, boardId, {
-                        task_name: item.task_name,
-                        template_id: item.template_id ?? null,
-                      })
-                    }
-                    return
-                  }
-
-                  if (existingItem) {
-                    await deleteTaskBoardItem(scope, row.company_id, boardId, existingItem.id)
-                  }
-                })
-              )
-            }
+      for (const row of listRows.filter(row => !row.is_excluded && dirtyCompanies.current.has(row.company_id))) {
+        const boardId = row.board_id ?? (await ensureTaskBoard(scope, row.company_id, {
+          attribution_month: attributionMonth, report_month: reportMonth, copy_from_previous: true,
+        })).board.id
+        const templates = (await listTaskTemplates(scope, row.company_id, { includeInactive: false })).items
+        const targets = [
+          ...customColumns.map(column => ({ ...column, kind: 'base' as const })),
+          ...majorColumns.map(column => ({ ...column, kind: 'process' as const })),
+        ]
+        const items = []
+        for (const target of targets) {
+          const existing = templates.find(t => t.template_kind === target.kind && normalizeText(t.task_name) === normalizeText(target.name))
+          const template = existing ?? await createTaskTemplate(scope, row.company_id, {
+            task_name: target.name, template_kind: target.kind, sort_order: 100,
+            execution_mode: target.kind === 'process'
+              ? processTemplateCatalog.find(t => t.id === target.id)?.executionMode ?? 'check_only' : undefined,
           })
-      )
-      setListReloadKey((prev) => prev + 1)
+          const mode: TaskTargetMode = target.kind === 'base'
+            ? companyColumnChecks[getColumnCheckKey(row.company_id, target.id)] ? 'required' : 'excluded'
+            : targetModes[getMajorCheckKey(row.company_id, target.id)] ?? 'auto'
+          items.push({ template_id: template.id, task_name: target.name, selected: true, target_mode: mode })
+        }
+        const saved = await bulkUpsertTaskBoardItems(scope, row.company_id, boardId, { items }, { returnItems: true })
+        const savedItems = saved.items ?? (await listTaskBoardItems(scope, row.company_id, boardId)).items
+        const sourceLinks = majorColumns.flatMap(column => {
+          const process = savedItems.find(item => normalizeText(item.task_name) === normalizeText(column.name))
+          const sourceName = processTemplateCatalog.find(item => item.id === column.id)?.sourceTaskName
+          const source = sourceName ? savedItems.find(item => normalizeText(item.task_name) === normalizeText(sourceName)) : undefined
+          if (!process || (sourceName && !source) || (process.source_item_id ?? null) === (source?.id ?? null)) return []
+          return [{ task_name: column.name, selected: true,
+            target_mode: targetModes[getMajorCheckKey(row.company_id, column.id)] ?? 'auto',
+            source_item_id: source?.id ?? null }]
+        })
+        if (sourceLinks.length) await bulkUpsertTaskBoardItems(scope, row.company_id, boardId, { items: sourceLinks })
+        dirtyCompanies.current.delete(row.company_id)
+      }
+      setListReloadKey(prev => prev + 1)
       return true
     } catch (error) {
       toast.error(getTaskBoardErrorMessage(error))
+      setListReloadKey(prev => prev + 1)
       return false
-    } finally {
-      setIsSavingChecklist(false)
-    }
+    } finally { setIsSavingChecklist(false) }
+  }
+
+  const isProcessTarget = (row: TaskBoardListItem, column: MajorColumn) => {
+    const key = getMajorCheckKey(row.company_id, column.id)
+    if (!isEditMode) return companyMajorChecks[key] ?? false
+    const mode = targetModes[key] ?? 'auto'
+    if (mode !== 'auto') return mode === 'required'
+    const hasBase = customColumns.some(c => companyColumnChecks[getColumnCheckKey(row.company_id, c.id)])
+    const deferred = row.report_cycle === 'semiannual' && !['01', '07'].includes(reportMonth.slice(-2)) &&
+      ['원천세신고', '원천세신고서작성', '원천세신고서제출', '원천세납부서전달', '원천세납부안내', '납부서전달'].includes(normalizeText(column.name))
+    return hasBase && !deferred
+  }
+
+  const toggleListCompletion = async (row: TaskBoardListItem, column: MajorColumn) => {
+    const key = getMajorCheckKey(row.company_id, column.id)
+    const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
+    if (!item || !row.board_id || completingKey || checklistBlocked) return
+    setCompletingKey(key)
+    try {
+      if (item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
+        // Preserve file/source/notification requirements in the existing detail flow.
+        handleOpenDetail(row.company_id)
+        toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
+        return
+      }
+      await updateTaskBoardItem(scope, row.company_id, row.board_id, item.id, {
+        status: item.status === 'done' ? 'in_progress' : 'done',
+      })
+      setListReloadKey(prev => prev + 1)
+    } catch (error) {
+      toast.error(getTaskBoardErrorMessage(error))
+      if (item.execution_mode_snapshot === 'file_only') handleOpenDetail(row.company_id)
+    } finally { setCompletingKey(null) }
   }
 
   const showEditModeNotice = (message: string, duration = 1400) => {
@@ -1698,7 +1536,9 @@ export default function WorkflowBoardPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div ref={boardViewportRef} className={selectedCompanyId ? "space-y-4" : styles.viewport}
+      style={selectedCompanyId ? undefined : { height: boardViewportHeight }}>
+      {scope === 'admin' && !selectedCompanyId && <WithholdingNavigation active="board" />}
       {selectedCompanyId ? (
         <section className="space-y-4 bg-white">
           <header className="border-b border-zinc-200 pb-3">
@@ -1755,6 +1595,7 @@ export default function WorkflowBoardPage() {
                 {detailProcessItems.map((task) => {
                   const mode = task.execution_mode_snapshot ?? 'check_only'
                   const isDone = task.status === 'done'
+                  const isApplicable = task.target_active !== false
                   const docCount = detailDocCountMap[task.id] ?? 0
                   const hasLinkedSource = Boolean(task.source_item_id)
                   const sourceLinkedItem =
@@ -1786,7 +1627,7 @@ export default function WorkflowBoardPage() {
                         </div>
                         <div className="shrink-0">
                           <span className="inline-flex rounded-full border border-zinc-300 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700">
-                            {getExecutionModeLabel(mode)}
+                            {isApplicable ? getExecutionModeLabel(mode) : '해당없음 · 기존 자료 보존'}
                           </span>
                         </div>
                       </div>
@@ -1886,7 +1727,7 @@ export default function WorkflowBoardPage() {
                           </UiButton>
                         ) : null}
                         {isDone && mode !== 'check_only' ? (
-                          <UiButton size="xs" variant="secondary" onClick={() => handleTaskStatusPatch(task.id, 'in_progress')}>
+                          <UiButton size="xs" variant="secondary" disabled={!isApplicable} onClick={() => handleTaskStatusPatch(task.id, 'in_progress')}>
                             수정
                           </UiButton>
                         ) : (
@@ -1894,7 +1735,7 @@ export default function WorkflowBoardPage() {
                             size="xs"
                             variant="primary"
                             onClick={() => handleTaskStatusPatch(task.id, 'done')}
-                            disabled={mode === 'check_only' && hasLinkedSource && !canCompleteByLink}
+                            disabled={!isApplicable || (mode === 'check_only' && hasLinkedSource && !canCompleteByLink)}
                           >
                             완료
                           </UiButton>
@@ -1920,34 +1761,48 @@ export default function WorkflowBoardPage() {
           )}
         </section>
       ) : (
-        <section className="space-y-4 bg-white">
+        <section className={styles.listSection}>
           <header className="space-y-2 border-b border-zinc-200 pb-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-1">
-                <UiButton size="iconSm" variant="secondary" onClick={() => setAttributionMonth((prev) => monthShift(prev, -1))}>
+                <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, -1))}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </UiButton>
                 <span className="text-xs font-semibold text-zinc-700">귀속월 {attributionMonth}</span>
-                <UiButton size="iconSm" variant="secondary" onClick={() => setAttributionMonth((prev) => monthShift(prev, 1))}>
+                <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, 1))}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </UiButton>
                 <span className="ml-2 text-xs text-zinc-500">신고월 {reportMonth}</span>
               </div>
 
-              {!isEditMode ? (
+              {(
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-600">
+                  목록 보기
+                  <select aria-label="목록 표시 개수" value={pageSize}
+                    disabled={isEditMode || !preferenceReady || preferenceSaving}
+                    onChange={event => void changePageSize(event.target.value as TaskBoardPageSize)}
+                    className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50">
+                    <option value="10">10개</option><option value="20">20개</option>
+                    <option value="40">40개</option><option value="all">전체</option>
+                  </select>
+                  {preferenceSaving && <span role="status">저장 중</span>}
+                </label>
+              )}
+              {(
                 <label className="ml-2 inline-flex items-center gap-1 text-xs text-zinc-700">
-                  <input type="checkbox" checked={incompleteOnly} onChange={(event) => setIncompleteOnly(event.target.checked)} />
+                  <input disabled={isEditMode} type="checkbox" checked={incompleteOnly} onChange={(event) => setIncompleteOnly(event.target.checked)} />
                   미완료만
                 </label>
-              ) : null}
-              {!isEditMode ? (
+              )}
+              {(
                 <label className="inline-flex items-center gap-1 text-xs text-zinc-700">
-                  <input type="checkbox" checked={includeExcluded} onChange={(event) => setIncludeExcluded(event.target.checked)} />
+                  <input disabled={isEditMode} type="checkbox" checked={includeExcluded} onChange={(event) => setIncludeExcluded(event.target.checked)} />
                   제외 포함
                 </label>
-              ) : null}
-              {!isEditMode ? (
+              )}
+              {(
                 <select
+                  disabled={isEditMode}
                   value={assigneeFilterId}
                   onChange={(event) => setAssigneeFilterId(event.target.value)}
                   className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs text-zinc-700"
@@ -1959,9 +1814,9 @@ export default function WorkflowBoardPage() {
                     </option>
                   ))}
                 </select>
-              ) : null}
+              )}
 
-              {!isEditMode ? (
+              {(
                 <div className="inline-flex items-center rounded-md border border-zinc-300 bg-white p-0.5">
                   {(['all', 'corporate', 'individual'] as const).map((kind) => {
                     const active = kindFilter === kind
@@ -1970,7 +1825,7 @@ export default function WorkflowBoardPage() {
                       <button
                         key={kind}
                         type="button"
-                        onClick={() => setKindFilter(kind)}
+                        disabled={isEditMode} onClick={() => setKindFilter(kind)}
                         className={`rounded px-2 py-1 text-xs transition ${
                           active ? 'bg-sky-600 text-white' : 'text-zinc-700 hover:bg-zinc-100'
                         }`}
@@ -1980,7 +1835,7 @@ export default function WorkflowBoardPage() {
                     )
                   })}
                 </div>
-              ) : null}
+              )}
 
               {isEditMode ? (
                 <UiButton
@@ -2018,10 +1873,6 @@ export default function WorkflowBoardPage() {
                 variant={isEditMode ? 'primary' : 'tabInactive'}
                 onClick={async () => {
                   if (!isEditMode) {
-                    setIncompleteOnly(false)
-                    setKindFilter('all')
-                    setAssigneeFilterId('all')
-                    setKeyword('')
                     setIsEditMode(true)
                     showEditModeNotice('편집 중')
                     return
@@ -2031,7 +1882,7 @@ export default function WorkflowBoardPage() {
                   setIsEditMode(false)
                   showEditModeNotice('저장 완료')
                 }}
-                disabled={isSavingChecklist || (isEditMode && checklistBlocked)}
+                disabled={checklistBlocked}
               >
                 {isEditMode ? (isSavingChecklist ? '저장 중...' : '편집 완료') : '편집'}
               </UiButton>
@@ -2040,31 +1891,34 @@ export default function WorkflowBoardPage() {
               {isSavingChecklist ? <span className="text-xs font-medium text-sky-700">저장 중...</span> : null}
               {!isSavingChecklist && editModeNotice ? <span className="text-xs font-medium text-zinc-600">{editModeNotice}</span> : null}
 
-              {!isEditMode ? (
+              {(
                 <div className="ml-auto w-full max-w-xs">
                   <UiSearchInput
                     value={keyword}
-                    onChange={setKeyword}
+                    onChange={value => { if (!isEditMode) setKeyword(value) }}
                     placeholder="업체명 검색"
                     wrapperClassName="h-8"
                     inputClassName="text-xs"
                   />
                 </div>
-              ) : null}
+              )}
             </div>
           </header>
 
-          <div className="overflow-x-auto">
-            <table className="w-max min-w-full text-xs">
+          {!listLoading && listLoaded && !targetingReady && (
+            <p role="alert" className="text-xs text-amber-700">대상 설정 기능은 SQL 적용 및 서버 업데이트 후 사용할 수 있습니다. 현재는 조회만 가능합니다.</p>
+          )}
+          <div className={styles.tableScroller} tabIndex={0} role="region" aria-label="원천세 업무 목록">
+            <table className={styles.table}>
               <thead className="bg-zinc-100 text-zinc-700">
                 <tr>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: `${noColumnWidth}px`, minWidth: `${noColumnWidth}px` }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     No
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: `${kindColumnWidth}px`, minWidth: `${kindColumnWidth}px` }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     구분
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: `${nameColumnWidth}px`, minWidth: `${nameColumnWidth}px` }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     <button
                       type="button"
                       onClick={() => handleToggleSort('company_name')}
@@ -2075,10 +1929,10 @@ export default function WorkflowBoardPage() {
                       {renderSortIcon('company_name')}
                     </button>
                   </th>
-                  <th className="px-2 py-1.5 text-center font-semibold" style={{ width: '88px', minWidth: '88px' }}>
+                  <th className="px-2 py-1.5 text-center font-semibold">
                     담당자
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     <button
                       type="button"
                       onClick={() => handleToggleSort('report_cycle')}
@@ -2089,23 +1943,18 @@ export default function WorkflowBoardPage() {
                       {renderSortIcon('report_cycle')}
                     </button>
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     귀속
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
+                  <th className="px-1 py-1.5 text-center font-semibold">
                     급여
                   </th>
                   {!hasSelectedCustomColumns ? (
                     <th
                       className="px-1 py-1.5 text-center font-semibold"
-                      style={{ width: `${baseCriteriaColumnWidth}px`, minWidth: `${baseCriteriaColumnWidth}px` }}
                     >
                       <span className="block leading-tight">
-                        {splitByTwoChars(isEditMode ? '기준업무' : '기본업무').map((chunk, idx) => (
-                          <span key={`base-criteria-${idx}`} className="block">
-                            {chunk}
-                          </span>
-                        ))}
+                        기본업무
                       </span>
                     </th>
                   ) : null}
@@ -2113,7 +1962,6 @@ export default function WorkflowBoardPage() {
                     <th
                       key={column.id}
                       className="px-1 py-2 text-center font-semibold"
-                      style={{ width: `${workColumnWidthMap[column.id] ?? 72}px`, minWidth: `${workColumnWidthMap[column.id] ?? 72}px` }}
                     >
                       {isEditMode ? (
                         <button
@@ -2127,54 +1975,19 @@ export default function WorkflowBoardPage() {
                           title="컬럼 전체 선택/해제"
                         >
                           <span className="block leading-tight">
-                            {splitByTwoChars(column.name).map((chunk, idx) => (
-                              <span key={`${column.id}-${idx}`} className="block">
-                                {chunk}
-                              </span>
-                            ))}
+                            {column.name}
                           </span>
                         </button>
                       ) : (
-                        <span className="block leading-tight">
-                          {splitByTwoChars(column.name).map((chunk, idx) => (
-                            <span key={`${column.id}-${idx}`} className="block">
-                              {chunk}
-                            </span>
-                          ))}
+                        <span className="block px-1.5 py-0.5 text-[11px] leading-tight">
+                          {column.name}
                         </span>
                       )}
                     </th>
                   ))}
-                  {isEditMode ? (
-                    majorColumns.map((column) => (
-                      <th
-                        key={column.id}
-                        className="px-1 py-1.5 text-center font-semibold"
-                        style={{ width: `${majorColumnWidth}px`, minWidth: `${majorColumnWidth}px`, maxWidth: `${majorColumnWidth}px` }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleMajorColumnAll(column.id)}
-                          className={`rounded border px-1 py-0.5 text-[10px] font-medium transition ${
-                            majorColumnAllCheckedMap[column.id]
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                              : 'border-zinc-300 bg-white text-zinc-700 hover:border-sky-300 hover:text-sky-700'
-                          }`}
-                          title="컬럼 전체 선택/해제"
-                        >
-                          <span className="block leading-tight">
-                            {splitByFourChars(column.name).map((chunk, idx) => (
-                              <span key={`${column.id}-${idx}`} className="block whitespace-nowrap">
-                                {chunk}
-                              </span>
-                            ))}
-                          </span>
-                        </button>
-                      </th>
-                    ))
-                  ) : (
+                  {
                     <>
-                      <th className="w-28 px-1 py-1.5 text-center font-semibold">
+                      <th className=" px-1 py-1.5 text-center font-semibold">
                         <button
                           type="button"
                           onClick={() => handleToggleSort('progress_percent')}
@@ -2185,7 +1998,7 @@ export default function WorkflowBoardPage() {
                           {renderSortIcon('progress_percent')}
                         </button>
                       </th>
-                      <th className="w-20 px-1 py-1.5 text-center font-semibold">
+                      <th className=" px-1 py-1.5 text-center font-semibold">
                         <button
                           type="button"
                           onClick={() => handleToggleSort('todo_count')}
@@ -2201,24 +2014,19 @@ export default function WorkflowBoardPage() {
                           <th
                             key={column.id}
                             className="px-1 py-1.5 text-center font-semibold"
-                            style={{ width: `${majorColumnWidth}px`, minWidth: `${majorColumnWidth}px`, maxWidth: `${majorColumnWidth}px` }}
                           >
                             <span className="block leading-tight">
-                              {splitByFourChars(column.name).map((chunk, idx) => (
-                                <span key={`${column.id}-${idx}`} className="block whitespace-nowrap">
-                                  {chunk}
-                                </span>
-                              ))}
+                              {column.name}
                             </span>
                           </th>
                         ))
                       ) : (
-                        <th className="w-20 px-1 py-1.5 text-center font-semibold">업무진행</th>
+                        <th className=" px-1 py-1.5 text-center font-semibold">업무진행</th>
                       )}
-                      <th className="w-32 px-1 py-1.5 text-left font-semibold">비고</th>
+                      <th className=" px-1 py-1.5 text-left font-semibold">비고</th>
                     </>
-                  )}
-                  <th className="w-32 px-1 py-1.5 text-center font-semibold">액션</th>
+                  }
+                  <th className=" px-1 py-1.5 text-center font-semibold">액션</th>
                 </tr>
               </thead>
               <tbody>
@@ -2226,21 +2034,21 @@ export default function WorkflowBoardPage() {
                   const displayKind = mapCompanyKindToLabel(row.company_kind)
                   const progress = Number(row.progress_percent || 0)
                   return (
-                    <tr key={row.company_id} className={`border-t border-zinc-200 ${row.is_excluded ? 'bg-rose-50' : ''}`}>
-                      <td className="px-1 py-1.5 text-center text-zinc-600" style={{ width: `${noColumnWidth}px`, minWidth: `${noColumnWidth}px` }}>
+                    <tr key={row.company_id} className={`border-t border-zinc-200 ${row.is_excluded ? 'bg-rose-50' : idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}`}>
+                      <td className="px-1 py-1.5 text-center text-zinc-600">
                         {idx + 1}
                       </td>
-                      <td className="px-1 py-1.5 text-center" style={{ width: `${kindColumnWidth}px`, minWidth: `${kindColumnWidth}px` }}>
+                      <td className="px-1 py-1.5 text-center">
                         {displayKind}
                       </td>
-                      <td className="px-1 py-1.5 text-center" style={{ width: `${nameColumnWidth}px`, minWidth: `${nameColumnWidth}px` }}>
+                      <td className="px-1 py-1.5 text-center">
                         <button
                           type="button"
                           onClick={() => {
                             if (isEditMode) return
                             handleOpenDetail(row.company_id)
                           }}
-                          className={`mx-auto block max-w-full truncate text-center ${
+                          className={`mx-auto block whitespace-nowrap text-center ${
                             isEditMode ? 'cursor-default text-zinc-800' : 'text-zinc-800 hover:text-sky-700 hover:underline'
                           }`}
                           title={row.company_name}
@@ -2248,12 +2056,12 @@ export default function WorkflowBoardPage() {
                           {row.company_name}
                         </button>
                       </td>
-                      <td className="px-2 py-1.5 text-center text-zinc-600" style={{ width: '88px', minWidth: '88px' }}>
-                        <span className="block max-w-[120px] truncate" title={row.assignee_name || '담당자 미지정'}>
+                      <td className="px-2 py-1.5 text-center text-zinc-600">
+                        <span className="block whitespace-nowrap" title={row.assignee_name || '담당자 미지정'}>
                           {row.assignee_name || <span className="text-zinc-400">미지정</span>}
                         </span>
                       </td>
-                      <td className="px-1 py-1.5 text-center" style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}>
+                      <td className="px-1 py-1.5 text-center">
                         {isEditMode ? (
                           <div className="relative inline-flex">
                             <button
@@ -2301,20 +2109,17 @@ export default function WorkflowBoardPage() {
                       </td>
                       <td
                         className="px-1 py-1.5 text-center text-zinc-700"
-                        style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}
                       >
                         {mapPayrollBasisLabel(row.payroll_basis)}
                       </td>
                       <td
                         className="px-1 py-1.5 text-center text-zinc-700"
-                        style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}
                       >
                         {row.payroll_day ?? '-'}
                       </td>
                       {!hasSelectedCustomColumns ? (
                         <td
                           className="px-1 py-1.5 text-center text-zinc-500"
-                          style={{ width: `${baseCriteriaColumnWidth}px`, minWidth: `${baseCriteriaColumnWidth}px` }}
                         >
                           -
                         </td>
@@ -2325,7 +2130,6 @@ export default function WorkflowBoardPage() {
                           <td
                             key={`${row.company_id}:${column.id}`}
                             className="px-1 py-2 text-center"
-                            style={{ width: `${workColumnWidthMap[column.id] ?? 72}px`, minWidth: `${workColumnWidthMap[column.id] ?? 72}px` }}
                           >
                             {row.is_excluded ? (
                               <span className="text-zinc-400">-</span>
@@ -2346,41 +2150,14 @@ export default function WorkflowBoardPage() {
                                 {checked ? (
                                   <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />
                                 ) : (
-                                  <X className="h-4 w-4 text-red-600" aria-hidden="true" />
+                                  <span className="text-zinc-400" title="해당없음">—</span>
                                 )}
                               </span>
                             )}
                           </td>
                         )
                       })}
-                      {isEditMode ? (
-                        majorColumns.map((column) => {
-                          const checked = companyMajorChecks[getMajorCheckKey(row.company_id, column.id)] || false
-                          return (
-                            <td
-                              key={`${row.company_id}:${column.id}`}
-                              className="px-1 py-2 text-center"
-                              style={{ width: `${majorColumnWidth}px`, minWidth: `${majorColumnWidth}px`, maxWidth: `${majorColumnWidth}px` }}
-                            >
-                              {row.is_excluded ? (
-                                <span className="text-zinc-400">-</span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleCompanyMajorValue(row.company_id, column.id)}
-                                  className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] ${
-                                    checked ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-zinc-300 bg-white text-zinc-500'
-                                  }`}
-                                  title={checked ? '선택됨' : '해당없음'}
-                                  disabled={!isEditMode || checklistBlocked}
-                                >
-                                  {checked ? '✓' : ''}
-                                </button>
-                              )}
-                            </td>
-                          )
-                        })
-                      ) : (
+                      {
                         <>
                           <td className="px-1 py-1.5 text-center text-zinc-700">
                             {row.is_excluded ? (
@@ -2400,34 +2177,39 @@ export default function WorkflowBoardPage() {
                           <td className="px-1 py-1.5 text-center text-zinc-700">{row.is_excluded ? '-' : row.todo_count}</td>
                           {majorColumns.length > 0 ? (
                             majorColumns.map((column) => {
-                              const checked = companyMajorChecks[getMajorCheckKey(row.company_id, column.id)] || false
+                              const checked = isProcessTarget(row, column)
                               const completedAt = companyMajorCompletedAt[getMajorCheckKey(row.company_id, column.id)] || null
                           return (
                                 <td
                                   key={`${row.company_id}:${column.id}`}
-                                  className="px-1 py-2 text-center"
-                                  style={{
-                                    width: `${majorColumnListWidth}px`,
-                                    minWidth: `${majorColumnListWidth}px`,
-                                    maxWidth: `${majorColumnListWidth}px`,
-                                  }}
+                                  className="min-w-[150px] px-1 py-2 text-center"
                                 >
                                   {row.is_excluded ? (
                                     <span className="text-zinc-400">-</span>
                                   ) : (
-                                    <span className="inline-flex items-center justify-center text-[11px] text-zinc-700">
-                                      {checked ? (
-                                        completedAt ? (
-                                          formatKSTDate(completedAt)
-                                        ) : (
-                                          <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                                            미완료
-                                          </span>
-                                        )
-                                      ) : (
-                                        '-'
-                                      )}
-                                    </span>
+                                    isEditMode ? (
+                                      <select aria-label={`${row.company_name} ${column.name} 대상 설정`}
+                                        disabled={checklistBlocked}
+                                        className="rounded border border-zinc-300 bg-white px-1 py-1 text-xs"
+                                        value={targetModes[getMajorCheckKey(row.company_id, column.id)] ?? 'auto'}
+                                        onChange={event => {
+                                          dirtyCompanies.current.add(row.company_id)
+                                          setTargetModes(prev => ({ ...prev, [getMajorCheckKey(row.company_id, column.id)]: event.target.value as TaskTargetMode }))
+                                        }}>
+                                        <option value="auto">자동 · {checked ? '대상' : '해당없음'}</option>
+                                        <option value="required">대상</option>
+                                        <option value="excluded">대상 제외</option>
+                                      </select>
+                                    ) : checked ? (
+                                      <button type="button" disabled={checklistBlocked || completingKey !== null}
+                                        onClick={() => void toggleListCompletion(row, column)}
+                                        aria-label={`${row.company_name} ${column.name} ${completedAt ? '완료 취소' : '완료 처리'}`}
+                                        title={completedAt ? `완료 ${formatKSTDate(completedAt)} · 클릭하여 취소` : '미완료 · 클릭하여 처리'}
+                                        className={`rounded px-2 py-1 text-xs disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                        {monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]?.status === 'done' ? `✓ ${completedAt ? formatKSTDate(completedAt) : '완료'}` : '✕ 미완료'}
+                                      </button>
+                                    ) : <span className="text-xs text-zinc-400" title="해당없음">— 해당없음</span>
+
                                   )}
                                 </td>
                               )
@@ -2436,12 +2218,12 @@ export default function WorkflowBoardPage() {
                             <td className="px-1 py-1.5 text-center text-zinc-400">-</td>
                           )}
                           <td className="px-1 py-1.5 text-zinc-600">
-                            <p className="truncate" title={row.note || '-'}>
+                            <p className="max-w-sm whitespace-normal break-words" title={row.note || '-'}>
                               {row.note || '-'}
                             </p>
                           </td>
                         </>
-                      )}
+                      }
                       <td className="px-1 py-1.5">
                         <div className="flex items-center justify-center gap-0.5">
                           {!isEditMode ? (
@@ -2463,9 +2245,7 @@ export default function WorkflowBoardPage() {
                   <tr>
                     <td
                       colSpan={
-                        isEditMode
-                          ? 8 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
-                          : 11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
+                        11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
                       }
                       className="px-2 py-16 text-center text-zinc-400"
                     >
@@ -2477,9 +2257,7 @@ export default function WorkflowBoardPage() {
                   <tr>
                     <td
                       colSpan={
-                        isEditMode
-                          ? 8 + (hasSelectedCustomColumns ? customColumns.length : 1) + majorColumns.length
-                          : 11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
+                        11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
                       }
                       className="px-2 py-16 text-center text-zinc-400"
                     >
@@ -2490,18 +2268,18 @@ export default function WorkflowBoardPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-zinc-100 pt-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
+          <div className="shrink-0 grid grid-cols-1 gap-3 border-t border-zinc-100 pt-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
             <div className="order-2 min-w-0 text-xs leading-5 text-zinc-500 xl:order-1">
-              <p>편집에서는 거래처별 업무를 선택하고, 상세에서는 파일 등록과 완료 처리를 합니다.</p>
-              <p>체크만 업무는 완료 버튼으로, 파일 필수 업무는 파일 등록 후 완료해 주세요.</p>
+              <p>일반 모드에서는 완료 처리, 편집에서는 소득 항목과 업무 대상을 설정합니다.</p>
+              <p>자동 대상은 소득 항목·신고주기를 따릅니다. 대상 변경은 해당 월에만 적용되며 자료와 처리 이력은 유지됩니다.</p>
             </div>
-            {!isEditMode && !listLoading && listTotal > 0 ? (
+            {pageSize !== 'all' && !listLoading && listTotal > 0 ? (
               <div className="order-1 justify-self-center xl:order-2">
                 <Pagination
                   page={listPage}
                   total={listTotal}
-                  limit={TASK_BOARD_LIST_PAGE_SIZE}
-                  onPageChange={setListPage}
+                  limit={Number(pageSize)}
+                  onPageChange={page => { if (!isEditMode) setListPage(page) }}
                   className="mt-0"
                 />
               </div>

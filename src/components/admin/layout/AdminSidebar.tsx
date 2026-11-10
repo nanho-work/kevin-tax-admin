@@ -55,14 +55,13 @@ const menuSections: MenuSection[] = [
     label: '업무',
     children: [
       { label: '거래처 관리', href: '/admin/companies' },
-      { label: '업무보드', href: '/admin/workflow/board' },
       { label: '업무자료함', href: '/admin/workflow/board/materials' },
       { label: '컨설트 툴', href: '/admin/workflow/consult' },
       {
         label: '세목별 신고',
         href: '/admin/company-withholding',
         children: [
-          { label: '원천세', href: '/admin/company-withholding/business' },
+          { label: '원천세', href: '/admin/company-withholding' },
           { label: '부가세', href: '/admin/company-withholding/vat' },
           { label: '종합소득세', href: '/admin/company-withholding/income-tax' },
           { label: '법인세', href: '/admin/company-withholding/corporate-tax' },
@@ -147,7 +146,7 @@ function getActiveSection(pathname: string, searchParams: URLSearchParams): stri
 }
 
 function isChildActive(pathname: string, searchParams: URLSearchParams, href: string): boolean {
-  if (href === '/admin/company-withholding/business' && ['/admin/company-withholding', '/admin/company-withholding/earned-income', '/admin/company-withholding/etc'].includes(pathname)) {
+  if (href === '/admin/company-withholding' && ['/admin/workflow/board', '/admin/company-withholding', '/admin/company-withholding/business', '/admin/company-withholding/earned-income', '/admin/company-withholding/etc'].includes(pathname)) {
     return true
   }
   const [targetPath, queryString] = href.split('?')

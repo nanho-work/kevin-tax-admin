@@ -28,6 +28,7 @@ export function getPortalBackPath(pathname: string, search?: { get: (key: string
   if (blog && blog[2] !== 'list') return `${portal}${blog[1]}/list`
   const debit = tail.match(/^(\/(?:office\/)?bookkeeping\/debits)\/(upload|history\/[^/]+|batches\/[^/]+)$/)
   if (debit) return `${portal}${debit[1]}/${debit[2] === 'upload' ? '' : 'history'}`.replace(/\/$/, '')
+  if (portal === '/admin' && tail === '/company-withholding/business') return '/admin/company-withholding'
   if (tail === '/company-withholding/etc' || tail === '/company-withholding/earned-income') return `${portal}/company-withholding/business`
   return null
 }

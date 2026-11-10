@@ -69,8 +69,9 @@ const Header = () => {
     if (pathname.startsWith('/admin/office/staff')) return '사무소 관리 > 직원·조직·근태'
     if (pathname.startsWith('/admin/companies')) return '업무 > 거래처 관리'
     if (pathname.startsWith('/admin/workflow/consult')) return '업무 > 컨설트 툴'
-    if (pathname.startsWith('/admin/workflow/board/materials')) return '업무 > 업무보드 > 업무자료함'
-    if (pathname.startsWith('/admin/workflow/board')) return '업무 > 업무보드'
+    if (pathname.startsWith('/admin/workflow/board/materials')) return '업무 > 업무자료함'
+    if (pathname.startsWith('/admin/workflow/board')) return '업무 > 세목별 신고 > 원천세'
+    if (pathname === '/admin/company-withholding/business') return '업무 > 세목별 신고 > 원천세 > 사업신고'
     if (pathname.startsWith('/admin/company-withholding')) {
       const taxLabel = pathname.endsWith('/vat') ? '부가세'
         : pathname.endsWith('/income-tax') ? '종합소득세'
