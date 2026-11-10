@@ -6,6 +6,8 @@ import { getClientRoleRank } from '@/utils/roleRank'
 import CompanyContractSection, { type CompanyContractHandle } from './CompanyContractSection'
 import { createBookkeepingContract } from '@/services/client/clientBookkeepingService'
 import CompanyManagementFields from './CompanyManagementFields'
+import CompanySelectionButton from './CompanySelectionButton'
+import HelpTooltip from '@/components/common/HelpTooltip'
 import PasswordInput from '@/components/common/PasswordInput'
 import CompanyContactEditor, { type ContactInfo } from './CompanyContactEditor'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -289,12 +291,19 @@ function toSuggestedDocumentTitle(fileName: string) {
   return trimmed.replace(/\.[^.]+$/, '').trim() || trimmed
 }
 
+// Keep the company detail panels on one shared, subtle color treatment.
+const companyPanelClass = 'rounded-xl bg-[#f9fcff] p-2 sm:p-3 [&_.border-t]:border-white [&_.border-b]:border-white [&>section]:border-white'
+
 function Section({
   title,
+  titleAccessory,
   description,
   action,
   children,
+  contentClassName,
 }: {
+  contentClassName?: string
+  titleAccessory?: React.ReactNode
   title: string
   description?: string
   action?: React.ReactNode
@@ -304,14 +313,14 @@ function Section({
     <section className="min-w-0">
       <div className="mb-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h3>
-            {description ? <p className="mt-1 text-xs text-zinc-500">{description}</p> : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-slate-900">{title}{description ? <HelpTooltip label={title}>{description}</HelpTooltip> : null}</h3>
+            {titleAccessory}
           </div>
           {action ? <div className="sm:ml-auto">{action}</div> : null}
         </div>
       </div>
-      <div>{children}</div>
+      <div className={contentClassName ?? companyPanelClass}>{children}</div>
     </section>
   )
 }
@@ -438,7 +447,7 @@ export default function CompanyDetailForm({
   const { id } = useParams()
   const companyId = Number(id)
   const isCreateMode = mode === 'create'
-  const [activeTab, setActiveTab] = useState<'basic' | 'contract' | 'documents'>('basic')
+  const [activeTab, setActiveTab] = useState<'basic' | 'documents'>('basic')
   const management = useManagementSession()
   const canManageContract = Boolean(management.session) && getClientRoleRank(management.session) <= 10
   const taskDefaultsRef = useRef<CompanyTaskDefaultsHandle>(null)
@@ -571,7 +580,7 @@ export default function CompanyDetailForm({
   const canEditFields = isCreateMode ? createdCompanyId === null : editable && editMode
   const editableInputClass = canEditFields ? inputClass : `${inputClass} bg-zinc-100 text-zinc-600`
   const basicInfoInputClass = `${editableInputClass} text-left`
-  const basicInfoFieldClass = 'min-w-0 space-y-1.5'
+  const basicInfoFieldClass = 'min-w-0 space-y-1.5 border-b border-white px-2 py-2'
   const basicInfoLabelClass = '!font-medium !text-slate-500'
   const basicInfoContentClass = 'pt-1'
   const canEditContactsFields = isCreateMode ? true : editable
@@ -1528,7 +1537,7 @@ export default function CompanyDetailForm({
                     onClick={async () => {
                       try {
                         let contractPayload
-                        try { contractPayload = contractRef.current?.prepare() } catch (error) { setActiveTab('contract'); throw error }
+                        try { contractPayload = contractRef.current?.prepare() } catch (error) { setActiveTab('basic'); throw error }
                         setSaving(true)
                         setRegistrationError('')
                         const payload: CompanyCreateRequest = {
@@ -1556,7 +1565,7 @@ export default function CompanyDetailForm({
                           setCreatedCompanyId(registeredId)
                         }
                         if (contractPayload) {
-                          try { await createBookkeepingContract({ ...contractPayload, company_id: registeredId }) } catch (error) { setActiveTab('contract'); throw error }
+                          try { await createBookkeepingContract({ ...contractPayload, company_id: registeredId }) } catch (error) { setActiveTab('basic'); throw error }
                         }
                         toast.success('등록이 완료되었습니다.')
                         router.push(listPath)
@@ -1632,7 +1641,7 @@ export default function CompanyDetailForm({
     <div className="w-full min-w-0 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
         <div role="tablist" aria-label="거래처 상세정보" className="flex gap-5 sm:gap-7">
-          {([{ key: 'basic', label: '기본정보' }, ...(canManageContract ? [{ key: 'contract', label: '기장정보' }] : []), { key: 'documents', label: '기타 관련 서류' }] as const).map((tab) => (
+          {([{ key: 'basic', label: '거래처 정보' }, { key: 'documents', label: '기타 관련 서류' }] as const).map((tab) => (
             <button key={tab.key} id={`company-tab-${tab.key}`} type="button" role="tab" aria-selected={activeTab === tab.key} aria-controls={`company-panel-${tab.key}`} tabIndex={activeTab === tab.key ? 0 : -1}
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
               onKeyDown={(event) => {
@@ -1650,40 +1659,24 @@ export default function CompanyDetailForm({
       </div>
           {registrationError ? <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{registrationError}{createdCompanyId ? <button type="button" className="ml-2 underline" onClick={() => router.push(`${listPath}/${createdCompanyId}`)}>등록된 거래처 보기</button> : null}</div> : null}
       <div id="company-panel-basic" role="tabpanel" aria-labelledby="company-tab-basic" hidden={activeTab !== 'basic'}>
-      <CompanyTaskDefaultsSection ref={taskDefaultsRef} companyId={companyId} creating={isCreateMode} editable={!!editable} />
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-5">
         <div className="min-w-0 space-y-8 divide-y divide-slate-100 [&>section:not(:first-child)]:pt-6 xl:col-span-3">
           <Section
             title="기본 정보"
+            titleAccessory={canEditFields ? <div role="group" aria-label="사업자 구분" className="flex gap-2">
+              {['법인', '개인'].map(category => <CompanySelectionButton key={category} selected={form.category === category}
+                onClick={() => setForm(prev => prev ? { ...prev, category: prev.category === category ? '' : category } : prev)}>{category}</CompanySelectionButton>)}
+            </div> : <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">{form.category || '구분 미지정'}</span>}
             action={!isCreateMode ? basicActions : undefined}
           >
             {canEditFields ? (
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-                <Field
-                  label="구분"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
-                >
-                  <select className={basicInfoInputClass} value={form.category || ''} disabled={!canEditFields} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    <option value="">선택</option>
-                    <option value="법인">법인</option>
-                    <option value="개인">개인</option>
-                  </select>
-                </Field>
-                <Field
-                  label="회사명"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
-                >
-                  <input className={basicInfoInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
-                </Field>
-                <Field
+              <div>
+                <div className="grid grid-cols-1">
+                  <Field
                   label="사업자등록번호"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
+                  className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left"
+                  labelClassName={`${basicInfoLabelClass} shrink-0 whitespace-nowrap`}
+                  contentClassName="min-w-0 flex-1"
                 >
                   <input
                     className={basicInfoInputClass}
@@ -1700,31 +1693,27 @@ export default function CompanyDetailForm({
                     placeholder="000-00-00000"
                   />
                 </Field>
-                <Field
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:[&>*:first-child]:border-r">
+                  <Field
+                  label="상호"
+                  className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left"
+                  labelClassName={`${basicInfoLabelClass} shrink-0 whitespace-nowrap`}
+                  contentClassName="min-w-0 flex-1"
+                >
+                  <input className={basicInfoInputClass} value={form.company_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, company_name: e.target.value })} />
+                </Field>
+                  <Field
                   label="대표자"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
+                  className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left"
+                  labelClassName={`${basicInfoLabelClass} shrink-0 whitespace-nowrap`}
+                  contentClassName="min-w-0 flex-1"
                 >
                   <input className={basicInfoInputClass} value={form.owner_name} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
                 </Field>
-                <Field
-                  label="업태"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
-                >
-                  <input className={basicInfoInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
-                </Field>
-                <Field
-                  label="종목"
-                  className={`${basicInfoFieldClass} text-left`}
-                  labelClassName={basicInfoLabelClass}
-                  contentClassName={basicInfoContentClass}
-                >
-                  <input className={basicInfoInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
-                </Field>
-                <Field
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)_minmax(0,1.2fr)] sm:[&>*:not(:last-child)]:border-r">
+                  <Field
                   label="우편번호"
                   className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
@@ -1748,7 +1737,7 @@ export default function CompanyDetailForm({
                     </button>
                   </div>
                 </Field>
-                <Field
+                  <Field
                   label="주소"
                   className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
@@ -1761,7 +1750,7 @@ export default function CompanyDetailForm({
                     onChange={(e) => setForm({ ...form, address1: e.target.value })}
                   />
                 </Field>
-                <Field
+                  <Field
                   label="상세주소"
                   className={`${basicInfoFieldClass} text-left`}
                   labelClassName={basicInfoLabelClass}
@@ -1774,40 +1763,75 @@ export default function CompanyDetailForm({
                     onChange={(e) => setForm({ ...form, address2: e.target.value })}
                   />
                 </Field>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:[&>*:first-child]:border-r [&>*]:border-b-0">
+                  <Field
+                  label="업태"
+                  className={`${basicInfoFieldClass} text-left`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.industry_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, industry_type: e.target.value })} />
+                </Field>
+                  <Field
+                  label="종목"
+                  className={`${basicInfoFieldClass} text-left`}
+                  labelClassName={basicInfoLabelClass}
+                  contentClassName={basicInfoContentClass}
+                >
+                  <input className={basicInfoInputClass} value={form.business_type || ''} readOnly={!canEditFields} onChange={(e) => setForm({ ...form, business_type: e.target.value })} />
+                </Field>
+                </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>구분</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.category || '-'}</p>
+              <div>
+                <div className="grid grid-cols-1">
+                  <div className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left">
+                    <p className={`shrink-0 whitespace-nowrap text-xs ${basicInfoLabelClass}`}>사업자등록번호</p>
+                    <p className="min-w-0 flex-1 break-words text-sm leading-6 text-slate-800">{form.registration_number ? formatBusinessRegistrationNumber(form.registration_number) : '-'}</p>
+                  </div>
                 </div>
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>회사명</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.company_name || '-'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:[&>*:first-child]:border-r">
+                  <div className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left">
+                    <p className={`shrink-0 whitespace-nowrap text-xs ${basicInfoLabelClass}`}>상호</p>
+                    <p className="min-w-0 flex-1 break-words text-sm leading-6 text-slate-800">{form.company_name || '-'}</p>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-3 border-b border-white px-2 py-2 text-left">
+                    <p className={`shrink-0 whitespace-nowrap text-xs ${basicInfoLabelClass}`}>대표자</p>
+                    <p className="min-w-0 flex-1 break-words text-sm leading-6 text-slate-800">{form.owner_name || '-'}</p>
+                  </div>
                 </div>
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>사업자등록번호</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.registration_number ? formatBusinessRegistrationNumber(form.registration_number) : '-'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)_minmax(0,1.2fr)] sm:[&>*:not(:last-child)]:border-r">
+                  <div className={`${basicInfoFieldClass} text-left`}>
+                    <p className={`text-xs ${basicInfoLabelClass}`}>우편번호</p>
+                    <p className="break-words text-sm leading-6 text-slate-800">{form.postal_code || '-'}</p>
+                  </div>
+                  <div className={`${basicInfoFieldClass} text-left`}>
+                    <p className={`text-xs ${basicInfoLabelClass}`}>주소</p>
+                    <p className="break-words text-sm leading-6 text-slate-800">{form.address1 || '-'}</p>
+                  </div>
+                  <div className={`${basicInfoFieldClass} text-left`}>
+                    <p className={`text-xs ${basicInfoLabelClass}`}>상세주소</p>
+                    <p className="break-words text-sm leading-6 text-slate-800">{form.address2 || '-'}</p>
+                  </div>
                 </div>
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>대표자</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.owner_name || '-'}</p>
-                </div>
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>업태</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.industry_type || '-'}</p>
-                </div>
-                <div className={`${basicInfoFieldClass} text-left`}>
-                  <p className={`text-xs font-semibold text-zinc-900 ${basicInfoLabelClass}`}>종목</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.business_type || '-'}</p>
-                </div>
-                <div className={`${basicInfoFieldClass} sm:col-span-2 lg:col-span-3`}>
-                  <p className={`text-xs ${basicInfoLabelClass}`}>주소</p>
-                  <p className="break-words text-sm leading-6 text-slate-800">{form.postal_code ? <span className="mr-2 text-slate-400">({form.postal_code})</span> : null}{[form.address1, form.address2].filter(Boolean).join(' ') || '-'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:[&>*:first-child]:border-r [&>*]:border-b-0">
+                  <div className={`${basicInfoFieldClass} text-left`}>
+                    <p className={`text-xs ${basicInfoLabelClass}`}>업태</p>
+                    <p className="break-words text-sm leading-6 text-slate-800">{form.industry_type || '-'}</p>
+                  </div>
+                  <div className={`${basicInfoFieldClass} text-left`}>
+                    <p className={`text-xs ${basicInfoLabelClass}`}>종목</p>
+                    <p className="break-words text-sm leading-6 text-slate-800">{form.business_type || '-'}</p>
+                  </div>
                 </div>
               </div>
             )}
-            <div className="mt-5 border-t border-slate-100 pt-1"><CompanyManagementFields value={form} editable={canEditFields} onChange={(next) => setForm({ ...form, ...next })} /></div>
+          </Section>
+          <Section title="계약·업무 설정" description="사무소가 맡는 계약 형태와 담당 직원을 정하고, 원천세 업무의 기본 설정을 관리합니다. 기장을 선택하면 계약정보를 등록할 수 있습니다.">
+            <CompanyManagementFields value={form} editable={canEditFields} onChange={(next) => setForm({ ...form, ...next })}
+              contractInfo={canManageContract ? <CompanyContractSection ref={contractRef} companyId={companyId} creating={isCreateMode} engagement={form.engagement_type} disabled={saving} editable={editable} /> : null} />
+            <CompanyTaskDefaultsSection ref={taskDefaultsRef} companyId={companyId} creating={isCreateMode} editable={!!editable} />
           </Section>
           <KakaoAddressSearchModal
             open={addressSearchOpen}
@@ -1995,7 +2019,8 @@ export default function CompanyDetailForm({
           ) : null}
 
           <Section
-            title="회사 담당자"
+            title="거래처 담당자"
+            description={isCreateMode ? '신규 등록 시 메인 담당자의 이름·연락처·이메일을 함께 저장합니다. 부서·직책·메일 수신 여부·메모 및 추가 담당자는 거래처 등록 후 상세 화면에서 관리하세요.' : undefined}
             action={
               <div className="flex items-center gap-2">
                 {supportsCompanyContacts ? (
@@ -2010,9 +2035,7 @@ export default function CompanyDetailForm({
                 ) : null}
                 {supportsCompanyContacts ? (
                   <span className="text-[11px] text-zinc-500">최대 3명 (메인/서브/서브2)</span>
-                ) : (
-                  <span className="text-[11px] text-zinc-500">목업</span>
-                )}
+                ) : null}
               </div>
             }
           >
@@ -2149,7 +2172,7 @@ export default function CompanyDetailForm({
             <div className="border-b border-zinc-200 pb-2">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-zinc-900">문서 목록</p>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900">문서 목록<HelpTooltip label="문서 목록">기본 문서를 확인합니다. 추가 서류는 기타 관련 서류 탭에서 관리하세요.</HelpTooltip></p>
                   <button
                     type="button"
                     onClick={() => setDocumentsExpanded((prev) => !prev)}
@@ -2158,13 +2181,10 @@ export default function CompanyDetailForm({
                     {documentsExpanded ? '접기 ▴' : '펼치기 ▾'}
                   </button>
                 </div>
-                <p className="text-xs text-zinc-500">
-                  기본 문서를 확인합니다. 추가 서류는 기타 관련 서류 탭에서 관리하세요.
-                </p>
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className={`${companyPanelClass} space-y-3`}>
               {documentsExpanded && supportsDocumentUpload ? (
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)] md:grid-rows-[auto_auto]">
                     <input
@@ -2315,15 +2335,9 @@ export default function CompanyDetailForm({
         </div>
       </div>
       </div>
-      <div id="company-panel-contract" role="tabpanel" aria-labelledby="company-tab-contract" hidden={activeTab !== 'contract' || !canManageContract}>
-        <div className="max-w-4xl">
-          <CompanyContractSection ref={contractRef} companyId={companyId} creating={isCreateMode} engagement={form.engagement_type} disabled={saving} editable={editable} />
-
-        </div>
-      </div>
       <div id="company-panel-documents" role="tabpanel" aria-labelledby="company-tab-documents" hidden={activeTab !== 'documents'}>
           {enableCustomDocuments ? (
-            <Section title="기타 관련 서류">
+            <Section title="기타 관련 서류" description="파일을 선택하면 목록과 문서이름 입력칸이 표시됩니다.">
               <div className="space-y-4">
                 {supportsCustomDocumentWrite ? (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(280px,1fr)_minmax(240px,320px)] md:grid-rows-[auto_auto]">
@@ -2357,7 +2371,7 @@ export default function CompanyDetailForm({
 
                     <div className="max-h-[140px] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50 p-2">
                       {customDocDrafts.length === 0 ? (
-                        <p className="px-1 py-2 text-xs text-zinc-500">파일을 선택하면 목록과 문서이름 입력칸이 표시됩니다.</p>
+                        <span className="sr-only">파일을 선택하면 목록과 문서이름 입력칸이 표시됩니다.</span>
                       ) : (
                         <div className="space-y-2">
                           {customDocDrafts.map((draft, index) => (

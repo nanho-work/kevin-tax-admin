@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import CompanySelectionButton from './CompanySelectionButton'
 import { usePathname } from 'next/navigation'
 import { adminHttp, clientHttp } from '@/services/http'
 import type { CompanyDetailResponse } from '@/types/admin_campany'
@@ -18,8 +19,8 @@ export function staffPhone(value?: string | null) {
   return value || '연락처 미등록'
 }
 
-export default function CompanyManagementFields({ value, editable, onChange }: {
-  value: Management; editable: boolean; onChange: (next: Management) => void
+export default function CompanyManagementFields({ value, editable, onChange, contractInfo }: {
+  contractInfo?: ReactNode; value: Management; editable: boolean; onChange: (next: Management) => void
 }) {
   const pathname = usePathname()
   const client = pathname.startsWith('/client')
@@ -40,13 +41,15 @@ export default function CompanyManagementFields({ value, editable, onChange }: {
     return () => { active = false }
   }, [client, editable, retry])
   const inputClass = 'w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm disabled:bg-zinc-50'
-  return <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+  return <div className="mt-4 space-y-5">
+    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
     <div className="space-y-1.5">
-      <label htmlFor="company-engagement" className="block text-xs font-semibold text-zinc-700">계약 구분</label>
-      {editable ? <select id="company-engagement" className={inputClass} value={value.engagement_type || ''}
-        onChange={(e) => onChange({ engagement_type: (e.target.value || null) as Management['engagement_type'] })}>
-        <option value="">미지정</option><option value="bookkeeping">기장</option><option value="one_off">단발 신고</option>
-      </select> : <p className="text-sm text-zinc-900">{engagementLabel(value.engagement_type)}</p>}
+      <p id="company-engagement-label" className="block text-xs font-semibold text-zinc-700">계약 구분</p>
+      {editable ? <div role="group" aria-labelledby="company-engagement-label" className="flex flex-wrap gap-2">
+        {([{ value: 'bookkeeping', label: '기장' }, { value: 'one_off', label: '단발 신고' }, { value: null, label: '미지정' }] as const).map(option =>
+          <CompanySelectionButton key={option.value ?? 'unset'} selected={(value.engagement_type ?? null) === option.value}
+            onClick={() => onChange({ engagement_type: option.value })}>{option.label}</CompanySelectionButton>)}
+      </div> : <p className="text-sm text-zinc-900">{engagementLabel(value.engagement_type)}</p>}
     </div>
     <div className="space-y-1.5">
       <label htmlFor="company-assigned-staff" className="block text-xs font-semibold text-zinc-700">사무소 담당 직원</label>
@@ -62,5 +65,7 @@ export default function CompanyManagementFields({ value, editable, onChange }: {
       {value.assigned_admin_id ? <p className="text-xs text-zinc-500">{staffPhone(value.assigned_admin_phone)}</p> : null}
       {error ? <p role="alert" className="text-xs text-red-600">직원 목록을 불러오지 못했습니다. <button type="button" className="underline" onClick={() => setRetry((n) => n + 1)}>다시 시도</button></p> : null}
     </div>
+    </div>
+    {contractInfo}
   </div>
 }

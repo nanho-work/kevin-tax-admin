@@ -1,7 +1,8 @@
 'use client'
 
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useId, useState } from 'react'
 import type { ReactNode } from 'react'
+import HelpTooltip from '@/components/common/HelpTooltip'
 import { useManagementSession } from '@/contexts/ManagementSession'
 import { getClientRoleRank } from '@/utils/roleRank'
 import { createBookkeepingContract, listBookkeepingContracts, updateBookkeepingContract, getClientBookkeepingErrorMessage } from '@/services/client/clientBookkeepingService'
@@ -20,7 +21,9 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
   const [rows, setRows] = useState<Contract[]>([])
   const [selected, setSelected] = useState<number | null>(null)
   const [draft, setDraft] = useState<Draft>(empty)
-  const [enabled, setEnabled] = useState(false)
+  const [expanded, setExpanded] = useState(true)
+  const panelId = useId()
+  const isBookkeeping = engagement === 'bookkeeping'
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(!creating)
   const [saving, setSaving] = useState(false)
@@ -37,7 +40,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
     setMemoUnlocked(false)
     setMemoError('')
   }, [current?.id, current?.memo])
-  useEffect(() => { if (creating) setEnabled(engagement === 'bookkeeping') }, [creating, engagement])
+  useEffect(() => { if (isBookkeeping) setExpanded(true) }, [isBookkeeping])
   useEffect(() => {
     if (!allowed || creating || !companyId) return
     let active = true
@@ -56,8 +59,8 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
   }, [allowed, companyId, creating, retry])
 
   const prepare = (): Omit<Payload, 'company_id'> | null => {
-    if (!allowed || (creating && !enabled)) return null
-    const fail = (text: string): never => { setError(text); throw new Error(text) }
+    if (!allowed || !isBookkeeping) return null
+    const fail = (text: string): never => { setExpanded(true); setError(text); throw new Error(text) }
     if (!draft.start) return fail('계약 시작일을 입력해 주세요.')
     if (draft.end && draft.end < draft.start) return fail('계약 종료일은 시작일 이후여야 합니다.')
     const fee = draft.fee === '' ? null : Number(draft.fee)
@@ -94,15 +97,25 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
     } catch (e) { setMemoError(getClientBookkeepingErrorMessage(e)) }
     finally { setSaving(false) }
   }
-  if (sessionLoading || !allowed) return null
-  const showFields = creating ? enabled : editing
+  if (sessionLoading || !allowed || !isBookkeeping) return null
+  const showFields = creating || editing
   const change = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((prev) => ({ ...prev, [key]: value }))
-  return <section className="min-w-0">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-900">기장 계약</h3><p className="mt-1 text-xs text-slate-500">기장 계약 메뉴와 같은 계약정보입니다.</p></div>
+  const summary = creating || editing ? draft : current ? fromContract(current) : null
+  const summaryText = summary?.start
+    ? `${summary.start} ~ ${summary.end || '진행중'} · 월 기장료 ${summary.fee === '' ? '미지정' : `${Number(summary.fee).toLocaleString()}원 (공급가)`} · ${summary.cycle === 'monthly' ? '매월' : summary.cycle === 'semiannual' ? '반기' : '신고주기 미지정'}`
+    : '계약기간·월 기장료·신고주기 등을 등록하세요.'
+  return <section className="min-w-0 border-t border-slate-200 pt-5">
+    <div className="flex items-center justify-between gap-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">기장 계약정보<HelpTooltip label="기장 계약정보">계약기간·월 기장료·신고주기 등을 등록하세요. 계약·수금 관리의 기장 계약 메뉴와 같은 정보입니다. 접어도 입력한 값은 유지됩니다. 신규 거래처는 상단의 등록완료 버튼으로 거래처와 계약을 함께 등록합니다.</HelpTooltip></h3>
+      <button type="button" aria-expanded={expanded} aria-controls={panelId} onClick={() => setExpanded((value) => !value)}
+        className="shrink-0 rounded px-2 py-1 text-xs text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">{expanded ? '접기 ▴' : '펼치기 ▾'}</button>
+    </div>
+    {!expanded && summary?.start ? <p className="mt-1 text-xs leading-5 text-slate-500">{summaryText}</p> : null}
+    <div id={panelId} hidden={!expanded} className="mt-4">
+    <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
       {!creating && editable && !loading && !error && !editing && !memoUnlocked && !memoDirty ? <button type="button" className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700" onClick={() => { setEditing(true); setMessage('') }}>{current ? '계약 수정' : '계약 등록'}</button> : null}
       {!creating && editable && !loading && !error && !editing && !memoUnlocked && !memoDirty && current ? <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600" onClick={() => { setSelected(null); setDraft(empty()); setEditing(true); setMessage('') }}>새 계약</button> : null}
     </div>
-    {creating ? <label className="mb-4 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={enabled} disabled={disabled} onChange={(e) => setEnabled(e.target.checked)} />거래처 등록 시 기장계약 함께 등록</label> : null}
     {loading && !creating ? <p className="text-sm text-slate-500">계약정보를 불러오는 중입니다…</p> : null}
     {error ? <p role="alert" className="mb-3 text-sm text-rose-600">{error}{!editing && !creating ? <button type="button" className="ml-2 underline" onClick={() => setRetry((n) => n + 1)}>다시 조회</button> : null}</p> : null}
     {message ? <p role="status" className="mb-3 text-sm text-emerald-700">{message}</p> : null}
@@ -121,7 +134,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
     </div>
       {selected ? <Field label="변경 사유"><input className={input} value={draft.reason} onChange={(e) => change('reason', e.target.value)} /></Field> : null}
       <div className="border-t border-slate-100 pt-4"><Field label="계약 메모"><textarea rows={6} maxLength={2000} className={`${input} resize-y`} value={draft.memo} onChange={(e) => change('memo', e.target.value)} /></Field></div>
-      {creating ? <p className="text-xs text-slate-500">상단의 등록완료 버튼으로 거래처와 계약을 등록합니다.</p> : <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-4 py-2 text-xs" onClick={() => { const original = current || rows[0]; setSelected(original?.id ?? null); setDraft(original ? fromContract(original) : empty()); setEditing(false); setError('') }}>취소</button><button type="button" className="rounded-lg bg-sky-600 px-4 py-2 text-xs text-white" onClick={() => void save()}>{saving ? '저장 중…' : '계약 저장'}</button></div>}
+      {!creating ? <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-4 py-2 text-xs" onClick={() => { const original = current || rows[0]; setSelected(original?.id ?? null); setDraft(original ? fromContract(original) : empty()); setEditing(false); setError('') }}>취소</button><button type="button" className="rounded-lg bg-sky-600 px-4 py-2 text-xs text-white" onClick={() => void save()}>{saving ? '저장 중…' : '계약 저장'}</button></div> : null}
     </fieldset> : !creating && !loading && !error ? current ? <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
       {[['신고주기', current.report_cycle === 'monthly' ? '매월' : current.report_cycle === 'semiannual' ? '반기' : '미지정'], ['급여일', current.payroll_day ? `${current.payroll_day}일` : '미지정'], ['급여 귀속 기준', current.payroll_basis === 'current_month' ? '당월 귀속 · 당월 지급' : current.payroll_basis === 'previous_month' ? '전월 귀속 · 당월 지급' : '미지정'], ['월 기장료 (공급가)', current.monthly_fee_supply == null ? '미지정' : `${current.monthly_fee_supply.toLocaleString()}원`], ['부가세', current.vat_included ? '포함' : '별도']].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{value}</dd></div>)}
       <div className="border-t border-slate-100 pt-4 sm:col-span-2">
@@ -146,6 +159,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
         </dd>
       </div>
     </dl> : <p className="text-sm text-slate-500">등록된 기장계약이 없습니다.</p> : null}
+    </div>
   </section>
 })
 export default CompanyContractSection
