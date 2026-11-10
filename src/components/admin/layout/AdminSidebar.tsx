@@ -123,7 +123,6 @@ const menuSections: MenuSection[] = [
     { label: '근태·연차 관리', href: '/admin/office/staff/leave' },
     { label: '직원 계정 보안', href: '/admin/office/staff/account-security' },
     { label: '요금제·구독', href: '/admin/office/setting/subscription' },
-    { label: 'AI 계정 연결', href: '/admin/office/setting/ai' },
   ] },
 ]
 
