@@ -547,6 +547,13 @@ export async function listGlobalTaskTemplates(
   return res.data
 }
 
+export async function reorderGlobalTaskTemplates(scope: TaskBoardScope, kind: TaskTemplateKind, templateIds: number[]) {
+  await getHttp(scope).put(`${getBase(scope)}/task-templates/order`, {
+    template_kind: kind,
+    template_ids: templateIds,
+  })
+}
+
 export async function createTaskTemplate(
   scope: TaskBoardScope,
   companyId: number,
@@ -568,6 +575,10 @@ export async function updateTaskTemplate(
   const base = getBase(scope)
   const res = await http.patch<TaskTemplateItem>(`${base}/${companyId}/task-templates/${templateId}`, payload)
   return res.data
+}
+
+export async function archiveGlobalBaseTaskTemplate(scope: TaskBoardScope, templateId: number): Promise<void> {
+  await getHttp(scope).delete(`${getBase(scope)}/task-templates/${templateId}`)
 }
 
 export async function deleteTaskTemplate(

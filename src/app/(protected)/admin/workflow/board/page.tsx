@@ -15,17 +15,19 @@ import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
+import PayrollFilesCell from '@/components/admin/workflow/PayrollFilesCell'
+import TaskWorkPanel from '@/components/admin/workflow/TaskWorkPanel'
 import TaskWorkGuide from '@/components/admin/workflow/TaskWorkGuide'
 import { useInPageBack } from '@/contexts/HeaderBackContext'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
-import { formatKSTDate, formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
+import { formatKSTDate, formatKSTDateTimeAssumeUTC, formatKSTShortDate } from '@/utils/dateTime'
 import {
   bulkUploadTaskItemFiles,
   bulkUpsertTaskBoardItems,
   createTaskTemplate,
   deleteTaskItemFile,
   deleteTaskBoardItem,
-  deleteTaskTemplate,
+  archiveGlobalBaseTaskTemplate,
   deliverTaskBoardItem,
   createTaskBoardItem,
   ensureTaskBoard,
@@ -43,7 +45,7 @@ import {
   patchTaskBoardExcludeByMonth,
   patchTaskBoardReportCycle,
   updateTaskBoardItem,
-  updateTaskTemplate,
+  reorderGlobalTaskTemplates,
   uploadTaskItemFile,
   type TaskBoardItem,
   type TaskBoardKind,
@@ -285,6 +287,9 @@ export default function WorkflowBoardPage() {
   const [templateTaskName, setTemplateTaskName] = useState('')
   const [customTaskName, setCustomTaskName] = useState('')
 
+  const [quickWork, setQuickWork] = useState<{
+    companyId: number; companyName: string; boardId: number; itemId: number; month: string; payrollDelivery?: boolean
+  } | null>(null)
   const [fileModalTaskId, setFileModalTaskId] = useState<number | null>(null)
   const [fileModalDocs, setFileModalDocs] = useState<FileItem[]>([])
   useInPageBack(selectedCompanyId !== null, () => {
@@ -422,11 +427,15 @@ export default function WorkflowBoardPage() {
   )
   const hasSelectedCustomColumns = customColumns.length > 0
   const selectedCompanyBaseBadges = useMemo(() => {
-    if (!selectedCompanyId) return []
-    return customColumns
-      .filter((column) => companyColumnChecks[getColumnCheckKey(selectedCompanyId, column.id)])
-      .map((column) => column.name)
-  }, [selectedCompanyId, customColumns, companyColumnChecks])
+    const orderByName = new Map(customColumns.map((column, index) => [normalizeText(column.name), index]))
+    return detailItems
+      .filter(item => item.template_kind_snapshot === 'base' && item.target_active !== false && item.status !== 'na')
+      .sort((left, right) =>
+        (orderByName.get(normalizeText(left.task_name)) ?? Infinity) -
+        (orderByName.get(normalizeText(right.task_name)) ?? Infinity) || left.id - right.id
+      )
+      .map(item => item.task_name)
+  }, [customColumns, detailItems])
 
   const detailProcessItems = useMemo(
     () => detailItems.filter((item) => (item.template_kind_snapshot ?? 'process') === 'process'),
@@ -1003,20 +1012,18 @@ export default function WorkflowBoardPage() {
     })()
   }
 
+  const saveTaskStatus = (companyId: number, boardId: number, taskId: number, status: TaskItemStatus, item?: TaskBoardItem) => {
+    const mode = item?.execution_mode_snapshot ?? 'check_only'
+    if (status === 'done' && (mode === 'file_and_notify' || (mode === 'check_only' && item?.source_item_id))) {
+      return deliverTaskBoardItem(scope, companyId, boardId, taskId)
+    }
+    return updateTaskBoardItem(scope, companyId, boardId, taskId, { status })
+  }
+
   const handleTaskStatusPatch = async (taskId: number, status: TaskItemStatus) => {
     if (!selectedCompanyId || !selectedBoardId) return
     try {
-      const target = detailItems.find((item) => item.id === taskId)
-      const mode = target?.execution_mode_snapshot ?? 'check_only'
-      const hasLinkedSource = Boolean(target?.source_item_id)
-      if (
-        status === 'done' &&
-        (mode === 'file_and_notify' || (mode === 'check_only' && hasLinkedSource))
-      ) {
-        await deliverTaskBoardItem(scope, selectedCompanyId, selectedBoardId, taskId)
-      } else {
-        await updateTaskBoardItem(scope, selectedCompanyId, selectedBoardId, taskId, { status })
-      }
+      await saveTaskStatus(selectedCompanyId, selectedBoardId, taskId, status, detailItems.find(item => item.id === taskId))
       const refreshed = await listTaskBoardItems(scope, selectedCompanyId, selectedBoardId)
       setDetailItems(refreshed.items || [])
       setListReloadKey((prev) => prev + 1)
@@ -1076,12 +1083,12 @@ export default function WorkflowBoardPage() {
     return fileName.slice(0, idx)
   }
 
-  const uploadTaskFilesWithFallback = async (taskId: number, files: File[]) => {
-    if (!selectedCompanyId || !selectedBoardId) {
+  const uploadTaskFilesWithFallback = async (taskId: number, files: File[], companyId = selectedCompanyId, boardId = selectedBoardId) => {
+    if (!companyId || !boardId) {
       return { total: files.length, successCount: 0, failedCount: files.length, firstError: '업체/보드 정보가 없습니다.' }
     }
     try {
-      const res = await bulkUploadTaskItemFiles(scope, selectedCompanyId, selectedBoardId, taskId, {
+      const res = await bulkUploadTaskItemFiles(scope, companyId, boardId, taskId, {
         files,
         titles: files.map((file) => getDefaultTitleFromFile(file.name)),
       })
@@ -1090,6 +1097,8 @@ export default function WorkflowBoardPage() {
         successCount: res.success_count,
         failedCount: res.failed_count,
         firstError: res.failed_items?.[0]?.error,
+        failedIndexes: res.failed_items.map(item => item.index),
+        failedItems: res.failed_items,
       }
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status
@@ -1098,19 +1107,24 @@ export default function WorkflowBoardPage() {
       let successCount = 0
       let failedCount = 0
       let firstError = ''
-      for (const file of files) {
+      const failedIndexes: number[] = []
+      const failedItems: { index: number; error: string }[] = []
+      for (const [index, file] of files.entries()) {
         try {
-          await uploadTaskItemFile(scope, selectedCompanyId, selectedBoardId, taskId, {
+          await uploadTaskItemFile(scope, companyId, boardId, taskId, {
             file,
             title: getDefaultTitleFromFile(file.name),
           })
           successCount += 1
         } catch (singleError) {
           failedCount += 1
-          if (!firstError) firstError = getTaskBoardErrorMessage(singleError)
+          failedIndexes.push(index)
+          const reason = getTaskBoardErrorMessage(singleError)
+          failedItems.push({ index, error: reason })
+          if (!firstError) firstError = reason
         }
       }
-      return { total: files.length, successCount, failedCount, firstError }
+      return { total: files.length, successCount, failedCount, firstError, failedIndexes, failedItems }
     }
   }
 
@@ -1309,19 +1323,9 @@ export default function WorkflowBoardPage() {
   }
 
   const syncTemplateSortOrders = async (nextList: ColumnCatalogItem[]) => {
-    if (!templateSourceCompanyId) {
-      toast.error('업체 리스트를 먼저 불러와 주세요.')
-      return false
-    }
     try {
       setIsUpdatingCatalog(true)
-      await Promise.all(
-        nextList.map((item, idx) =>
-          updateTaskTemplate(scope, templateSourceCompanyId, item.templateId, {
-            sort_order: (idx + 1) * 10,
-          })
-        )
-      )
+      await reorderGlobalTaskTemplates(scope, 'base', nextList.map(item => item.templateId))
       return true
     } catch (error) {
       toast.error(getTaskBoardErrorMessage(error))
@@ -1349,28 +1353,22 @@ export default function WorkflowBoardPage() {
 
   const removeCatalogColumn = async (templateId: number) => {
     if (isUpdatingCatalog) return
-    if (!templateSourceCompanyId) {
-      toast.error('업체 리스트를 먼저 불러와 주세요.')
-      return
-    }
-    const target = columnCatalog.find((item) => item.templateId === templateId)
+    const target = columnCatalog.find(item => item.templateId === templateId)
     if (!target) return
-    const ok = await confirm({
-      title: '템플릿 삭제',
-      description: `[${target.name}] 템플릿을 삭제하시겠습니까?`,
-      confirmText: '삭제',
-      cancelText: '취소',
-      variant: 'danger',
-    })
-    if (!ok) return
+    setIsUpdatingCatalog(true)
     try {
-      setIsUpdatingCatalog(true)
-      await deleteTaskTemplate(scope, templateSourceCompanyId, target.templateId)
-      const removed = columnCatalog.find((item) => item.templateId === target.templateId)
-      setColumnCatalog((prev) => prev.filter((item) => item.templateId !== target.templateId))
-      if (removed) {
-        setPendingColumnSelection((prev) => prev.filter((id) => id !== removed.id))
-      }
+      const ok = await confirm({
+        title: '공통 기준업무 삭제',
+        description: `[${target.name}]을 사무소의 공통 목록에서 삭제하시겠습니까? 새로 생성되는 월별 업무에서 제외되며 기존 업무와 파일은 업체 상세에 보존됩니다.`,
+        confirmText: '삭제',
+        cancelText: '취소',
+        variant: 'danger',
+      })
+      if (!ok) return
+      await archiveGlobalBaseTaskTemplate(scope, templateId)
+      setColumnCatalog(previous => previous.filter(item => item.templateId !== templateId))
+      setPendingColumnSelection(previous => previous.filter(id => id !== target.id))
+      toast.success('공통 기준업무를 삭제했습니다.')
     } catch (error) {
       toast.error(getTaskBoardErrorMessage(error))
     } finally {
@@ -1379,19 +1377,9 @@ export default function WorkflowBoardPage() {
   }
 
   const syncProcessTemplateSortOrders = async (nextList: ProcessTemplateCatalogItem[]) => {
-    if (!templateSourceCompanyId) {
-      toast.error('업체 리스트를 먼저 불러와 주세요.')
-      return false
-    }
     try {
       setIsUpdatingMajorCatalog(true)
-      await Promise.all(
-        nextList.map((item, idx) =>
-          updateTaskTemplate(scope, templateSourceCompanyId, item.templateId, {
-            sort_order: (idx + 1) * 10,
-          })
-        )
-      )
+      await reorderGlobalTaskTemplates(scope, 'process', nextList.map(item => item.templateId))
       return true
     } catch (error) {
       toast.error(getTaskBoardErrorMessage(error))
@@ -1479,11 +1467,12 @@ export default function WorkflowBoardPage() {
     return hasBase && !deferred
   }
 
-  const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">) => {
+  const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">, payrollDelivery = false) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
     if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || workflowCompletionSave.pending || checklistBlocked) return
-    if (item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
+    if (payrollDelivery && (item.status === 'done' || !item.source_item_id || !item.can_deliver || !item.source_file_count)) return
+    if (!payrollDelivery && item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
       // Preserve file/source/notification requirements in the existing detail flow.
       handleOpenDetail(row.company_id)
       toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
@@ -1497,9 +1486,9 @@ export default function WorkflowBoardPage() {
     setPendingCompletion({ id: item.id, done: status === 'done' })
     const save = async () => {
       try {
-        const saved = await updateTaskBoardItem(scope, row.company_id, row.board_id!, item.id, { status })
+        const saved = await saveTaskStatus(row.company_id, row.board_id!, item.id, status, item)
         setMonthlyItems(previous => previous[itemKey]?.id === item.id
-          ? { ...previous, [itemKey]: { ...previous[itemKey], status: saved.status, completed_at: saved.completed_at } }
+          ? { ...previous, [itemKey]: { ...previous[itemKey], status: saved.status, completed_at: saved.completed_at, notified_at: saved.notified_at } }
           : previous)
         setListReloadKey(previous => previous + 1)
         return true
@@ -2253,6 +2242,21 @@ export default function WorkflowBoardPage() {
                           {majorColumns.length > 0 ? (
                             majorColumns.map((column) => {
                               const checked = isProcessTarget(row, column)
+                              const task = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
+                              const taskName = normalizeText(column.name)
+                              const isPayrollWriting = scope === 'admin' && ['급여대장작성', '급여대장작성완료'].includes(taskName) &&
+                                task?.execution_mode_snapshot === 'file_only' && !task.source_item_id
+                              const isPayrollDelivery = scope === 'admin' &&
+                                ['급여대장송부및확인', '급여대장송부확인', '급여대장송부'].includes(taskName)
+                              const opensWorkPanel = scope === 'admin' &&
+                                ['원천세신고', '원천세신고서작성', '원천세신고서제출', '원천세납부서전달', '납부서전달', '원천세납부안내'].includes(taskName)
+                              const payrollFileCount = task?.source_item_id ? task.source_file_count ?? 0 : 0
+                              const payrollCompletedDate = isPayrollDelivery && task?.status === 'done'
+                                ? formatKSTShortDate(task.notified_at ?? task.completed_at) : ''
+                              const openWorkPanel = () => {
+                                if (task && row.board_id) setQuickWork({ companyId: row.company_id, companyName: row.company_name, boardId: row.board_id, itemId: task.id, month: attributionMonth, payrollDelivery: isPayrollDelivery })
+                              }
+
                               const completedAt = companyMajorCompletedAt[getMajorCheckKey(row.company_id, column.id)] || null
                           return (
                                 <td
@@ -2275,6 +2279,49 @@ export default function WorkflowBoardPage() {
                                         <option value="required">대상</option>
                                         <option value="excluded">대상 제외</option>
                                       </select>
+                                    ) : checked && isPayrollWriting && task && row.board_id ? (
+                                      <PayrollFilesCell key={task.id}
+                                        companyId={row.company_id}
+                                        companyName={row.company_name}
+                                        boardId={row.board_id}
+                                        itemId={task.id}
+                                        fileCount={task.source_file_count ?? 0}
+                                        disabled={checklistBlocked || completingKey !== null}
+                                        upload={uploadTaskFilesWithFallback}
+                                        onChanged={() => setListReloadKey(previous => previous + 1)}
+                                      />
+                                    ) : checked && isPayrollDelivery ? (
+                                      <div className="mx-auto flex w-max flex-col items-center gap-0.5 whitespace-nowrap text-xs">
+                                        <button type="button" onClick={openWorkPanel}
+                                          disabled={checklistBlocked || completingKey !== null || !task || !row.board_id}
+                                          aria-label={`${row.company_name} 급여대장 ${payrollFileCount ? `파일 ${payrollFileCount}건 상세` : '파일 대기 상세'}`}
+                                          className="rounded px-1.5 py-0.5 font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+                                          {payrollFileCount ? `파일 ${payrollFileCount}건 상세` : '파일 대기'}
+                                        </button>
+                                        {task && pendingCompletion?.id === task.id ? (
+                                          <span role="status" className="px-1.5 py-0.5 text-zinc-500">저장 중…</span>
+                                        ) : isListItemDone(task) ? (
+                                          <span className="px-1.5 py-0.5 tabular-nums text-emerald-700">
+                                            {payrollCompletedDate ? `완료 ${payrollCompletedDate}` : '완료'}
+                                          </span>
+                                        ) : (
+                                          <button type="button"
+                                            disabled={checklistBlocked || completingKey !== null || !row.board_id || !payrollFileCount || !task?.can_deliver}
+                                            title={task?.blocked_reason || undefined}
+                                            aria-label={`${row.company_name} 급여대장 송부 처리완료`}
+                                            onClick={() => void toggleListCompletion(row, column, true)}
+                                            className="rounded px-1.5 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50 disabled:text-zinc-400">
+                                            처리완료
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : checked && opensWorkPanel ? (
+                                      <button type="button" disabled={checklistBlocked || completingKey !== null || !task || !row.board_id}
+                                        onClick={openWorkPanel}
+                                        aria-label={`${row.company_name} ${column.name} 작업 열기`}
+                                        className="whitespace-nowrap rounded px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+                                        {isListItemDone(task) ? '완료 · 파일 보기' : task?.source_item_id ? '전달 확인' : task?.execution_mode_snapshot !== 'check_only' ? (task?.source_file_count ? `파일 ${task.source_file_count}개` : '파일 등록') : '업무 열기'}
+                                      </button>
                                     ) : checked ? (
                                       <button type="button" disabled={checklistBlocked || completingKey !== null}
                                         onClick={() => void toggleListCompletion(row, column)}
@@ -2551,6 +2598,15 @@ export default function WorkflowBoardPage() {
           </div>
         </div>
       ) : null}
+
+      {quickWork && (
+        <TaskWorkPanel {...quickWork}
+          close={() => setQuickWork(null)}
+          upload={uploadTaskFilesWithFallback}
+          saveStatus={(companyId, boardId, item, status) => saveTaskStatus(companyId, boardId, item.id, status, item)}
+          onChanged={() => setListReloadKey(previous => previous + 1)}
+        />
+      )}
 
       {fileModalTask ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">

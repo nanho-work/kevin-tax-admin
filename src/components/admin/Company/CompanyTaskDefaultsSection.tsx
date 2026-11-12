@@ -30,7 +30,7 @@ export default forwardRef<CompanyTaskDefaultsHandle, { companyId: number; creati
         setTemplates(catalog.items);setHistory(result)
         const latest = result?.versions[0]
         setConfigure(creating || !!latest)
-        if (latest) { setEnabled(latest.enabled);setMonth(latest.effective_month);setEnd(latest.end_month ?? '');setIds(latest.template_ids) }
+        if (latest) { setEnabled(latest.enabled);setMonth(latest.effective_month);setEnd(latest.end_month ?? '');setIds(latest.template_ids.filter(id => catalog.items.some(item => item.id === id))) }
       }).catch(e => { if (!cancelled) setError(getTaskBoardErrorMessage(e)) })
       .finally(() => { if (!cancelled) setBusy(false) })
     return () => { cancelled = true }

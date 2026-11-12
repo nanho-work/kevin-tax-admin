@@ -177,6 +177,19 @@ export async function fetchAdminDocsEntryPreviewUrl(entryId: number, expiresIn =
   return res.data
 }
 
+export interface DocsSpreadsheetPreview {
+  sheets: string[]
+  rows: string[][]
+  truncated: boolean
+}
+
+export async function fetchAdminDocsSpreadsheetPreview(entryId: number, sheetIndex: number): Promise<DocsSpreadsheetPreview> {
+  const res = await adminHttp.get<DocsSpreadsheetPreview>(`${BASE}/entries/${entryId}/spreadsheet-preview`, {
+    params: { sheet_index: sheetIndex },
+  })
+  return res.data
+}
+
 export async function renameAdminDocsEntry(entryId: number, payload: DocsEntryRenamePayload): Promise<DocsEntry> {
   const res = await adminHttp.patch<DocsEntry>(`${BASE}/entries/${entryId}`, payload)
   return res.data

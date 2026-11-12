@@ -47,6 +47,13 @@ export function formatKSTDateTimeMinute(value?: string | null, fallback = '-'): 
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`
 }
 
+export function formatKSTShortDate(value?: string | null): string {
+  const formatted = formatKSTDateTimeMinute(value, '')
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(formatted)
+    ? formatted.slice(2, 10).replace(/-/g, '.')
+    : ''
+}
+
 export function formatKSTDateTimeKorean(value?: string | null, fallback = '-'): string {
   if (!value) return fallback
   const date = parseDate(value, true)
