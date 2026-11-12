@@ -1,5 +1,6 @@
 'use client'
 
+import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
 import { sidebarAsideClass, sidebarPanelClass } from '@/utils/portalSidebarStyles'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -427,7 +428,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
     ...(getAdminRoleRank(session) === 1 ? [{ key: 'office', label: '사무소', href: '/admin/office/staff', icon: Settings, active: activeSection === 'office' }] : []),
   ] as const
 
-  const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
+  const handleOpenSectionFromRail = async (sectionKey: string, href: string) => {
     const key = sectionKey as 'dashboard' | 'leave' | 'approvals' | 'board' | 'docs' | 'mail' | 'companies' | 'bookkeeping' | 'blog' | 'office'
 
     // 같은 아이콘 재클릭:
@@ -437,6 +438,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: AdminSi
       onToggleCollapse?.()
       return
     }
+
+    const pendingSave = workflowCompletionSave.pending
+    if (pendingSave && !(await pendingSave)) return
 
     setActiveRailSection(key)
     if (key === 'mail') {

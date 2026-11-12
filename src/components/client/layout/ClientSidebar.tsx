@@ -1,5 +1,6 @@
 'use client'
 
+import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
 import { sidebarAsideClass, sidebarPanelClass } from '@/utils/portalSidebarStyles'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -248,7 +249,7 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
     },
   ].filter((item) => ['dashboard', 'client-management', 'setting'].includes(item.key))
 
-  const handleOpenSectionFromRail = (sectionKey: string, href: string) => {
+  const handleOpenSectionFromRail = async (sectionKey: string, href: string) => {
     const key = sectionKey as 'dashboard' | 'mail' | 'company' | 'staff' | 'approvals' | 'board' | 'docs' | 'bookkeeping' | 'setting' | 'client-management'
 
     // 같은 아이콘 재클릭:
@@ -258,6 +259,9 @@ export default function ClientSidebar({ collapsed = false, onToggleCollapse }: C
       onToggleCollapse?.()
       return
     }
+
+    const pendingSave = workflowCompletionSave.pending
+    if (pendingSave && !(await pendingSave)) return
 
     setActiveRailSection(key)
     if (key === 'mail') {

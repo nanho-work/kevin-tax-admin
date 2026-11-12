@@ -1,6 +1,7 @@
 'use client'
 
 import styles from './board.module.css'
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { createSharedRequest } from '@/utils/sharedRequest'
 import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
 import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
@@ -8,7 +9,8 @@ import WithholdingNavigation from '@/components/admin/withholding33/WithholdingN
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
 import { toast } from 'react-hot-toast'
 import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
@@ -312,6 +314,23 @@ export default function WorkflowBoardPage() {
   const [targetModes, setTargetModes] = useState<Record<string, TaskTargetMode>>({})
   const [monthlyItems, setMonthlyItems] = useState<Record<string, TaskBoardItem>>({})
   const dirtyCompanies = useRef(new Set<number>())
+  const router = useRouter()
+  const [pendingCompletion, setPendingCompletion] = useState<{ id: number; done: boolean } | null>(null)
+
+  useEffect(() => {
+    const waitBeforeNavigation = (event: MouseEvent) => {
+      const pending = workflowCompletionSave.pending
+      if (!pending || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const link = event.target instanceof Element ? event.target.closest('a[href]') : null
+      if (!(link instanceof HTMLAnchorElement) || link.origin !== location.origin || link.pathname === location.pathname || link.download || (link.target && link.target !== '_self')) return
+      event.preventDefault()
+      const href = link.pathname + link.search + link.hash
+      void pending.then(saved => { if (saved) router.push(href) })
+    }
+    document.addEventListener('click', waitBeforeNavigation, true)
+    return () => document.removeEventListener('click', waitBeforeNavigation, true)
+  }, [router])
+
   const [completingKey, setCompletingKey] = useState<string | null>(null)
   useEffect(() => {
     dirtyCompanies.current.clear()
@@ -1449,7 +1468,7 @@ export default function WorkflowBoardPage() {
     } finally { setIsSavingChecklist(false) }
   }
 
-  const isProcessTarget = (row: TaskBoardListItem, column: MajorColumn) => {
+  const isProcessTarget = (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     if (!isEditMode) return companyMajorChecks[key] ?? false
     const mode = targetModes[key] ?? 'auto'
@@ -1460,27 +1479,45 @@ export default function WorkflowBoardPage() {
     return hasBase && !deferred
   }
 
-  const toggleListCompletion = async (row: TaskBoardListItem, column: MajorColumn) => {
+  const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
-    if (!item || !row.board_id || completingKey || checklistBlocked) return
+    if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || workflowCompletionSave.pending || checklistBlocked) return
+    if (item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
+      // Preserve file/source/notification requirements in the existing detail flow.
+      handleOpenDetail(row.company_id)
+      toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
+      return
+    }
+    const status = item.status === 'done'
+      ? (item.template_kind_snapshot === 'base' ? 'not_started' : 'in_progress')
+      : 'done'
+    const itemKey = `${row.company_id}:${normalizeText(column.name)}`
     setCompletingKey(key)
-    try {
-      if (item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
-        // Preserve file/source/notification requirements in the existing detail flow.
-        handleOpenDetail(row.company_id)
-        toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
-        return
+    setPendingCompletion({ id: item.id, done: status === 'done' })
+    const save = async () => {
+      try {
+        const saved = await updateTaskBoardItem(scope, row.company_id, row.board_id!, item.id, { status })
+        setMonthlyItems(previous => previous[itemKey]?.id === item.id
+          ? { ...previous, [itemKey]: { ...previous[itemKey], status: saved.status, completed_at: saved.completed_at } }
+          : previous)
+        setListReloadKey(previous => previous + 1)
+        return true
+      } catch (error) {
+        toast.error(getTaskBoardErrorMessage(error))
+        if (item.execution_mode_snapshot === 'file_only') handleOpenDetail(row.company_id)
+        return false
+      } finally {
+        setPendingCompletion(null)
+        setCompletingKey(null)
+        workflowCompletionSave.pending = null
       }
-      await updateTaskBoardItem(scope, row.company_id, row.board_id, item.id, {
-        status: item.status === 'done' ? 'in_progress' : 'done',
-      })
-      setListReloadKey(prev => prev + 1)
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
-      if (item.execution_mode_snapshot === 'file_only') handleOpenDetail(row.company_id)
-    } finally { setCompletingKey(null) }
+    }
+    workflowCompletionSave.pending = save()
   }
+
+  const isListItemDone = (item?: TaskBoardItem) =>
+    pendingCompletion && pendingCompletion.id === item?.id ? pendingCompletion.done : item?.status === 'done'
 
   const showEditModeNotice = (message: string, duration = 1400) => {
     setEditModeNotice(message)
@@ -1780,7 +1817,21 @@ export default function WorkflowBoardPage() {
                 <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, -1))}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </UiButton>
-                <span className="text-xs font-semibold text-zinc-700">귀속월 {attributionMonth}</span>
+                {scope === 'admin' ? <Popover>
+                  <PopoverButton disabled={isEditMode} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-60">
+                    귀속월 {attributionMonth}<ChevronDown aria-hidden="true" className="h-3 w-3" />
+                  </PopoverButton>
+                  <PopoverPanel anchor="bottom" className="z-50 max-h-60 w-36 overflow-y-auto overscroll-contain rounded-lg border border-zinc-200 bg-white p-1 shadow-lg [--anchor-gap:4px]">
+                    {({ close }) => <>{Array.from({ length: 241 }, (_, index) => monthShift(attributionMonth, index - 120)).map(month => (
+                      <button key={month} type="button" aria-current={month === attributionMonth ? 'date' : undefined}
+                        ref={element => { if (element && month === attributionMonth) element.parentElement?.scrollTo({ top: element.offsetTop - element.parentElement.clientHeight / 2 + element.clientHeight / 2 }) }}
+                        onClick={() => { setAttributionMonth(month); close() }}
+                        className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-sky-50 ${month === attributionMonth ? 'bg-sky-100 font-semibold text-sky-800' : 'text-zinc-700'}`}>
+                        {month}
+                      </button>
+                    ))}</>}
+                  </PopoverPanel>
+                </Popover> : <span className="text-xs font-semibold text-zinc-700">귀속월 {attributionMonth}</span>}
                 <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, 1))}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </UiButton>
@@ -2162,13 +2213,21 @@ export default function WorkflowBoardPage() {
                                 {checked ? '✓' : ''}
                               </button>
                             ) : (
-                              <span className="inline-flex items-center justify-center">
-                                {checked ? (
-                                  <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-                                ) : (
-                                  <span className="text-zinc-400" title="해당없음">—</span>
-                                )}
-                              </span>
+                              checked ? (
+                                <label className="inline-flex items-center gap-1 whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`${row.company_name} ${column.name} 완료`}
+                                    checked={isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`])}
+                                    disabled={checklistBlocked || Boolean(completingKey)}
+                                    onChange={() => void toggleListCompletion(row, column)}
+                                    className="accent-emerald-600"
+                                  />
+                                  {isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? '완료' : '미완료'}
+                                </label>
+                              ) : (
+                                <span className="whitespace-nowrap text-zinc-400">해당 없음</span>
+                              )
                             )}
                           </td>
                         )
@@ -2222,7 +2281,7 @@ export default function WorkflowBoardPage() {
                                         aria-label={`${row.company_name} ${column.name} ${completedAt ? '완료 취소' : '완료 처리'}`}
                                         title={completedAt ? `완료 ${formatKSTDate(completedAt)} · 클릭하여 취소` : '미완료 · 클릭하여 처리'}
                                         className={`rounded px-2 py-1 text-xs disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                        {monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]?.status === 'done' ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
+                                        {isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
                                       </button>
                                     ) : <span className="text-xs text-zinc-400" title="해당없음">해당없음</span>
 
