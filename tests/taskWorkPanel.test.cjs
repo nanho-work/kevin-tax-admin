@@ -16,7 +16,7 @@ function loadPanel(api, path = 'src/components/admin/workflow/TaskWorkPanel.tsx'
   const popover = React.createContext()
   const mocks = {
     '@headlessui/react': {
-      Dialog: wrapper, DialogPanel: wrapper, DialogTitle: wrapper, DialogBackdrop: wrapper,
+      Dialog: wrapper, DialogPanel: props => React.createElement('div', props), DialogTitle: wrapper, DialogBackdrop: wrapper,
       Popover: ({ children }) => React.createElement(popover.Provider, { value: React.useState(false) }, children),
       PopoverButton: props => {
         const [open, setOpen] = React.useContext(popover)
@@ -24,7 +24,10 @@ function loadPanel(api, path = 'src/components/admin/workflow/TaskWorkPanel.tsx'
       },
       PopoverPanel: ({ children }) => React.useContext(popover)[0] ? wrapper({ children }) : null,
     },
-    '@/services/workflowTaskBoard': { ...api, getTaskBoardErrorMessage: error => error.message },
+    '@/services/workflowTaskBoard': {
+      ...api, getTaskBoardErrorMessage: error => error.message,
+      taskDocumentKindLabels: { payment_slip: '납부서', filing_receipt: '신고 접수증', other: '기타' },
+    },
     '@/services/admin/adminDocsService': docsApi,
     '@/contexts/ConfirmDialogContext': { useConfirmDialog: () => ({ confirm: async () => true }) },
     '@/utils/workflowCompletionSave': { workflowCompletionSave: { pending: null } },
@@ -35,7 +38,7 @@ function loadPanel(api, path = 'src/components/admin/workflow/TaskWorkPanel.tsx'
     const { outputText } = ts.transpileModule(readFileSync(file, 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
     })
-    vm.runInNewContext(outputText, { exports, require: name => mocks[name] || require(name) })
+    vm.runInNewContext(outputText, { exports, window, document, require: name => mocks[name] || require(name) })
     return exports
   }
   mocks['@/utils/dateTime'] = load('src/utils/dateTime.ts')
@@ -146,6 +149,37 @@ test('payroll delivery previews a selected source spreadsheet and completes from
   } finally { act(() => root.unmount()) }
 })
 
+test('payroll panel resizes within the viewport and keeps full PDF controls in a separate view', async () => {
+  const previewUrl = 'https://example.test/payroll.pdf?signature=example'
+  const Panel = loadPanel({
+    listTaskBoardItems: async () => ({ items: [{ id: 7, task_name: '급여대장 송부 및 확인', source_item_id: 6 }] }),
+    listTaskItemDocs: async () => ({ items: [{ id: 1, docs_entry_id: 5, file_name: '급여대장.pdf' }] }),
+  }, undefined, { fetchAdminDocsEntryPreviewUrl: async () => ({ preview_url: previewUrl }) })
+  const root = createRoot(document.getElementById('root'))
+  try {
+    await act(async () => root.render(React.createElement(Panel, { ...company, payrollDelivery: true })))
+    const handle = document.querySelector('[role="separator"]')
+    assert.equal(handle.parentElement.style.width, '672px')
+    handle.setPointerCapture = pointerId => assert.equal(pointerId, 1)
+    act(() => {
+      Simulate.pointerDown(handle, { pointerId: 1, button: 0, clientX: 352 })
+      Simulate.pointerMove(handle, { pointerId: 1, clientX: 200 })
+    })
+    assert.equal(handle.parentElement.style.width, '824px')
+    act(() => Simulate.pointerMove(handle, { pointerId: 1, clientX: 500 }))
+    assert.equal(handle.parentElement.style.width, '672px')
+    act(() => Simulate.lostPointerCapture(handle, { pointerId: 1 }))
+    act(() => Simulate.keyDown(handle, { key: 'End' }))
+    assert.equal(handle.parentElement.style.width, `${window.innerWidth}px`)
+    await act(async () => Simulate.click(button('급여대장.pdf')))
+    assert.equal(button('급여대장.pdf').getAttribute('aria-pressed'), 'true')
+    const inlineUrl = document.querySelector('object').getAttribute('data')
+    assert.equal(inlineUrl.split('#')[0], previewUrl)
+    assert.match(inlineUrl, /toolbar=0&navpanes=0/)
+    assert.equal(document.querySelector('[aria-label="새 창에서 보기"]').getAttribute('href'), previewUrl)
+  } finally { act(() => root.unmount()) }
+})
+
 test('payroll cell keeps successful files and dismisses an upload failure without another request', async () => {
   const docs = []
   const uploads = []
@@ -211,5 +245,76 @@ test('payroll cell keeps successful files and dismisses an upload failure withou
     assert.equal(changed, 4)
     assert.ok(button('파일 선택 · 드롭'))
     assert.equal(drop.classList.contains('border-emerald-500'), false)
+  } finally { act(() => root.unmount()) }
+})
+
+test('withholding upload and classification leave filing incomplete until explicitly recorded', async () => {
+  let docs = []
+  const statusChanges = []
+  const Cell = loadPanel({
+    listTaskItemDocs: async () => ({ items: docs }),
+    updateTaskBoardItem: async (_scope, _companyId, _boardId, _itemId, payload) => { statusChanges.push(payload.status) },
+    updateWithholdingDocumentKind: async (companyId, boardId, itemId, entryId, kind) => {
+      assert.deepEqual([companyId, boardId, itemId, entryId, kind], [12, 45, 7, 5, 'payment_slip'])
+      docs = docs.map(doc => ({ ...doc, document_kind: kind }))
+    },
+  }, 'src/components/admin/workflow/PayrollFilesCell.tsx')
+  const root = createRoot(document.getElementById('root'))
+  try {
+    await act(async () => root.render(React.createElement(Cell, {
+      ...company, fileCount: 0, disabled: false, withholdingFiling: true, status: 'not_started',
+      upload: async () => {
+        docs = [{ id: 1, docs_entry_id: 5, file_name: '납부.pdf', created_at: '2026-11-12T04:00:00' }]
+        return { successCount: 1, failedCount: 0 }
+      },
+      onChanged() {},
+    })))
+    const cell = document.querySelector('input[type=file]').parentElement
+    await act(async () => Simulate.drop(cell, { dataTransfer: { files: [new window.File(['test'], '납부.pdf')] } }))
+    assert.deepEqual(statusChanges, [])
+    act(() => Simulate.click(button('분류')))
+    const select = document.querySelector('select')
+    select.value = 'payment_slip'
+    await act(async () => Simulate.change(select))
+    assert.ok(button('납부서'))
+    assert.deepEqual(statusChanges, [])
+    await act(async () => Simulate.click(button('신고 완료')))
+    assert.deepEqual(statusChanges, ['done'])
+  } finally { act(() => root.unmount()) }
+})
+
+test('payment delivery panel highlights the linked payment slip and records delivery on its own item', async () => {
+  let status = 'not_started'
+  const Panel = loadPanel({
+    listTaskBoardItems: async () => ({ items: [{ id: 7, source_item_id: 6, own_file_count: 1, can_deliver: true, status, target_active: true }] }),
+    listTaskItemDocs: async (_scope, companyId, boardId, itemId) => {
+      if (itemId === 7) return { items: [{ id: 3, docs_entry_id: 9, file_name: '이전 첨부.pdf' }] }
+      assert.deepEqual([companyId, boardId, itemId], [12, 45, 6])
+      return { items: [
+        { id: 1, docs_entry_id: 5, file_name: '접수.pdf', document_kind: 'filing_receipt' },
+        { id: 2, docs_entry_id: 8, file_name: '납부.pdf', document_kind: 'payment_slip' },
+      ] }
+    },
+  }, undefined, {
+    fetchAdminDocsEntryPreviewUrl: async (entryId) => {
+      assert.equal(entryId, 8)
+      return { preview_url: 'https://example.test/payment-slip.pdf' }
+    },
+  })
+  const root = createRoot(document.getElementById('root'))
+  try {
+    await act(async () => root.render(React.createElement(Panel, {
+      ...company, withholdingDelivery: true,
+      saveStatus: async (_companyId, _boardId, item, next) => { assert.equal(item.id, 7); status = next },
+      onChanged() {},
+    })))
+    assert.ok(document.querySelector('[role="separator"]'))
+    assert.match(document.querySelector('[aria-label="기존 전달 첨부"]').textContent, /이전 첨부\.pdf/)
+    const first = document.querySelector('li button')
+    assert.equal(first.textContent, '납부.pdf납부서')
+    await act(async () => Simulate.click(first))
+    assert.match(document.querySelector('object').getAttribute('data'), /payment-slip\.pdf/)
+    await act(async () => Simulate.click(button('처리완료')))
+    assert.equal(status, 'done')
   } finally { act(() => root.unmount()) }
 })

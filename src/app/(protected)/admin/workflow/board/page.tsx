@@ -288,7 +288,7 @@ export default function WorkflowBoardPage() {
   const [customTaskName, setCustomTaskName] = useState('')
 
   const [quickWork, setQuickWork] = useState<{
-    companyId: number; companyName: string; boardId: number; itemId: number; month: string; payrollDelivery?: boolean
+    companyId: number; companyName: string; boardId: number; itemId: number; month: string; payrollDelivery?: boolean; withholdingDelivery?: boolean
   } | null>(null)
   const [fileModalTaskId, setFileModalTaskId] = useState<number | null>(null)
   const [fileModalDocs, setFileModalDocs] = useState<FileItem[]>([])
@@ -1467,12 +1467,12 @@ export default function WorkflowBoardPage() {
     return hasBase && !deferred
   }
 
-  const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">, payrollDelivery = false) => {
+  const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">, directDelivery = false) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
     if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || workflowCompletionSave.pending || checklistBlocked) return
-    if (payrollDelivery && (item.status === 'done' || !item.source_item_id || !item.can_deliver || !item.source_file_count)) return
-    if (!payrollDelivery && item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
+    if (directDelivery && (item.status === 'done' || !item.source_item_id || !item.can_deliver || !(item.payment_slip_file_count ?? item.source_file_count))) return
+    if (!directDelivery && item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
       // Preserve file/source/notification requirements in the existing detail flow.
       handleOpenDetail(row.company_id)
       toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
@@ -1639,10 +1639,11 @@ export default function WorkflowBoardPage() {
                   const sourceLinkedItem =
                     task.source_item_id != null ? detailItems.find((item) => item.id === task.source_item_id) : null
                   const sourceLabel = task.source_task_name?.trim() || sourceLinkedItem?.task_name?.trim() || '연동 업무'
-                  const canCompleteByLink = mode === 'check_only' && hasLinkedSource ? Boolean(task.can_deliver) : true
+                  const requiresSource = hasLinkedSource || task.payment_slip_file_count != null
+                  const canCompleteByLink = mode === 'check_only' && requiresSource ? Boolean(task.can_deliver) : true
                   const isCardUploading = uploadingCardTaskId === task.id
                   const sourceFileNames = task.source_item_id ? itemFileNameMap[task.source_item_id] ?? [] : []
-                  const isCheckOnlyWithoutSource = mode === 'check_only' && !hasLinkedSource
+                  const isCheckOnlyWithoutSource = mode === 'check_only' && !requiresSource
 
                   return (
                     <article key={task.id} className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
@@ -1660,6 +1661,7 @@ export default function WorkflowBoardPage() {
                             <p className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500" title={sourceLabel}>
                               <Link2 className="h-3 w-3" aria-hidden="true" />
                               {sourceLabel} | 파일 {task.source_file_count ?? 0}건
+                              {task.payment_slip_file_count != null && ` · 납부서 ${task.payment_slip_file_count}건`}
                             </p>
                           ) : null}
                         </div>
@@ -1773,7 +1775,7 @@ export default function WorkflowBoardPage() {
                             size="xs"
                             variant="primary"
                             onClick={() => handleTaskStatusPatch(task.id, 'done')}
-                            disabled={!isApplicable || (mode === 'check_only' && hasLinkedSource && !canCompleteByLink)}
+                            disabled={!isApplicable || !canCompleteByLink}
                           >
                             완료
                           </UiButton>
@@ -2248,13 +2250,19 @@ export default function WorkflowBoardPage() {
                                 task?.execution_mode_snapshot === 'file_only' && !task.source_item_id
                               const isPayrollDelivery = scope === 'admin' &&
                                 ['급여대장송부및확인', '급여대장송부확인', '급여대장송부'].includes(taskName)
-                              const opensWorkPanel = scope === 'admin' &&
-                                ['원천세신고', '원천세신고서작성', '원천세신고서제출', '원천세납부서전달', '납부서전달', '원천세납부안내'].includes(taskName)
-                              const payrollFileCount = task?.source_item_id ? task.source_file_count ?? 0 : 0
-                              const payrollCompletedDate = isPayrollDelivery && task?.status === 'done'
+                              const isWithholdingFiling = scope === 'admin' && ['원천세신고', '원천세신고서작성', '원천세신고서제출'].includes(taskName)
+                              const isWithholdingDelivery = scope === 'admin' && ['원천세납부서전달', '납부서전달', '원천세납부안내'].includes(taskName)
+                              const isDelivery = isPayrollDelivery || isWithholdingDelivery
+                              const sourceFileCount = task?.source_item_id ? task.source_file_count ?? 0 : 0
+                              const paymentSlipCount = isWithholdingDelivery ? task?.payment_slip_file_count ?? 0 : 0
+                              const deliveryFileLabel = paymentSlipCount ? `납부서 ${paymentSlipCount}건 상세`
+                                : sourceFileCount ? `파일 ${sourceFileCount}건 상세`
+                                  : isWithholdingDelivery && task?.own_file_count ? `기존 첨부 ${task.own_file_count}건 상세` : '파일 대기'
+                              const deliveryCompletedDate = isDelivery && task?.status === 'done'
                                 ? formatKSTShortDate(task.notified_at ?? task.completed_at) : ''
                               const openWorkPanel = () => {
-                                if (task && row.board_id) setQuickWork({ companyId: row.company_id, companyName: row.company_name, boardId: row.board_id, itemId: task.id, month: attributionMonth, payrollDelivery: isPayrollDelivery })
+                                if (task && row.board_id) setQuickWork({ companyId: row.company_id, companyName: row.company_name, boardId: row.board_id,
+                                  itemId: task.id, month: attributionMonth, payrollDelivery: isPayrollDelivery, withholdingDelivery: isWithholdingDelivery })
                               }
 
                               const completedAt = companyMajorCompletedAt[getMajorCheckKey(row.company_id, column.id)] || null
@@ -2279,49 +2287,45 @@ export default function WorkflowBoardPage() {
                                         <option value="required">대상</option>
                                         <option value="excluded">대상 제외</option>
                                       </select>
-                                    ) : checked && isPayrollWriting && task && row.board_id ? (
+                                    ) : checked && (isPayrollWriting || isWithholdingFiling) && task && row.board_id ? (
                                       <PayrollFilesCell key={task.id}
                                         companyId={row.company_id}
                                         companyName={row.company_name}
                                         boardId={row.board_id}
                                         itemId={task.id}
                                         fileCount={task.source_file_count ?? 0}
+                                        withholdingFiling={isWithholdingFiling}
+                                        status={task.status}
+                                        completedAt={task.completed_at}
                                         disabled={checklistBlocked || completingKey !== null}
                                         upload={uploadTaskFilesWithFallback}
                                         onChanged={() => setListReloadKey(previous => previous + 1)}
                                       />
-                                    ) : checked && isPayrollDelivery ? (
+                                    ) : checked && isDelivery ? (
                                       <div className="mx-auto flex w-max flex-col items-center gap-0.5 whitespace-nowrap text-xs">
                                         <button type="button" onClick={openWorkPanel}
                                           disabled={checklistBlocked || completingKey !== null || !task || !row.board_id}
-                                          aria-label={`${row.company_name} 급여대장 ${payrollFileCount ? `파일 ${payrollFileCount}건 상세` : '파일 대기 상세'}`}
+                                          aria-label={`${row.company_name} ${column.name} ${deliveryFileLabel}`}
                                           className="rounded px-1.5 py-0.5 font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
-                                          {payrollFileCount ? `파일 ${payrollFileCount}건 상세` : '파일 대기'}
+                                          {deliveryFileLabel}
                                         </button>
                                         {task && pendingCompletion?.id === task.id ? (
                                           <span role="status" className="px-1.5 py-0.5 text-zinc-500">저장 중…</span>
                                         ) : isListItemDone(task) ? (
                                           <span className="px-1.5 py-0.5 tabular-nums text-emerald-700">
-                                            {payrollCompletedDate ? `완료 ${payrollCompletedDate}` : '완료'}
+                                            {deliveryCompletedDate ? `완료 ${deliveryCompletedDate}` : '완료'}
                                           </span>
                                         ) : (
                                           <button type="button"
-                                            disabled={checklistBlocked || completingKey !== null || !row.board_id || !payrollFileCount || !task?.can_deliver}
+                                            disabled={checklistBlocked || completingKey !== null || !row.board_id || !(isWithholdingDelivery ? paymentSlipCount : sourceFileCount) || !task?.can_deliver}
                                             title={task?.blocked_reason || undefined}
-                                            aria-label={`${row.company_name} 급여대장 송부 처리완료`}
+                                            aria-label={`${row.company_name} ${column.name} 처리완료`}
                                             onClick={() => void toggleListCompletion(row, column, true)}
                                             className="rounded px-1.5 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50 disabled:text-zinc-400">
                                             처리완료
                                           </button>
                                         )}
                                       </div>
-                                    ) : checked && opensWorkPanel ? (
-                                      <button type="button" disabled={checklistBlocked || completingKey !== null || !task || !row.board_id}
-                                        onClick={openWorkPanel}
-                                        aria-label={`${row.company_name} ${column.name} 작업 열기`}
-                                        className="whitespace-nowrap rounded px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
-                                        {isListItemDone(task) ? '완료 · 파일 보기' : task?.source_item_id ? '전달 확인' : task?.execution_mode_snapshot !== 'check_only' ? (task?.source_file_count ? `파일 ${task.source_file_count}개` : '파일 등록') : '업무 열기'}
-                                      </button>
                                     ) : checked ? (
                                       <button type="button" disabled={checklistBlocked || completingKey !== null}
                                         onClick={() => void toggleListCompletion(row, column)}

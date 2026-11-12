@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { CircleAlert, X } from 'lucide-react'
+import { CircleAlert, Plus, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
 import { fetchAdminDocsEntryDownloadUrl } from '@/services/admin/adminDocsService'
-import { deleteTaskItemFile, getTaskBoardErrorMessage, listTaskItemDocs, updateTaskBoardItem, type TaskItemDocLink } from '@/services/workflowTaskBoard'
+import {
+  deleteTaskItemFile, getTaskBoardErrorMessage, listTaskItemDocs, taskDocumentKindLabels, updateTaskBoardItem,
+  updateWithholdingDocumentKind, type TaskDocumentKind, type TaskItemDocLink, type TaskItemStatus,
+} from '@/services/workflowTaskBoard'
 import { formatKSTDateTimeMinute, formatKSTShortDate } from '@/utils/dateTime'
 import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
 
@@ -17,6 +20,9 @@ type Props = {
   itemId: number
   fileCount: number
   disabled: boolean
+  withholdingFiling?: boolean
+  status?: TaskItemStatus
+  completedAt?: string | null
   upload: (itemId: number, files: File[], companyId: number, boardId: number) => Promise<{
     successCount: number; failedCount: number; failedIndexes?: number[]; firstError?: string
     failedItems?: { index: number; error: string }[]
@@ -24,11 +30,13 @@ type Props = {
   onChanged: () => void
 }
 
-export default function PayrollFilesCell({ companyId, companyName, boardId, itemId, fileCount, disabled, upload, onChanged }: Props) {
+type StatusChange = 'done' | 'from_files' | 'in_progress'
+
+export default function PayrollFilesCell({ companyId, companyName, boardId, itemId, fileCount, disabled, withholdingFiling = false, status, completedAt, upload, onChanged }: Props) {
   const { confirm } = useConfirmDialog()
   const input = useRef<HTMLInputElement>(null)
   const [docs, setDocs] = useState<TaskItemDocLink[] | null>(null)
-  const [pendingStatus, setPendingStatus] = useState<"done" | "from_files" | null>(null)
+  const [pendingStatus, setPendingStatus] = useState<StatusChange | null>(null)
   const [uploadFailure, setUploadFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
@@ -72,9 +80,9 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
     await request
   }
 
-  const syncStatus = async (reason: 'done' | 'from_files') => {
+  const syncStatus = async (reason: StatusChange) => {
     try {
-      let status: 'done' | 'not_started' = 'done'
+      let status: TaskItemStatus = reason === 'from_files' ? 'done' : reason
       if (reason === 'from_files') {
         const { items } = await listTaskItemDocs('admin', companyId, boardId, itemId)
         setDocs(items)
@@ -112,7 +120,7 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
       }
       if (!result.successCount) return { changed: false, ok: false }
       toast.success(`파일 ${result.successCount}건을 등록했습니다.`)
-      return { changed: true, ok: await syncStatus('done') }
+      return { changed: true, ok: withholdingFiling || await syncStatus('done') }
     })
   }
 
@@ -121,13 +129,28 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
     await mutate(async () => {
       await deleteTaskItemFile('admin', companyId, boardId, itemId, doc.docs_entry_id)
       setDocs(previous => previous?.filter(item => item.id !== doc.id) ?? null)
-      return { changed: true, ok: await syncStatus('from_files') }
+      return { changed: true, ok: withholdingFiling || await syncStatus('from_files') }
     })
   }
 
   const fileName = (doc: TaskItemDocLink) => doc.file_name || doc.title || `문서 #${doc.docs_entry_id}`
   const primaryDoc = docs?.reduce((latest, doc) => doc.created_at > latest.created_at ? doc : latest, docs[0])
   const primaryDate = formatKSTShortDate(primaryDoc?.created_at)
+  const filingDate = withholdingFiling && status === 'done' ? formatKSTShortDate(completedAt) : ''
+  const classification = (doc: TaskItemDocLink) => (
+    <select aria-label={`${fileName(doc)} 분류`} value={doc.document_kind ?? ''} disabled={!canEdit}
+      onChange={event => {
+        const kind = (event.target.value || null) as TaskDocumentKind | null
+        void mutate(async () => {
+          await updateWithholdingDocumentKind(companyId, boardId, itemId, doc.docs_entry_id, kind)
+          setDocs(previous => previous?.map(item => item.id === doc.id ? { ...item, document_kind: kind } : item) ?? null)
+          return { changed: true, ok: true }
+        })
+      }} className="max-w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs disabled:opacity-50">
+      <option value="">미분류</option>
+      {Object.entries(taskDocumentKindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+    </select>
+  )
   const renderFile = (doc: TaskItemDocLink) => {
     const name = fileName(doc)
     return (
@@ -164,19 +187,43 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
                 <span className="shrink-0 whitespace-nowrap">외 {docs.length - 1}건</span>
               </PopoverButton>
               <PopoverPanel anchor="bottom start" className="z-40 max-h-60 w-72 max-w-[calc(100vw-1rem)] divide-y overflow-auto rounded-md border border-zinc-200 bg-white p-2 text-xs shadow-lg [--anchor-gap:4px]">
-                {docs.map(doc => <div key={doc.id} className="py-1">{renderFile(doc)}</div>)}
+                {docs.map(doc => <div key={doc.id} className="py-1">
+                  {renderFile(doc)}
+                  {withholdingFiling && <div className="px-1 pb-1">{classification(doc)}</div>}
+                </div>)}
               </PopoverPanel>
             </Popover>
           )}
-          {primaryDate && <div title={`${formatKSTDateTimeMinute(primaryDoc.created_at)} 최종 업로드`}
-            className="text-center text-[10px] tabular-nums text-zinc-500">{primaryDate}</div>}
+          <div className="flex items-center justify-center gap-1.5">
+            {primaryDate && <span title={`${formatKSTDateTimeMinute(primaryDoc.created_at)} 최종 업로드`}
+              className="text-[10px] tabular-nums text-zinc-500">{primaryDate}</span>}
+            {withholdingFiling && docs.length === 1 && <Popover>
+              <PopoverButton type="button" aria-label={`${fileName(primaryDoc)} 분류 열기`} className="rounded px-1 text-[10px] text-sky-700 hover:bg-sky-50">
+                {primaryDoc.document_kind ? taskDocumentKindLabels[primaryDoc.document_kind] : '분류'}
+              </PopoverButton>
+              <PopoverPanel anchor="bottom start" className="z-40 rounded border border-zinc-200 bg-white p-2 shadow-lg [--anchor-gap:4px]">
+                {classification(primaryDoc)}
+              </PopoverPanel>
+            </Popover>}
+            {withholdingFiling && <button type="button" title="파일 추가" aria-label={`${companyName} 원천세 신고 파일 추가`}
+              disabled={!canEdit} onClick={() => input.current?.click()} className="rounded p-0.5 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+              <Plus size={12} aria-hidden="true" />
+            </button>}
+          </div>
         </>
       )}
       {loadFailed && <button type="button" onClick={() => setRevision(value => value + 1)} className="text-red-700 underline">파일 다시 불러오기</button>}
       <input ref={input} type="file" multiple className="hidden" disabled={!canEdit}
         onChange={event => { addFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = '' }} />
-      {!hasFiles && <button type="button" disabled={!canEdit} aria-label={`${companyName} 급여대장 파일 선택`}
+      {!hasFiles && <button type="button" disabled={!canEdit} aria-label={`${companyName} ${withholdingFiling ? '원천세 신고' : '급여대장'} 파일 선택`}
         onClick={() => input.current?.click()} className="text-sky-700 disabled:opacity-50">파일 선택 · 드롭</button>}
+      {withholdingFiling && !pendingStatus && (hasFiles || status === 'done') && (
+        <button type="button" disabled={!canEdit} title={status === 'done' ? '신고 완료 취소' : '실제 원천세 신고 후 완료를 기록하세요.'}
+          onClick={() => void mutate(async () => ({ changed: true, ok: await syncStatus(status === 'done' ? 'in_progress' : 'done') }))}
+          className="rounded px-1.5 py-0.5 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+          {status === 'done' ? (filingDate ? `완료 ${filingDate}` : '완료') : '신고 완료'}
+        </button>
+      )}
       {uploadFailure && <div className="flex items-center justify-center gap-1 text-red-700">
         <span role="status" title={uploadFailure} tabIndex={0} className="inline-flex cursor-help items-center gap-1">
           <CircleAlert className="h-3 w-3" aria-hidden="true" />

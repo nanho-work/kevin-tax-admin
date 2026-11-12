@@ -102,6 +102,8 @@ export interface TaskBoardItem {
   source_task_name?: string | null
   source_status?: TaskItemStatus | null
   source_file_count?: number | null
+  payment_slip_file_count?: number | null
+  own_file_count?: number | null
   can_deliver?: boolean | null
   blocked_reason?: string | null
   template_kind_snapshot?: TaskTemplateKind | null
@@ -292,10 +294,19 @@ export interface TaskTemplateListOptions {
   templateKind?: TaskTemplateKind
 }
 
+export const taskDocumentKindLabels = {
+  payment_slip: '납부서',
+  filing_receipt: '신고 접수증',
+  other: '기타',
+} as const
+
+export type TaskDocumentKind = keyof typeof taskDocumentKindLabels
+
 export interface TaskItemDocLink {
   id: number
   item_id: number
   docs_entry_id: number
+  document_kind?: TaskDocumentKind | null
   document_id?: number | null
   file_name?: string | null
   title?: string | null
@@ -617,6 +628,20 @@ export async function deleteTaskItemFile(
     `${base}/${companyId}/task-boards/${boardId}/items/${itemId}/files/${docsEntryId}`
   )
   return res.data
+}
+
+export async function updateWithholdingDocumentKind(
+  companyId: number,
+  boardId: number,
+  itemId: number,
+  docsEntryId: number,
+  documentKind: TaskDocumentKind | null,
+): Promise<void> {
+  const http = getHttp('admin')
+  const base = getBase('admin')
+  await http.patch(`${base}/${companyId}/task-boards/${boardId}/items/${itemId}/docs/${docsEntryId}/kind`, {
+    document_kind: documentKind,
+  })
 }
 
 export async function uploadTaskItemFile(
