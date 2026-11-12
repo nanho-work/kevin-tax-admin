@@ -2,7 +2,7 @@
 
 import { useOfficeHref } from '@/utils/officeHref';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
@@ -35,7 +35,9 @@ export default function BlogList() {
   const categoryId = Number(searchParams.get('category') || 0) || undefined;
   const keywordId = Number(searchParams.get('keyword') || 0) || undefined;
 
+  const listRequest = useRef(0);
   const loadPosts = useCallback(async (targetPage = page) => {
+    const request = ++listRequest.current;
     setLoading(true);
     setErr(null);
 
@@ -48,6 +50,7 @@ export default function BlogList() {
         keyword_id: keywordId,
       });
 
+      if (request !== listRequest.current) return;
       setRows(data.items ?? []);
       setTotal(data.total ?? 0);
 
@@ -56,9 +59,10 @@ export default function BlogList() {
         setPageSize(respPageSize);
       }
     } catch (e: any) {
+      if (request !== listRequest.current) return;
       setErr(getApiErrorMessage(e, e?.message || '불러오기에 실패했습니다.'));
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, [categoryId, keywordId, page, pageSize, q]);
 
@@ -89,6 +93,7 @@ export default function BlogList() {
 
   useEffect(() => {
     void loadPosts(page);
+    return () => { listRequest.current += 1 };
   }, [loadPosts, page]);
 
   const totalPages = useMemo(

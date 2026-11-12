@@ -18,12 +18,13 @@ function load(path, overrides, extra = {}) {
 let rank = 10, calls = []
 const row = { id: 71, company_id: 12, start_date: '2026-01-01', start_month: '2026-01', report_cycle: 'semiannual', payroll_day: 25, payroll_basis: 'previous_month', monthly_fee_supply: 100000, vat_included: false, is_active: true, version_no: 3 }
 const services = {
-  listBookkeepingContracts: async () => { calls.push(['list']); return { items: [row, { ...row, id: 72, company_id: 13 }] } },
+  listBookkeepingContracts: async filters => { calls.push(['list', filters]); return { items: [row, { ...row, id: 72, company_id: 13 }] } },
   createBookkeepingContract: async payload => { calls.push(['create', payload]); return { ...row, ...payload } },
   updateBookkeepingContract: async (id, payload) => { calls.push(['update', id, payload]); return { ...row, ...payload } },
   getClientBookkeepingErrorMessage: e => e.message,
 }
 const Component = load('src/components/admin/Company/CompanyContractSection.tsx', {
+  '@/components/common/HelpTooltip': { default: () => null },
   '@/contexts/ManagementSession': { useManagementSession: () => ({ session: { rank_order: rank }, loading: false }) },
   '@/utils/roleRank': { getClientRoleRank: s => s.rank_order },
   '@/services/client/clientBookkeepingService': services,
@@ -32,7 +33,8 @@ const click = text => Simulate.click([...document.querySelectorAll('button')].fi
 test('detail reads only this customer and edits the existing contract ID', async () => {
   calls = []; rank = 10
   const root = createRoot(document.getElementById('root'))
-  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, engagement: 'bookkeeping', editable: true })))
+  assert.equal(calls.find(x => x[0] === 'list')[1].company_id, 12)
   assert.equal(document.querySelectorAll('select option').length, 1)
   assert.match(document.body.textContent, /100,000원/)
   act(() => click('계약 수정'))
@@ -65,7 +67,7 @@ test('new registration validates contract before customer creation, and one-off 
 test('ordinary staff do not fetch or edit office contract information', async () => {
   calls = []; rank = 999
   const root = createRoot(document.getElementById('root'))
-  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, engagement: 'bookkeeping', editable: true })))
   assert.equal(document.getElementById('root').textContent, '')
   assert.equal(calls.length, 0)
   act(() => root.unmount())
@@ -91,7 +93,7 @@ test('both customer and contract menus use the real admin token with the same co
 test('empty memo can be unlocked, entered and saved without changing contract fields', async () => {
   calls = []; rank = 10
   const root = createRoot(document.getElementById('root'))
-  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+  await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, engagement: 'bookkeeping', editable: true })))
   const memo = document.getElementById('contract-memo')
   const toggle = document.querySelector('[role="switch"]')
   assert.equal(memo.value, '')
@@ -119,7 +121,7 @@ test('failed memo save retains input and cancel restores the saved memo', async 
   services.updateBookkeepingContract = async () => { throw new Error('저장 실패') }
   const root = createRoot(document.getElementById('root'))
   try {
-    await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, editable: true })))
+    await act(async () => root.render(React.createElement(Component, { companyId: 12, creating: false, engagement: 'bookkeeping', editable: true })))
     act(() => Simulate.click(document.querySelector('[role="switch"]')))
     const memo = document.getElementById('contract-memo')
     act(() => { memo.value = '유지할 입력'; Simulate.change(memo) })

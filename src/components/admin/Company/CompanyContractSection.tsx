@@ -45,7 +45,7 @@ const CompanyContractSection = forwardRef<CompanyContractHandle, { companyId: nu
     if (!allowed || creating || !companyId) return
     let active = true
     setLoading(true); setError('')
-    listBookkeepingContracts().then((result) => {
+    listBookkeepingContracts({ company_id: companyId }).then((result) => {
       if (!active) return
       const contracts = result.items.filter((r) => r.company_id === companyId)
       setRows(contracts)

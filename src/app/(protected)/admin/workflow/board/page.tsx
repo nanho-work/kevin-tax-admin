@@ -1,6 +1,8 @@
 'use client'
 
 import styles from './board.module.css'
+import { createSharedRequest } from '@/utils/sharedRequest'
+import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
 import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
 
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
@@ -246,6 +248,12 @@ export default function WorkflowBoardPage() {
   const editNoticeTimerRef = useRef<number | null>(null)
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const requestIdentity = scope === 'admin' ? getAdminAccessToken() : getClientAccessToken()
+  // A new generation after month changes or writes prevents stale completion/file data.
+  const loadSharedItems = useMemo(() => createSharedRequest((key: string) => {
+    const [companyId, boardId] = key.split(':').map(Number)
+    return listTaskBoardItems(scope, companyId, boardId)
+  }), [scope, attributionMonth, listReloadKey, selectedCompanyId, requestIdentity, listRowsApi])
   const boardViewportRef = useRef<HTMLDivElement>(null)
   const [boardViewportHeight, setBoardViewportHeight] = useState<number>()
 
@@ -343,7 +351,8 @@ export default function WorkflowBoardPage() {
     return ids[0] ?? null
   }, [listRows, selectedCompanyId])
 
-  const loadAllRowsForColumnBootstrap = useCallback(async (): Promise<TaskBoardListItem[]> => {
+  const loadAllRowsForColumnBootstrap = useMemo(() => {
+    const read = createSharedRequest(async (_key: string): Promise<TaskBoardListItem[]> => {
     const merged: TaskBoardListItem[] = []
     const size = 100
     let page = 1
@@ -367,7 +376,9 @@ export default function WorkflowBoardPage() {
     } while (merged.length < total)
 
     return merged
-  }, [scope, attributionMonth, reportMonth])
+    })
+    return () => read('columns')
+  }, [scope, attributionMonth, reportMonth, listReloadKey, requestIdentity, listRowsApi])
 
   const assignees = useMemo<AssigneeOption[]>(() => {
     const map = new Map<number, string>()
@@ -657,7 +668,7 @@ export default function WorkflowBoardPage() {
       await Promise.all(
         rowsWithBoard.map(async (row) => {
           try {
-            const res = await listTaskBoardItems(scope, row.company_id, Number(row.board_id))
+            const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
             ;(res.items || []).forEach((item) => {
               const normName = normalizeText(item.task_name || '')
               if (!normName) return
@@ -691,7 +702,7 @@ export default function WorkflowBoardPage() {
     return () => {
       cancelled = true
     }
-  }, [columnCatalog, processTemplateCatalog, loadAllRowsForColumnBootstrap])
+  }, [columnCatalog, processTemplateCatalog, loadAllRowsForColumnBootstrap, loadSharedItems])
 
   useEffect(() => {
     let cancelled = false
@@ -721,7 +732,7 @@ export default function WorkflowBoardPage() {
           .filter((row) => row.board_id)
           .map(async (row) => {
             try {
-              const res = await listTaskBoardItems(scope, row.company_id, Number(row.board_id))
+              const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
               const selectedTaskNormNames = new Set<string>()
               const doneCompletedAtByNorm = new Map<string, string>()
               ;(res.items || []).forEach((item) => {
@@ -767,11 +778,12 @@ export default function WorkflowBoardPage() {
     return () => {
       cancelled = true
     }
-  }, [scope, attributionMonth, listPeriod, listRowsApi, customColumns, majorColumns])
+  }, [scope, attributionMonth, listPeriod, listRowsApi, customColumns, majorColumns, loadSharedItems])
 
   useEffect(() => {
     let cancelled = false
     const hydrateProcessSourceFromSavedItems = async () => {
+      if (listPeriod !== attributionMonth) return
       if (!processTemplateCatalog.length || !listRowsApi.length) return
       const rowsWithBoard = listRowsApi.filter((row) => row.board_id)
       if (!rowsWithBoard.length) return
@@ -780,7 +792,7 @@ export default function WorkflowBoardPage() {
       await Promise.all(
         rowsWithBoard.map(async (row) => {
           try {
-            const res = await listTaskBoardItems(scope, row.company_id, Number(row.board_id))
+            const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
             ;(res.items || []).forEach((item) => {
               const taskNorm = normalizeText(item.task_name || '')
               const source = item.source_task_name?.trim()
@@ -808,7 +820,7 @@ export default function WorkflowBoardPage() {
     return () => {
       cancelled = true
     }
-  }, [scope, listRowsApi, processTemplateCatalog.length])
+  }, [scope, listRowsApi, processTemplateCatalog.length, loadSharedItems, listPeriod, attributionMonth])
 
   const renderStatus = (status: TaskItemStatus) => (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[status]}`}>

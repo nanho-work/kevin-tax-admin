@@ -42,6 +42,7 @@ export interface ClientBookkeepingContractUpdateRequest {
 }
 
 export interface ClientBookkeepingContractOut {
+  company_category?: string | null
   id: number
   client_id: number
   company_id: number
@@ -71,6 +72,7 @@ export interface ClientBookkeepingContractListResponse {
 }
 
 export interface ClientBookkeepingContractListFilters {
+  company_id?: number
   is_active?: boolean
   q?: string
 }

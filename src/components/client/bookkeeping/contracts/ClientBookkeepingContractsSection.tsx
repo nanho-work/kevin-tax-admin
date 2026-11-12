@@ -186,7 +186,6 @@ export default function ClientBookkeepingContractsSection() {
   const [q, setQ] = useState('')
   const [includeInactive, setIncludeInactive] = useState(false)
 
-  const [companyMap, setCompanyMap] = useState<Record<number, CompanyTaxDetail>>({})
   const [companyQuery, setCompanyQuery] = useState('')
   const [companyOptions, setCompanyOptions] = useState<CompanyTaxDetail[]>([])
   const [companyOptionLoading, setCompanyOptionLoading] = useState(false)
@@ -229,29 +228,6 @@ export default function ClientBookkeepingContractsSection() {
     }
   }, [])
 
-  const loadAllCompanies = async () => {
-    try {
-      const limit = 100
-      let page = 1
-      let total = 0
-      const merged: CompanyTaxDetail[] = []
-      do {
-        const res = await fetchClientCompanyTaxList({ page, limit, keyword: '' })
-        merged.push(...(res.items || []))
-        total = res.total || 0
-        page += 1
-      } while (merged.length < total)
-
-      const map = merged.reduce<Record<number, CompanyTaxDetail>>((acc, item) => {
-        acc[item.id] = item
-        return acc
-      }, {})
-      setCompanyMap(map)
-    } catch {
-      setCompanyMap({})
-    }
-  }
-
   const loadCompanyOptions = async (keyword: string) => {
     try {
       setCompanyOptionLoading(true)
@@ -284,10 +260,6 @@ export default function ClientBookkeepingContractsSection() {
   useEffect(() => {
     runSearch()
   }, [isActiveFilter])
-
-  useEffect(() => {
-    loadAllCompanies()
-  }, [])
 
   useEffect(() => {
     if (!modal.open) return
@@ -809,13 +781,12 @@ export default function ClientBookkeepingContractsSection() {
               </tr>
             ) : (
               rows.map((row) => {
-                const company = companyMap[row.company_id]
                 return (
                   <tr key={row.id}>
                     <td className="px-3 py-3 text-center">{row.company_name || '-'}</td>
                     <td className="px-3 py-3 text-center">{row.registration_number || '-'}</td>
                     <td className="px-3 py-3 text-center">v{row.version_no}</td>
-                    <td className="px-3 py-3 text-center">{company?.category || '-'}</td>
+                    <td className="px-3 py-3 text-center">{row.company_category || '-'}</td>
                     <td className="px-3 py-3 text-center">{formatReportCycle(row.report_cycle)}</td>
                     <td className="px-3 py-3 text-center">{row.payroll_day ?? '-'}</td>
                     <td className="px-3 py-3 text-center">{formatPayrollBasis(row.payroll_basis)}</td>

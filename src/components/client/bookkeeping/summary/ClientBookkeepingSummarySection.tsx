@@ -3,7 +3,7 @@
 import { useOfficeHref } from '@/utils/officeHref'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   getBookkeepingSummary,
@@ -83,16 +83,20 @@ export default function ClientBookkeepingSummarySection() {
     }
   }
 
+  const summaryRequest = useRef(0)
   const loadSummary = async (targetYear: number) => {
+    const request = ++summaryRequest.current
     try {
       setLoading(true)
       const res = await getBookkeepingSummary(targetYear)
+      if (request !== summaryRequest.current) return
       setRows(res.items || [])
     } catch (error) {
+      if (request !== summaryRequest.current) return
       toast.error(getClientBookkeepingErrorMessage(error))
       setRows([])
     } finally {
-      setLoading(false)
+      if (request === summaryRequest.current) setLoading(false)
     }
   }
 
@@ -102,6 +106,7 @@ export default function ClientBookkeepingSummarySection() {
 
   useEffect(() => {
     loadSummary(year)
+    return () => { summaryRequest.current += 1 }
   }, [year])
 
   useEffect(() => {

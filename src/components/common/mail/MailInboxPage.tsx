@@ -342,14 +342,21 @@ export function MailInboxPage({
     setActiveFolderName('')
   }, [searchParams])
 
+  const listFilterKey = JSON.stringify([mailAccountId, activeMailbox, activeFolderName, readFilter, includeTrash, keyword, size])
+  const previousListFilter = useRef(listFilterKey)
   useEffect(() => {
-    loadMessages(1)
-    setPage(1)
-  }, [mailAccountId, activeMailbox, activeFolderName, readFilter, includeTrash, keyword])
-
-  useEffect(() => {
-    loadMessages(page)
-  }, [page])
+    if (previousListFilter.current !== listFilterKey) {
+      previousListFilter.current = listFilterKey
+      if (page !== 1) {
+        // Invalidate an in-flight response before the page reset renders.
+        listRequestSeqRef.current += 1
+        setPage(1)
+        return
+      }
+    }
+    void loadMessages(page)
+    return () => { listRequestSeqRef.current += 1 }
+  }, [listFilterKey, page])
 
   useEffect(() => {
     if (!selectedMessageId) return
