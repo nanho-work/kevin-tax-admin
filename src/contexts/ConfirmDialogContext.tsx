@@ -1,13 +1,13 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import UiButton from '@/components/common/UiButton'
 
 type ConfirmDialogVariant = 'default' | 'danger'
 
 type ConfirmDialogOptions = {
   title?: string
-  description?: string
+  description?: ReactNode
   confirmText?: string
   cancelText?: string
   variant?: ConfirmDialogVariant
@@ -150,7 +150,7 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
             onMouseDown={(event) => event.stopPropagation()}
           >
             <p className="text-sm font-semibold text-zinc-800">{options.title}</p>
-            {options.description ? <p className="mt-2 text-sm text-zinc-700">{options.description}</p> : null}
+            {options.description ? <div className="mt-2 text-sm text-zinc-700">{options.description}</div> : null}
             {state.mode === 'prompt' ? (
               <input
                 value={state.promptValue}

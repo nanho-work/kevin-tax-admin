@@ -7,7 +7,7 @@ import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
 import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
 
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
@@ -32,6 +32,7 @@ import {
   createTaskBoardItem,
   ensureTaskBoard,
   getTaskBoardErrorMessage,
+  importMonthTaskDefaultsForCompanies,
   listGlobalTaskTemplates,
   listTaskBoardItems,
   listTaskBoards,
@@ -43,6 +44,7 @@ import {
   listTaskTemplates,
   patchTaskBoardExclude,
   patchTaskBoardExcludeByMonth,
+  patchTaskBoardNote,
   patchTaskBoardReportCycle,
   updateTaskBoardItem,
   reorderGlobalTaskTemplates,
@@ -63,6 +65,19 @@ type AddTab = 'template' | 'custom'
 type CustomColumn = { id: string; name: string }
 type ColumnCatalogItem = { id: string; name: string; templateId: number; sortOrder: number }
 type MajorColumn = { id: string; name: string }
+type ProcessDisplayColumn = MajorColumn & { heading?: string; previewOnly?: boolean }
+
+const STATEMENT_HEADINGS = [
+  { name: '사업소득 간이지급명세서' },
+  { name: '근로내용 확인서', aliases: ['근로내용 확인신고서'] },
+  { name: '일용직 지급 명세서', aliases: ['일용근로소득 지급명세서', '일용근로 지급명세서'] },
+  { name: '기타소득 지급명세서' },
+  { name: '배당소득 지급명세서' },
+  { name: '퇴직소득 지급명세서' },
+  { name: '사업소득 지급명세서' },
+  { name: '기소득간이지급명세서', aliases: ['기타소득 간이지급명세서'] },
+  { name: '보수총액신고', aliases: ['보수총액신고서'] },
+]
 type ProcessTemplateCatalogItem = {
   id: string
   name: string
@@ -168,6 +183,7 @@ export default function WorkflowBoardPage() {
   const [attributionMonth, setAttributionMonth] = useState(() => getMonthlyWorkPeriod().attribution)
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   const [includeExcluded, setIncludeExcluded] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState({ withholding: true, statements: false })
   const [kindFilter, setKindFilter] = useState<TaskBoardKind>('all')
   const [assigneeFilterId, setAssigneeFilterId] = useState('all')
   const [sortBy, setSortBy] = useState<TaskBoardSortBy | undefined>(undefined)
@@ -230,6 +246,7 @@ export default function WorkflowBoardPage() {
   const [companyMajorChecks, setCompanyMajorChecks] = useState<Record<string, boolean>>({})
   const [companyMajorCompletedAt, setCompanyMajorCompletedAt] = useState<Record<string, string | null>>({})
   const [isEditMode, setIsEditMode] = useState(false)
+  const [importingDefaultsFor, setImportingDefaultsFor] = useState<number | 'all' | null>(null)
   const [isMajorColumnModalOpen, setIsMajorColumnModalOpen] = useState(false)
   const [newMajorColumnName, setNewMajorColumnName] = useState('')
   const [newMajorExecutionMode, setNewMajorExecutionMode] = useState<TaskExecutionMode>('check_only')
@@ -304,6 +321,15 @@ export default function WorkflowBoardPage() {
   const taskFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const reportMonth = monthShift(attributionMonth, 1)
+  const notePeriod = `${scope}:${attributionMonth}`
+  const visibleNotePeriod = useRef(notePeriod)
+  const [editingNote, setEditingNote] = useState<{ companyId: number; text: string; period: string } | null>(null)
+  const [isSavingNote, setIsSavingNote] = useState(false)
+  useEffect(() => {
+    visibleNotePeriod.current = notePeriod
+    setEditingNote(null)
+  }, [notePeriod])
+
   const getColumnCheckKey = (companyId: number, columnId: string) => `${companyId}:${columnId}`
   const getMajorCheckKey = (companyId: number, columnId: string) => `${companyId}:${columnId}`
 
@@ -320,7 +346,7 @@ export default function WorkflowBoardPage() {
   const [monthlyItems, setMonthlyItems] = useState<Record<string, TaskBoardItem>>({})
   const dirtyCompanies = useRef(new Set<number>())
   const router = useRouter()
-  const [pendingCompletion, setPendingCompletion] = useState<{ id: number; done: boolean } | null>(null)
+  const [pendingCompletion, setPendingCompletion] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     const waitBeforeNavigation = (event: MouseEvent) => {
@@ -336,7 +362,7 @@ export default function WorkflowBoardPage() {
     return () => document.removeEventListener('click', waitBeforeNavigation, true)
   }, [router])
 
-  const [completingKey, setCompletingKey] = useState<string | null>(null)
+  const completingKeys = useRef(new Set<string>())
   useEffect(() => {
     dirtyCompanies.current.clear()
     setTargetModes({})
@@ -347,7 +373,7 @@ export default function WorkflowBoardPage() {
   const [targetingReady, setTargetingReady] = useState(false)
   const [checkError, setCheckError] = useState('')
   const [checksMonth, setChecksMonth] = useState('')
-  const checklistBlocked = !targetingReady || listLoading || listPeriod !== attributionMonth || !baseCatalogReady || !processCatalogReady || !checksReady || checksMonth !== attributionMonth || isSavingChecklist
+  const checklistBlocked = !targetingReady || listPeriod !== attributionMonth || !baseCatalogReady || !processCatalogReady || !checksReady || checksMonth !== attributionMonth || isSavingChecklist || importingDefaultsFor !== null
 
   const majorColumns = useMemo<MajorColumn[]>(
     () =>
@@ -426,6 +452,45 @@ export default function WorkflowBoardPage() {
     [detailItems, fileModalTaskId]
   )
   const hasSelectedCustomColumns = customColumns.length > 0
+  const groupedHeaders = scope === 'admin'
+  const headerRowSpan = groupedHeaders ? 2 : undefined
+  const baseColumnCount = Math.max(1, customColumns.length)
+  const statementColumns = useMemo<ProcessDisplayColumn[]>(() => {
+    if (!groupedHeaders) return []
+    const remaining = new Map(majorColumns.map(column => [column.id, column]))
+    const columns = STATEMENT_HEADINGS.map(({ name, aliases = [] }) => {
+      const names = [name, ...aliases].map(normalizeText)
+      const existing = majorColumns.find(column => remaining.has(column.id) && names.includes(normalizeText(column.name)))
+      if (!existing) return { id: `preview:${name}`, name, previewOnly: true }
+      remaining.delete(existing.id)
+      return { ...existing, heading: name }
+    })
+    const additional = [...remaining.values()].filter(column => normalizeText(column.name).includes('지급명세서'))
+    return [...columns, ...additional]
+  }, [groupedHeaders, majorColumns])
+  const statementIds = new Set(statementColumns.map(column => column.id))
+  const withholdingColumns: ProcessDisplayColumn[] = majorColumns.filter(column => !statementIds.has(column.id))
+  const processGroups = [
+    {
+      key: 'withholding' as const,
+      label: '원천세 업무',
+      shortLabel: '원',
+      fallbackTitle: '업무진행',
+      columns: withholdingColumns,
+      expanded: !groupedHeaders || expandedGroups.withholding,
+    },
+    ...(groupedHeaders ? [{
+      key: 'statements' as const,
+      label: '지급명세서 업무',
+      shortLabel: '지',
+      fallbackTitle: '지급명세서',
+      columns: statementColumns,
+      expanded: expandedGroups.statements,
+    }] : []),
+  ]
+  const processColumnCount = processGroups.reduce((count, group) => count + (group.expanded ? Math.max(1, group.columns.length) : 1), 0)
+  const showProgressColumns = !groupedHeaders
+  const tableColumnCount = 8 + baseColumnCount + processColumnCount + Number(isEditMode) + (showProgressColumns ? 2 : 0)
   const selectedCompanyBaseBadges = useMemo(() => {
     const orderByName = new Map(customColumns.map((column, index) => [normalizeText(column.name), index]))
     return detailItems
@@ -887,6 +952,49 @@ export default function WorkflowBoardPage() {
   }
 
   const handleOpenDetail = (companyId: number) => setSelectedCompanyId(companyId)
+
+  const saveBoardNote = (row: TaskBoardListItem) => {
+    const draft = editingNote
+    if (!draft || draft.companyId !== row.company_id || draft.period !== notePeriod || isSavingNote) return
+    const note = draft.text.trim() || null
+    if (note === (row.note || null)) {
+      setEditingNote(null)
+      return
+    }
+    if (isSavingChecklist) {
+      toast('저장 중인 작업이 끝난 뒤 다시 저장해 주세요.')
+      return
+    }
+
+    setIsSavingNote(true)
+    const previousSave = workflowCompletionSave.pending
+    const save = Promise.resolve(previousSave).then(async () => {
+      try {
+        const period = { attribution_month: attributionMonth, report_month: reportMonth }
+        const boardId = row.board_id ?? (await ensureTaskBoard(scope, row.company_id, {
+          ...period,
+          copy_from_previous: true,
+        })).board.id
+        const saved = await patchTaskBoardNote(scope, row.company_id, { ...period, note })
+        if (visibleNotePeriod.current === draft.period) {
+          setListRowsApi(rows => rows.map(item => item.company_id === row.company_id
+            ? { ...item, board_id: boardId, note: saved.note }
+            : item))
+          setEditingNote(current => current === draft ? null : current)
+        }
+        setListReloadKey(previous => previous + 1)
+        toast.success('비고를 저장했습니다.')
+        return true
+      } catch (error) {
+        toast.error(getTaskBoardErrorMessage(error))
+        return false
+      } finally {
+        setIsSavingNote(false)
+        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
+      }
+    })
+    workflowCompletionSave.pending = save
+  }
 
   const handleToggleExclude = async (row: TaskBoardListItem) => {
     try {
@@ -1407,6 +1515,84 @@ export default function WorkflowBoardPage() {
     setManualMajorColumns(normalized.map((item) => ({ id: item.id, name: item.name })))
   }
 
+  const handleImportMonthDefaults = async (row?: TaskBoardListItem) => {
+    if (scope !== 'admin' || !isEditMode || row?.is_excluded || checklistBlocked || workflowCompletionSave.pending) return
+    setImportingDefaultsFor(row?.company_id ?? 'all')
+    try {
+      const rows = row ? [row] : await loadAllRowsForColumnBootstrap()
+      const companies = [...new Map(rows.filter(item => !item.is_excluded).map(item => [
+        item.company_id, { companyId: item.company_id, companyName: item.company_name },
+      ])).values()]
+      const { imported, failed } = await importMonthTaskDefaultsForCompanies(attributionMonth, companies)
+      const additions = imported.filter(({ preview }) => preview.task_names.length > 0)
+      if (!additions.length) {
+        if (failed.length) toast.error(`${failed[0].companyName} · ${failed[0].message}${failed.length > 1 ? ` 외 ${failed.length - 1}개 거래처` : ''}`)
+        else toast('불러올 기준업무가 없습니다.')
+        return
+      }
+      const approved = await confirm({
+        title: row ? `${row.company_name} 기준업무 불러오기` : '기준업무 일괄 불러오기',
+        description: (
+          <>
+            <p>{attributionMonth} 귀속의 {additions.length}개 거래처에 기준업무를 추가합니다.</p>
+            {!row && <p className="mt-1 text-xs text-zinc-500">현재 검색·필터와 관계없이 이 달의 거래처 전체를 확인했습니다.</p>}
+            <ul className="mt-2 max-h-[40vh] divide-y divide-zinc-100 overflow-y-auto rounded-md border border-zinc-200 px-2">
+              {additions.map(({ companyId, companyName, preview }) => (
+                <li key={companyId} className="py-2">
+                  <p className="font-medium text-zinc-800">{companyName}</p>
+                  <p className="text-xs text-zinc-500">{preview.source === 'previous' ? `${preview.source_month} 귀속 기준업무` : '거래처 기본 설정'}</p>
+                  <p className="mt-0.5 break-words">{preview.task_names.join(' · ')}</p>
+                </li>
+              ))}
+              {failed.map(({ companyId, companyName, message }) => (
+                <li key={companyId} className="py-2 text-xs text-rose-700">{companyName} · {message}</li>
+              ))}
+            </ul>
+          </>
+        ),
+        confirmText: '불러오기',
+        cancelText: '취소',
+      })
+      if (!approved) return
+
+      const save = importMonthTaskDefaultsForCompanies(attributionMonth, additions.map(({ companyId, companyName, preview }) => ({
+        companyId, companyName, expectedTaskNames: preview.task_names,
+      }))).then(result => {
+        // Keep draft edits in other cells while marking the newly saved tasks.
+        const updatedChecks: Record<string, boolean> = {}
+        let taskCount = 0
+        for (const { companyId, preview } of result.imported) {
+          taskCount += preview.task_names.length
+          const importedNames = new Set(preview.task_names.map(normalizeText))
+          for (const column of customColumns) {
+            if (importedNames.has(normalizeText(column.name))) updatedChecks[getColumnCheckKey(companyId, column.id)] = true
+          }
+        }
+        setCompanyColumnChecks(previous => ({ ...previous, ...updatedChecks }))
+        setListReloadKey(previous => previous + 1)
+        if (taskCount) toast.success(`${result.imported.length}개 거래처에 기준업무 ${taskCount}건을 추가했습니다.`)
+        if (result.failed.length) {
+          const { companyName, message } = result.failed[0]
+          toast.error(`${result.failed.length}개 거래처 적용 실패 · ${companyName}: ${message}`)
+        }
+        return result.failed.length === 0
+      }).catch(error => {
+        toast.error(getTaskBoardErrorMessage(error))
+        return false
+      })
+      workflowCompletionSave.pending = save
+      try {
+        await save
+      } finally {
+        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
+      }
+    } catch (error) {
+      toast.error(getTaskBoardErrorMessage(error))
+    } finally {
+      setImportingDefaultsFor(null)
+    }
+  }
+
   const saveChecklistSelections = async () => {
     if (checklistBlocked) return false
     setIsSavingChecklist(true)
@@ -1470,7 +1656,7 @@ export default function WorkflowBoardPage() {
   const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">, directDelivery = false) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
-    if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || workflowCompletionSave.pending || checklistBlocked) return
+    if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || completingKeys.current.has(key) || checklistBlocked) return
     if (directDelivery && (item.status === 'done' || !item.source_item_id || !item.can_deliver || !(item.payment_slip_file_count ?? item.source_file_count))) return
     if (!directDelivery && item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
       // Preserve file/source/notification requirements in the existing detail flow.
@@ -1482,9 +1668,10 @@ export default function WorkflowBoardPage() {
       ? (item.template_kind_snapshot === 'base' ? 'not_started' : 'in_progress')
       : 'done'
     const itemKey = `${row.company_id}:${normalizeText(column.name)}`
-    setCompletingKey(key)
-    setPendingCompletion({ id: item.id, done: status === 'done' })
-    const save = async () => {
+    completingKeys.current.add(key)
+    setPendingCompletion(previous => ({ ...previous, [item.id]: status === 'done' }))
+    const previousSave = workflowCompletionSave.pending
+    const save = Promise.resolve(previousSave).then(async () => {
       try {
         const saved = await saveTaskStatus(row.company_id, row.board_id!, item.id, status, item)
         setMonthlyItems(previous => previous[itemKey]?.id === item.id
@@ -1497,16 +1684,20 @@ export default function WorkflowBoardPage() {
         if (item.execution_mode_snapshot === 'file_only') handleOpenDetail(row.company_id)
         return false
       } finally {
-        setPendingCompletion(null)
-        setCompletingKey(null)
-        workflowCompletionSave.pending = null
+        completingKeys.current.delete(key)
+        setPendingCompletion(previous => {
+          const next = { ...previous }
+          delete next[item.id]
+          return next
+        })
+        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
       }
-    }
-    workflowCompletionSave.pending = save()
+    })
+    workflowCompletionSave.pending = save
   }
 
   const isListItemDone = (item?: TaskBoardItem) =>
-    pendingCompletion && pendingCompletion.id === item?.id ? pendingCompletion.done : item?.status === 'done'
+    item ? pendingCompletion[item.id] ?? (item.status === 'done') : false
 
   const showEditModeNotice = (message: string, duration = 1400) => {
     setEditModeNotice(message)
@@ -1572,6 +1763,65 @@ export default function WorkflowBoardPage() {
       setUpdatingReportCycleCompanyId(null)
     }
   }
+
+  const baseColumnHeadings = (
+    <>
+      {!hasSelectedCustomColumns ? (
+        <th
+          scope="col"
+          className="px-1 py-1.5 text-center font-semibold"
+        >
+          <span className="block leading-tight">
+            {groupedHeaders ? '–' : '기본업무'}
+          </span>
+        </th>
+      ) : null}
+      {customColumns.map((column) => (
+        <th
+          scope="col"
+          key={column.id}
+          className={`${styles.baseTaskColumn} py-2 text-center font-semibold`}
+        >
+          <div className={styles.taskHeading} title={column.name}>
+            {isEditMode ? (
+              <button
+                type="button"
+                onClick={() => toggleColumnAll(column.id)}
+                className={`w-full rounded border px-0 py-0.5 text-[11px] font-medium transition ${
+                  columnAllCheckedMap[column.id]
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    : 'border-zinc-300 bg-white text-zinc-700 hover:border-sky-300 hover:text-sky-700'
+                }`}
+                title="컬럼 전체 선택/해제"
+              >
+                <span className="block leading-tight">
+                  {column.name}
+                </span>
+              </button>
+            ) : (
+              <span className="block px-0 py-0.5 text-[11px] leading-tight">
+                {column.name}
+              </span>
+            )}
+          </div>
+        </th>
+      ))}
+    </>
+  )
+
+  const renderProcessColumnHeadings = (group: (typeof processGroups)[number]) => (
+    <Fragment key={group.key}>
+      {group.columns.length ? group.columns.map(column => (
+        <th key={column.id} scope="col" className="px-1 py-1.5 text-center font-semibold">
+          <span className={group.key === 'statements' ? styles.statementHeading : styles.taskHeading} title={column.heading ?? column.name}>
+            {column.heading ?? column.name}
+          </span>
+        </th>
+      )) : (
+        <th scope="col" className="px-1 py-1.5 text-center font-semibold">{group.fallbackTitle}</th>
+      )}
+    </Fragment>
+  )
 
   return (
     <div ref={boardViewportRef} className={selectedCompanyId ? "space-y-4" : styles.viewport}
@@ -1963,15 +2213,15 @@ export default function WorkflowBoardPage() {
           )}
           <div className={styles.tableScroller} tabIndex={0} role="region" aria-label="원천세 업무 목록">
             <table className={styles.table}>
-              <thead className="bg-zinc-100 text-zinc-700">
+              <thead className={groupedHeaders ? styles.groupedHeader : 'bg-zinc-100 text-zinc-700'}>
                 <tr>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     No
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     구분
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     <button
                       type="button"
                       onClick={() => handleToggleSort('company_name')}
@@ -1982,10 +2232,10 @@ export default function WorkflowBoardPage() {
                       {renderSortIcon('company_name')}
                     </button>
                   </th>
-                  <th className="px-2 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-2 py-1.5 text-center font-semibold">
                     담당자
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     <button
                       type="button"
                       onClick={() => handleToggleSort('report_cycle')}
@@ -1996,94 +2246,84 @@ export default function WorkflowBoardPage() {
                       {renderSortIcon('report_cycle')}
                     </button>
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     귀속
                   </th>
-                  <th className="px-1 py-1.5 text-center font-semibold">
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">
                     급여
                   </th>
-                  {!hasSelectedCustomColumns ? (
-                    <th
-                      className="px-1 py-1.5 text-center font-semibold"
-                    >
-                      <span className="block leading-tight">
-                        기본업무
-                      </span>
-                    </th>
-                  ) : null}
-                  {customColumns.map((column) => (
-                    <th
-                      key={column.id}
-                      className="px-1 py-2 text-center font-semibold"
-                      style={['근로', '퇴직', '사업', '기타', '일용'].includes(column.name.trim()) ? { paddingLeft: 4.5, paddingRight: 4.5 } : undefined}
-                    >
-                      <div className={styles.taskHeading} title={column.name}>
-                      {isEditMode ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleColumnAll(column.id)}
-                          className={`w-full rounded border px-0 py-0.5 text-[11px] font-medium transition ${
-                            columnAllCheckedMap[column.id]
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                              : 'border-zinc-300 bg-white text-zinc-700 hover:border-sky-300 hover:text-sky-700'
-                          }`}
-                          title="컬럼 전체 선택/해제"
-                        >
-                          <span className="block leading-tight">
-                            {column.name}
-                          </span>
-                        </button>
-                      ) : (
-                        <span className="block px-0 py-0.5 text-[11px] leading-tight">
-                          {column.name}
-                        </span>
-                      )}
-                      </div>
-                    </th>
-                  ))}
-                  {
+                  {groupedHeaders ? (
                     <>
-                      <th className=" px-1 py-1.5 text-center font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSort('progress_percent')}
-                          className="inline-flex w-full items-center justify-center gap-0.5"
-                          title="진행률 정렬"
+                      <th colSpan={baseColumnCount} className={styles.groupHeading}>기준업무</th>
+                      {processGroups.map(group => (
+                        <th key={group.key}
+                          colSpan={group.expanded ? Math.max(1, group.columns.length) : 1}
+                          rowSpan={group.expanded ? 1 : 2}
+                          className={group.expanded ? styles.groupHeading : `${styles.groupHeading} ${styles.collapsedHeading}`}
                         >
-                          <span>진행률</span>
-                          {renderSortIcon('progress_percent')}
-                        </button>
-                      </th>
-                      <th className=" px-1 py-1.5 text-center font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSort('todo_count')}
-                          className="inline-flex w-full items-center justify-center gap-0.5"
-                          title="미완료수 정렬"
-                        >
-                          <span>미완료수</span>
-                          {renderSortIcon('todo_count')}
-                        </button>
-                      </th>
-                      {majorColumns.length > 0 ? (
-                        majorColumns.map((column) => (
-                          <th
-                            key={column.id}
-                            className="px-1 py-1.5 text-center font-semibold"
+                          <button type="button"
+                            aria-label={`${group.label} ${group.expanded ? '접기' : '펼치기'}`}
+                            aria-expanded={group.expanded}
+                            title={group.expanded ? undefined : `${group.label} 펼치기`}
+                            onClick={() => setExpandedGroups(previous => ({ ...previous, [group.key]: !previous[group.key] }))}
+                            className={styles.groupToggle}
                           >
-                            <span className={styles.taskHeading} title={column.name}>
-                              {column.name}
-                            </span>
-                          </th>
-                        ))
-                      ) : (
-                        <th className=" px-1 py-1.5 text-center font-semibold">업무진행</th>
-                      )}
-                      <th className=" px-1 py-1.5 text-left font-semibold">비고</th>
+                            {group.expanded ? group.label : group.shortLabel}
+                            {group.expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={10} aria-hidden="true" />}
+                          </button>
+                        </th>
+                      ))}
                     </>
-                  }
-                  <th className=" px-1 py-1.5 text-center font-semibold">액션</th>
+                  ) : (
+                    <>
+                      {baseColumnHeadings}
+                      {showProgressColumns && (
+                        <>
+                          <th className="px-1 py-1.5 text-center font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSort('progress_percent')}
+                              className="inline-flex w-full items-center justify-center gap-0.5"
+                              title="진행률 정렬"
+                            >
+                              <span>진행률</span>
+                              {renderSortIcon('progress_percent')}
+                            </button>
+                          </th>
+                          <th className="px-1 py-1.5 text-center font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSort('todo_count')}
+                              className="inline-flex w-full items-center justify-center gap-0.5"
+                              title="미완료수 정렬"
+                            >
+                              <span>미완료수</span>
+                              {renderSortIcon('todo_count')}
+                            </button>
+                          </th>
+                        </>
+                      )}
+                      {renderProcessColumnHeadings(processGroups[0])}
+                    </>
+                  )}
+                  <th scope="col" rowSpan={headerRowSpan} className="px-1 py-1.5 text-center font-semibold">비고</th>
+                  {isEditMode && (
+                    <th scope="col" rowSpan={headerRowSpan} className="py-1.5 text-center font-semibold">
+                      {scope === 'admin' ? (
+                        <UiButton size="xs" variant="secondary" disabled={checklistBlocked}
+                          onClick={() => void handleImportMonthDefaults()}>
+                          {importingDefaultsFor === 'all' ? '확인 중…' : '기준업무 일괄 불러오기'}
+                        </UiButton>
+                      ) : '액션'}
+                    </th>
+                  )}
                 </tr>
+                {groupedHeaders && (
+                  <tr>
+                    {baseColumnHeadings}
+                    {processGroups.filter(group => group.expanded).map(renderProcessColumnHeadings)}
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {listRows.map((row, idx) => {
@@ -2127,7 +2367,7 @@ export default function WorkflowBoardPage() {
                                 setEditingReportCycleCompanyId((prev) => (prev === row.company_id ? null : row.company_id))
                               }
                               disabled={row.is_excluded || updatingReportCycleCompanyId === row.company_id}
-                              className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                              className={`inline-flex items-center gap-0.5 rounded-full border px-1 py-0.5 text-[10px] font-semibold ${
                                 row.is_excluded ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400' : getReportCycleClass(row.report_cycle)
                               }`}
                               title={row.is_excluded ? '제외 업체는 수정할 수 없습니다.' : '신고주기 변경'}
@@ -2156,7 +2396,7 @@ export default function WorkflowBoardPage() {
                           </div>
                         ) : (
                           <span
-                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${getReportCycleClass(
+                          className={`inline-flex rounded-full border px-1 py-0.5 text-[10px] font-semibold ${getReportCycleClass(
                               row.report_cycle
                             )}`}
                           >
@@ -2183,14 +2423,16 @@ export default function WorkflowBoardPage() {
                       ) : null}
                       {customColumns.map((column) => {
                         const checked = companyColumnChecks[getColumnCheckKey(row.company_id, column.id)] || false
+                        const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
+                        const saving = item != null && pendingCompletion[item.id] !== undefined
+                        const done = isListItemDone(item)
                         return (
                           <td
                             key={`${row.company_id}:${column.id}`}
-                            className="px-1 py-2 text-center"
-                            style={['근로', '퇴직', '사업', '기타', '일용'].includes(column.name.trim()) ? { paddingLeft: 4.5, paddingRight: 4.5 } : undefined}
+                            className={`${styles.baseTaskColumn} py-2 text-center`}
                           >
                             {row.is_excluded ? (
-                              <span className="text-zinc-400">-</span>
+                              <span aria-label="해당 없음" title="해당 없음" className="text-zinc-400">–</span>
                             ) : isEditMode ? (
                               <button
                                 type="button"
@@ -2205,19 +2447,21 @@ export default function WorkflowBoardPage() {
                               </button>
                             ) : (
                               checked ? (
-                                <label className="inline-flex items-center gap-1 whitespace-nowrap">
-                                  <input
-                                    type="checkbox"
-                                    aria-label={`${row.company_name} ${column.name} 완료`}
-                                    checked={isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`])}
-                                    disabled={checklistBlocked || Boolean(completingKey)}
-                                    onChange={() => void toggleListCompletion(row, column)}
-                                    className="accent-emerald-600"
-                                  />
-                                  {isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? '완료' : '미완료'}
-                                </label>
+                                <button
+                                  type="button"
+                                  aria-label={`${row.company_name} ${column.name} 완료`}
+                                  aria-pressed={done}
+                                  title={done ? '완료 취소' : '완료 처리'}
+                                  disabled={checklistBlocked || saving}
+                                  onClick={() => void toggleListCompletion(row, column)}
+                                  className={`inline-flex min-h-7 items-center justify-center whitespace-nowrap rounded-md border px-0.5 py-0.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:opacity-60 ${done
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800 enabled:hover:bg-emerald-100'
+                                    : 'border-rose-200 bg-rose-50 text-rose-800 enabled:hover:bg-rose-100'}`}
+                                >
+                                  {saving ? <span role="status" aria-label="저장 중" className={styles.spinner} /> : done ? '완료' : '미완료'}
+                                </button>
                               ) : (
-                                <span className="whitespace-nowrap text-zinc-400">해당 없음</span>
+                                <span aria-label="해당 없음" title="해당 없음" className="text-zinc-400">–</span>
                               )
                             )}
                           </td>
@@ -2225,24 +2469,38 @@ export default function WorkflowBoardPage() {
                       })}
                       {
                         <>
-                          <td className="px-1 py-1.5 text-center text-zinc-700">
-                            {row.is_excluded ? (
-                              '-'
-                            ) : (
-                              <div className="mx-auto w-24">
-                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
-                                  <div
-                                    className={`h-full rounded-full transition-all ${getProgressBarClass(progress)}`}
-                                    style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-                                  />
-                                </div>
-                                <p className="mt-1 text-[11px] text-zinc-700">{progress}%</p>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-1 py-1.5 text-center text-zinc-700">{row.is_excluded ? '-' : row.todo_count}</td>
-                          {majorColumns.length > 0 ? (
-                            majorColumns.map((column) => {
+                          {showProgressColumns && (
+                            <>
+                              <td className="px-1 py-1.5 text-center text-zinc-700">
+                                {row.is_excluded ? (
+                                  '-'
+                                ) : (
+                                  <div className="mx-auto w-20">
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${getProgressBarClass(progress)}`}
+                                        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                      />
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-zinc-700">{progress}%</p>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-1 py-1.5 text-center text-zinc-700">{row.is_excluded ? '-' : row.todo_count}</td>
+                            </>
+                          )}
+                          {processGroups.map(group => (
+                            <Fragment key={group.key}>
+                              {!group.expanded && <td className={styles.collapsedCell} aria-hidden="true" />}
+                              {!group.columns.length && group.expanded && (
+                                <td className="px-1 py-1.5 text-center text-zinc-400">–</td>
+                              )}
+                              {group.columns.map(column => {
+                              if (column.previewOnly) return (
+                                <td key={column.id} hidden={!group.expanded} className="py-1.5 text-center text-zinc-400">
+                                  <span aria-label="기능 연결 전" title="기능 연결 전">–</span>
+                                </td>
+                              )
                               const checked = isProcessTarget(row, column)
                               const task = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
                               const taskName = normalizeText(column.name)
@@ -2260,6 +2518,9 @@ export default function WorkflowBoardPage() {
                                   : isWithholdingDelivery && task?.own_file_count ? `기존 첨부 ${task.own_file_count}건 상세` : '파일 대기'
                               const deliveryCompletedDate = isDelivery && task?.status === 'done'
                                 ? formatKSTShortDate(task.notified_at ?? task.completed_at) : ''
+                              const deliveryCellBackground = checked && isDelivery && !isEditMode && !row.is_excluded
+                                ? task?.status === 'done' ? 'bg-emerald-50' : sourceFileCount > 0 ? 'bg-amber-50' : ''
+                                : ''
                               const openWorkPanel = () => {
                                 if (task && row.board_id) setQuickWork({ companyId: row.company_id, companyName: row.company_name, boardId: row.board_id,
                                   itemId: task.id, month: attributionMonth, payrollDelivery: isPayrollDelivery, withholdingDelivery: isWithholdingDelivery })
@@ -2269,7 +2530,8 @@ export default function WorkflowBoardPage() {
                           return (
                                 <td
                                   key={`${row.company_id}:${column.id}`}
-                                  className="px-1 py-2 text-center"
+                                  hidden={!group.expanded}
+                                  className={`px-1 py-2 text-center ${deliveryCellBackground}`}
                                 >
                                   {row.is_excluded ? (
                                     <span className="text-zinc-400">-</span>
@@ -2277,7 +2539,7 @@ export default function WorkflowBoardPage() {
                                     isEditMode ? (
                                       <select aria-label={`${row.company_name} ${column.name} 대상 설정`}
                                         disabled={checklistBlocked}
-                                        className="w-20 rounded border border-zinc-300 bg-white px-1 py-1 text-xs"
+                                        className="w-[4.5rem] rounded border border-zinc-300 bg-white px-0.5 py-1 text-[11px]"
                                         value={targetModes[getMajorCheckKey(row.company_id, column.id)] ?? 'auto'}
                                         onChange={event => {
                                           dirtyCompanies.current.add(row.company_id)
@@ -2297,82 +2559,120 @@ export default function WorkflowBoardPage() {
                                         withholdingFiling={isWithholdingFiling}
                                         status={task.status}
                                         completedAt={task.completed_at}
-                                        disabled={checklistBlocked || completingKey !== null}
+                                        disabled={checklistBlocked}
                                         upload={uploadTaskFilesWithFallback}
                                         onChanged={() => setListReloadKey(previous => previous + 1)}
                                       />
                                     ) : checked && isDelivery ? (
-                                      <div className="mx-auto flex w-max flex-col items-center gap-0.5 whitespace-nowrap text-xs">
+                                      <div className="mx-auto flex w-max flex-col items-center gap-0.5 whitespace-nowrap text-[11px]">
                                         <button type="button" onClick={openWorkPanel}
-                                          disabled={checklistBlocked || completingKey !== null || !task || !row.board_id}
+                                          disabled={checklistBlocked || !task || !row.board_id}
                                           aria-label={`${row.company_name} ${column.name} ${deliveryFileLabel}`}
-                                          className="rounded px-1.5 py-0.5 font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+                                          className="rounded px-0.5 py-0.5 font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
                                           {deliveryFileLabel}
                                         </button>
-                                        {task && pendingCompletion?.id === task.id ? (
-                                          <span role="status" className="px-1.5 py-0.5 text-zinc-500">저장 중…</span>
+                                        {task && pendingCompletion[task.id] !== undefined ? (
+                                          <span role="status" aria-label="저장 중" className={styles.spinner} />
                                         ) : isListItemDone(task) ? (
-                                          <span className="px-1.5 py-0.5 tabular-nums text-emerald-700">
+                                          <span className="px-0.5 py-0.5 text-[10px] tabular-nums text-emerald-700">
                                             {deliveryCompletedDate ? `완료 ${deliveryCompletedDate}` : '완료'}
                                           </span>
                                         ) : (
                                           <button type="button"
-                                            disabled={checklistBlocked || completingKey !== null || !row.board_id || !(isWithholdingDelivery ? paymentSlipCount : sourceFileCount) || !task?.can_deliver}
-                                            title={task?.blocked_reason || undefined}
-                                            aria-label={`${row.company_name} ${column.name} 처리완료`}
+                                            disabled={checklistBlocked || !row.board_id || !(isWithholdingDelivery ? paymentSlipCount : sourceFileCount) || !task?.can_deliver}
+                                            title={task?.can_deliver ? '클릭하여 완료 처리' : task?.blocked_reason || undefined}
+                                            aria-label={`${row.company_name} ${column.name} 처리대기 · 완료 처리`}
                                             onClick={() => void toggleListCompletion(row, column, true)}
-                                            className="rounded px-1.5 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50 disabled:text-zinc-400">
-                                            처리완료
+                                            className={`rounded px-0.5 py-0.5 text-[10px] font-medium ${sourceFileCount > 0
+                                              ? 'text-rose-700 enabled:hover:bg-rose-50'
+                                              : 'text-zinc-400'}`}>
+                                            처리대기
                                           </button>
                                         )}
                                       </div>
                                     ) : checked ? (
-                                      <button type="button" disabled={checklistBlocked || completingKey !== null}
+                                      <button type="button" disabled={checklistBlocked || (task != null && pendingCompletion[task.id] !== undefined)}
                                         onClick={() => void toggleListCompletion(row, column)}
                                         aria-label={`${row.company_name} ${column.name} ${completedAt ? '완료 취소' : '완료 처리'}`}
                                         title={completedAt ? `완료 ${formatKSTDate(completedAt)} · 클릭하여 취소` : '미완료 · 클릭하여 처리'}
-                                        className={`rounded px-2 py-1 text-xs disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                        {isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
+                                        className={`rounded px-0.5 py-1 text-[10px] disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                        {task && pendingCompletion[task.id] !== undefined ? <span role="status" aria-label="저장 중" className={styles.spinner} /> : isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
                                       </button>
                                     ) : <span className="text-xs text-zinc-400" title="해당없음">해당없음</span>
 
                                   )}
                                 </td>
                               )
-                            })
-                          ) : (
-                            <td className="px-1 py-1.5 text-center text-zinc-400">-</td>
-                          )}
-                          <td className="px-1 py-1.5 text-zinc-600">
-                            <p className="max-w-sm whitespace-normal break-words" title={row.note || '-'}>
-                              {row.note || '-'}
-                            </p>
+                              })}
+                            </Fragment>
+                          ))}
+                          <td className="px-1 py-1.5 text-center align-middle text-zinc-600">
+                            {editingNote?.companyId === row.company_id && editingNote.period === notePeriod ? (
+                              <form className="mx-auto w-48 space-y-1" onSubmit={event => {
+                                event.preventDefault()
+                                saveBoardNote(row)
+                              }}>
+                                <textarea
+                                  autoFocus
+                                  aria-label={`${row.company_name} 비고`}
+                                  className="block w-full resize-y rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 focus:border-sky-500 focus:outline-none"
+                                  rows={3}
+                                  maxLength={1000}
+                                  disabled={isSavingNote}
+                                  value={editingNote.text}
+                                  onChange={event => setEditingNote({ ...editingNote, text: event.currentTarget.value })}
+                                  onKeyDown={event => {
+                                    if (event.key === 'Escape' && !event.nativeEvent.isComposing && !isSavingNote) {
+                                      event.preventDefault()
+                                      setEditingNote(null)
+                                    }
+                                  }}
+                                />
+                                <div className="flex justify-end gap-1">
+                                  <UiButton size="xs" variant="secondary" disabled={isSavingNote}
+                                    onClick={() => setEditingNote(null)}>취소</UiButton>
+                                  <UiButton type="submit" size="xs" variant="primary" disabled={isSavingNote}>
+                                    {isSavingNote ? <span role="status" aria-label="저장 중" className={styles.spinner} /> : '저장'}
+                                  </UiButton>
+                                </div>
+                              </form>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`${row.company_name} 비고 ${row.note ? '수정' : '입력'}`}
+                                title={row.note || '비고 입력'}
+                                disabled={isSavingNote || listPeriod !== attributionMonth}
+                                onClick={() => setEditingNote({ companyId: row.company_id, text: row.note || '', period: notePeriod })}
+                                className="block min-h-6 mx-auto w-full max-w-sm rounded px-1 text-center whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-sky-50 disabled:opacity-60"
+                              >
+                                {row.note || <span className="text-[11px] text-zinc-500">비고 입력</span>}
+                              </button>
+                            )}
                           </td>
                         </>
                       }
-                      <td className="px-1 py-1.5">
-                        <div className="flex items-center justify-center gap-0.5">
-                          {!isEditMode ? (
-                            <UiButton size="xs" variant="secondary" onClick={() => handleOpenDetail(row.company_id)}>
-                              상세
-                            </UiButton>
-                          ) : null}
-                          {isEditMode ? (
+                      {isEditMode && (
+                        <td className="py-1.5">
+                          <div className={`${styles.rowActions} flex items-center justify-center gap-0.5`}>
+                            {scope === 'admin' && !row.is_excluded && (
+                              <UiButton size="xs" variant="secondary" disabled={checklistBlocked}
+                                aria-label={`${row.company_name} 기준업무 불러오기`} onClick={() => void handleImportMonthDefaults(row)}>
+                                {importingDefaultsFor === row.company_id ? '확인 중…' : '기준업무 불러오기'}
+                              </UiButton>
+                            )}
                             <UiButton size="xs" variant={row.is_excluded ? 'soft' : 'tabInactive'} onClick={() => handleToggleExclude(row)}>
                               {row.is_excluded ? '해제' : '제외'}
                             </UiButton>
-                          ) : null}
-                        </div>
-                      </td>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
                 {!listLoading && listLoaded && listRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={
-                        11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
-                      }
+                      colSpan={tableColumnCount}
                       className="px-2 py-16 text-center text-zinc-400"
                     >
                       조건에 맞는 업체가 없습니다.
@@ -2382,9 +2682,7 @@ export default function WorkflowBoardPage() {
                 {listLoading ? (
                   <tr>
                     <td
-                      colSpan={
-                        11 + (hasSelectedCustomColumns ? customColumns.length : 1) + (majorColumns.length > 0 ? majorColumns.length : 1)
-                      }
+                      colSpan={tableColumnCount}
                       className="px-2 py-16 text-center text-zinc-400"
                     >
                       업무보드 리스트를 불러오는 중입니다.

@@ -429,6 +429,48 @@ export async function patchTaskBoardExcludeByMonth(
   return res.data
 }
 
+interface TaskBoardDefaultsImportResult {
+  task_names: string[]
+  source: 'defaults' | 'previous' | null
+  source_month: string | null
+}
+
+async function importMonthTaskDefaults(
+  companyId: number,
+  attributionMonth: string,
+  expectedTaskNames?: string[],
+): Promise<TaskBoardDefaultsImportResult> {
+  const res = await adminHttp.post<TaskBoardDefaultsImportResult>(`${getBase('admin')}/${companyId}/task-boards/import-defaults`, {
+    attribution_month: attributionMonth,
+    expected_task_names: expectedTaskNames,
+  })
+  return res.data
+}
+
+export async function importMonthTaskDefaultsForCompanies(
+  attributionMonth: string,
+  companies: { companyId: number; companyName: string; expectedTaskNames?: string[] }[],
+) {
+  const imported: { companyId: number; companyName: string; preview: TaskBoardDefaultsImportResult }[] = []
+  const failed: { companyId: number; companyName: string; message: string }[] = []
+  const batchSize = 5
+  for (let start = 0; start < companies.length; start += batchSize) {
+    const batch = companies.slice(start, start + batchSize)
+    const results = await Promise.allSettled(batch.map(company => (
+      importMonthTaskDefaults(company.companyId, attributionMonth, company.expectedTaskNames)
+    )))
+    results.forEach((result, index) => {
+      const { companyId, companyName } = batch[index]
+      if (result.status === 'fulfilled') {
+        imported.push({ companyId, companyName, preview: result.value })
+      } else {
+        failed.push({ companyId, companyName, message: getTaskBoardErrorMessage(result.reason) })
+      }
+    })
+  }
+  return { imported, failed }
+}
+
 export async function ensureTaskBoard(
   scope: TaskBoardScope,
   companyId: number,

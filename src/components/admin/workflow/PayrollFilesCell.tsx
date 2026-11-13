@@ -151,11 +151,11 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
       {Object.entries(taskDocumentKindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
     </select>
   )
-  const renderFile = (doc: TaskItemDocLink) => {
+  const renderFile = (doc: TaskItemDocLink, centered = false) => {
     const name = fileName(doc)
     return (
-      <div className="flex min-w-0 items-center gap-1 rounded px-1">
-        <button type="button" title={name} className="min-w-0 flex-1 truncate text-left text-sky-800 hover:underline" onClick={async () => {
+      <div className={`flex min-w-0 items-center gap-1 rounded ${centered ? 'justify-center' : ''}`}>
+        <button type="button" title={name} className={`min-w-0 truncate text-left text-sky-800 hover:underline ${centered ? '' : 'flex-1'}`} onClick={async () => {
           try {
             const { download_url } = await fetchAdminDocsEntryDownloadUrl(doc.docs_entry_id)
             const link = document.createElement('a')
@@ -174,16 +174,16 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
   }
 
   return (
-    <div className={`mx-auto min-h-7 w-36 space-y-1 rounded border p-1 text-xs ${hasFiles ? 'border-emerald-500' : 'border-dashed border-zinc-200'}`}
+    <div className={`mx-auto min-h-7 w-[7.5rem] space-y-1 rounded border px-0.5 py-1 text-[11px] ${hasFiles ? 'border-emerald-500 bg-emerald-50' : 'border-dashed border-zinc-200'}`}
       onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = canEdit ? 'copy' : 'none' }}
       onDrop={event => { event.preventDefault(); if (canEdit) addFiles(Array.from(event.dataTransfer.files)) }}>
       {primaryDoc && docs && (
         <>
-          {docs.length === 1 ? renderFile(primaryDoc) : (
+          {docs.length === 1 ? renderFile(primaryDoc, true) : (
             <Popover>
               <PopoverButton type="button" title={fileName(primaryDoc)}
-                className="flex w-full min-w-0 items-center gap-1 rounded px-1 text-left text-sky-800 hover:bg-sky-50">
-                <span className="min-w-0 flex-1 truncate">{fileName(primaryDoc)}</span>
+                className="flex w-full min-w-0 items-center justify-center gap-1 rounded text-left text-sky-800 hover:bg-sky-50">
+                <span className="min-w-0 truncate">{fileName(primaryDoc)}</span>
                 <span className="shrink-0 whitespace-nowrap">외 {docs.length - 1}건</span>
               </PopoverButton>
               <PopoverPanel anchor="bottom start" className="z-40 max-h-60 w-72 max-w-[calc(100vw-1rem)] divide-y overflow-auto rounded-md border border-zinc-200 bg-white p-2 text-xs shadow-lg [--anchor-gap:4px]">
@@ -194,11 +194,11 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
               </PopoverPanel>
             </Popover>
           )}
-          <div className="flex items-center justify-center gap-1.5">
+          <div className="flex items-center justify-center gap-0.5">
             {primaryDate && <span title={`${formatKSTDateTimeMinute(primaryDoc.created_at)} 최종 업로드`}
-              className="text-[10px] tabular-nums text-zinc-500">{primaryDate}</span>}
+              className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-zinc-500">{primaryDate}</span>}
             {withholdingFiling && docs.length === 1 && <Popover>
-              <PopoverButton type="button" aria-label={`${fileName(primaryDoc)} 분류 열기`} className="rounded px-1 text-[10px] text-sky-700 hover:bg-sky-50">
+              <PopoverButton type="button" aria-label={`${fileName(primaryDoc)} 분류 열기`} className="min-w-0 truncate rounded px-0.5 text-[10px] text-sky-700 hover:bg-sky-50">
                 {primaryDoc.document_kind ? taskDocumentKindLabels[primaryDoc.document_kind] : '분류'}
               </PopoverButton>
               <PopoverPanel anchor="bottom start" className="z-40 rounded border border-zinc-200 bg-white p-2 shadow-lg [--anchor-gap:4px]">
@@ -206,7 +206,7 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
               </PopoverPanel>
             </Popover>}
             {withholdingFiling && <button type="button" title="파일 추가" aria-label={`${companyName} 원천세 신고 파일 추가`}
-              disabled={!canEdit} onClick={() => input.current?.click()} className="rounded p-0.5 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+              disabled={!canEdit} onClick={() => input.current?.click()} className="shrink-0 rounded p-0.5 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
               <Plus size={12} aria-hidden="true" />
             </button>}
           </div>
@@ -220,7 +220,7 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
       {withholdingFiling && !pendingStatus && (hasFiles || status === 'done') && (
         <button type="button" disabled={!canEdit} title={status === 'done' ? '신고 완료 취소' : '실제 원천세 신고 후 완료를 기록하세요.'}
           onClick={() => void mutate(async () => ({ changed: true, ok: await syncStatus(status === 'done' ? 'in_progress' : 'done') }))}
-          className="rounded px-1.5 py-0.5 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+          className="rounded px-0.5 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
           {status === 'done' ? (filingDate ? `완료 ${filingDate}` : '완료') : '신고 완료'}
         </button>
       )}
