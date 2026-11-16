@@ -5,6 +5,7 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { createSharedRequest } from '@/utils/sharedRequest'
 import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
 import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
+import Link from 'next/link'
 
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
@@ -16,20 +17,17 @@ import Pagination from '@/components/common/Pagination'
 import UiButton from '@/components/common/UiButton'
 import UiSearchInput from '@/components/common/UiSearchInput'
 import PayrollFilesCell from '@/components/admin/workflow/PayrollFilesCell'
+import StatementTrackingControls from '@/components/admin/workflow/StatementTrackingControls'
 import TaskWorkPanel from '@/components/admin/workflow/TaskWorkPanel'
-import TaskWorkGuide from '@/components/admin/workflow/TaskWorkGuide'
-import { useInPageBack } from '@/contexts/HeaderBackContext'
 import { useConfirmDialog } from '@/contexts/ConfirmDialogContext'
-import { formatKSTDate, formatKSTDateTimeAssumeUTC, formatKSTShortDate } from '@/utils/dateTime'
+import { formatKSTDate, formatKSTShortDate } from '@/utils/dateTime'
 import {
   bulkUploadTaskItemFiles,
   bulkUpsertTaskBoardItems,
   createTaskTemplate,
-  deleteTaskItemFile,
   deleteTaskBoardItem,
   archiveGlobalBaseTaskTemplate,
   deliverTaskBoardItem,
-  createTaskBoardItem,
   ensureTaskBoard,
   getTaskBoardErrorMessage,
   importMonthTaskDefaultsForCompanies,
@@ -40,11 +38,17 @@ import {
   saveTaskBoardPreference,
   type TaskBoardPageSize,
   type TaskTargetMode,
-  listTaskItemDocs,
   listTaskTemplates,
   patchTaskBoardExclude,
   patchTaskBoardExcludeByMonth,
   patchTaskBoardNote,
+  patchDailyWorkPresence,
+  patchStatementIncome,
+  patchStatementTracking,
+  type StatementIncomeKind,
+  type StatementTrackingChange,
+  type TaskBoardStatement,
+  type DailyWorkPresence,
   patchTaskBoardReportCycle,
   updateTaskBoardItem,
   reorderGlobalTaskTemplates,
@@ -56,26 +60,32 @@ import {
   type TaskBoardSortBy,
   type TaskBoardSortOrder,
   type TaskItemStatus,
-  type TaskTemplateItem,
   type TaskExecutionMode,
 } from '@/services/workflowTaskBoard'
 
 type CompanyKind = '법인' | '개인' | '미분류'
-type AddTab = 'template' | 'custom'
 type CustomColumn = { id: string; name: string }
 type ColumnCatalogItem = { id: string; name: string; templateId: number; sortOrder: number }
 type MajorColumn = { id: string; name: string }
-type ProcessDisplayColumn = MajorColumn & { heading?: string; previewOnly?: boolean }
+type ProcessDisplayColumn = MajorColumn & { heading?: string; statementKey?: string; incomeKind?: StatementIncomeKind }
+
+const STATEMENT_INCOME_COLUMNS: ProcessDisplayColumn[] = [
+  { id: 'statement-income-business', name: '사업소득 발생', incomeKind: 'business' },
+]
+
+const WAGE_STATEMENT_NAME = '근로소득 간이지급명세서'
+const WAGE_STATEMENT_ALIASES = ['간이지급명세서(근로소득)']
 
 const STATEMENT_HEADINGS = [
+  { name: WAGE_STATEMENT_NAME, aliases: WAGE_STATEMENT_ALIASES },
   { name: '사업소득 간이지급명세서' },
   { name: '근로내용 확인서', aliases: ['근로내용 확인신고서'] },
   { name: '일용직 지급 명세서', aliases: ['일용근로소득 지급명세서', '일용근로 지급명세서'] },
   { name: '기타소득 지급명세서' },
-  { name: '배당소득 지급명세서' },
+  { name: '배당소득 지급명세서', heading: '이자·배당소득 지급명세서', aliases: ['이자·배당소득 지급명세서', '이자배당소득 지급명세서'] },
   { name: '퇴직소득 지급명세서' },
   { name: '사업소득 지급명세서' },
-  { name: '기소득간이지급명세서', aliases: ['기타소득 간이지급명세서'] },
+  { name: '기타소득 간이지급명세서', aliases: ['기소득간이지급명세서'] },
   { name: '보수총액신고', aliases: ['보수총액신고서'] },
 ]
 type ProcessTemplateCatalogItem = {
@@ -87,14 +97,6 @@ type ProcessTemplateCatalogItem = {
   sourceTaskName?: string | null
 }
 type AssigneeOption = { id: number; name: string }
-
-type FileItem = {
-  id: string
-  docsEntryId: number
-  fileName: string
-  uploader: string
-  uploadedAt: string
-}
 
 const STATUS_LABEL: Record<TaskItemStatus, string> = {
   not_started: '미시작',
@@ -141,6 +143,16 @@ function monthShift(value: string, delta: number): string {
   const date = new Date(year, month - 1 + delta, 1)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
+
+const MONTHLY_INCOME_COLUMNS = [
+  { id: 'other-income-presence', name: '기타(인적용역)', kind: 'other', aliases: ['기타', '기타소득', '기타소득(인적용역)'] },
+  { id: 'daily-work-presence', name: '일용', kind: 'daily', aliases: ['일용직', '일용근로', '일용근로소득'] },
+  { id: 'interest-income-presence', name: '이자', kind: 'interest', aliases: ['이자소득'] },
+  { id: 'dividend-income-presence', name: '배당', kind: 'dividend', aliases: ['배당소득'] },
+] as const
+
+const getMonthlyIncomeColumn = (name: string) => MONTHLY_INCOME_COLUMNS.find(column =>
+  [column.name, ...column.aliases].some(alias => normalizeText(alias) === normalizeText(name)))
 
 function normalizeText(value: string) {
   return value.replace(/\s+/g, '').toLowerCase()
@@ -201,6 +213,7 @@ export default function WorkflowBoardPage() {
 
 
   const [listRowsApi, setListRowsApi] = useState<TaskBoardListItem[]>([])
+  const [statementColumnKeys, setStatementColumnKeys] = useState<string[] | null>(null)
   const [listTotal, setListTotal] = useState(0)
   const [listPage, setListPage] = useState(1)
   const [pageSize, setPageSize] = useState<TaskBoardPageSize>('all')
@@ -237,6 +250,12 @@ export default function WorkflowBoardPage() {
   const [baseCatalogReady, setBaseCatalogReady] = useState(false)
   const [processCatalogReady, setProcessCatalogReady] = useState(false)
   const [listReloadKey, setListReloadKey] = useState(0)
+  const [completionRefreshKey, setCompletionRefreshKey] = useState(0)
+  const completionRefreshQueued = useRef(false)
+  const lastLoadedListRequest = useRef('')
+  const quietListRows = useRef<TaskBoardListItem[] | null>(null)
+  const completionRevision = useRef(0)
+  const completionRevisionsByItem = useRef(new Map<number, number>())
 
   const [savedCustomColumns, setCustomColumns] = useState<CustomColumn[]>(() => seedCustomColumns())
   const [columnCatalog, setColumnCatalog] = useState<ColumnCatalogItem[]>(() => seedColumnCatalog())
@@ -244,7 +263,6 @@ export default function WorkflowBoardPage() {
   const [, setManualMajorColumns] = useState<MajorColumn[]>([])
   const [processTemplateCatalog, setProcessTemplateCatalog] = useState<ProcessTemplateCatalogItem[]>([])
   const [companyMajorChecks, setCompanyMajorChecks] = useState<Record<string, boolean>>({})
-  const [companyMajorCompletedAt, setCompanyMajorCompletedAt] = useState<Record<string, string | null>>({})
   const [isEditMode, setIsEditMode] = useState(false)
   const [importingDefaultsFor, setImportingDefaultsFor] = useState<number | 'all' | null>(null)
   const [isMajorColumnModalOpen, setIsMajorColumnModalOpen] = useState(false)
@@ -268,18 +286,16 @@ export default function WorkflowBoardPage() {
   const [updatingReportCycleCompanyId, setUpdatingReportCycleCompanyId] = useState<number | null>(null)
   const editNoticeTimerRef = useRef<number | null>(null)
 
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
   const requestIdentity = scope === 'admin' ? getAdminAccessToken() : getClientAccessToken()
   // A new generation after month changes or writes prevents stale completion/file data.
   const loadSharedItems = useMemo(() => createSharedRequest((key: string) => {
     const [companyId, boardId] = key.split(':').map(Number)
     return listTaskBoardItems(scope, companyId, boardId)
-  }), [scope, attributionMonth, listReloadKey, selectedCompanyId, requestIdentity, listRowsApi])
+  }), [scope, attributionMonth, listReloadKey, requestIdentity, listRowsApi])
   const boardViewportRef = useRef<HTMLDivElement>(null)
   const [boardViewportHeight, setBoardViewportHeight] = useState<number>()
 
   useEffect(() => {
-    if (selectedCompanyId) return
     const main = boardViewportRef.current?.closest('main')
     if (!main) return
     const updateHeight = () => {
@@ -290,36 +306,12 @@ export default function WorkflowBoardPage() {
     const observer = new ResizeObserver(updateHeight)
     observer.observe(main)
     return () => observer.disconnect()
-  }, [selectedCompanyId])
+  }, [])
 
-  const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null)
-  const [detailItems, setDetailItems] = useState<TaskBoardItem[]>([])
-  const [detailTemplates, setDetailTemplates] = useState<TaskTemplateItem[]>([])
-  const [detailDocCountMap, setDetailDocCountMap] = useState<Record<number, number>>({})
-  const [itemFileNameMap, setItemFileNameMap] = useState<Record<number, string[]>>({})
-  const [detailLoading, setDetailLoading] = useState(false)
-
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [addTab, setAddTab] = useState<AddTab>('template')
-  const [templateTaskName, setTemplateTaskName] = useState('')
-  const [customTaskName, setCustomTaskName] = useState('')
-
+  const panelOpenRequest = useRef(0)
   const [quickWork, setQuickWork] = useState<{
-    companyId: number; companyName: string; boardId: number; itemId: number; month: string; payrollDelivery?: boolean; withholdingDelivery?: boolean
+    companyId: number; companyName: string; boardId: number; itemId?: number; month: string; payrollDelivery?: boolean; withholdingDelivery?: boolean
   } | null>(null)
-  const [fileModalTaskId, setFileModalTaskId] = useState<number | null>(null)
-  const [fileModalDocs, setFileModalDocs] = useState<FileItem[]>([])
-  useInPageBack(selectedCompanyId !== null, () => {
-    setSelectedCompanyId(null)
-    setFileModalTaskId(null)
-    setFileModalDocs([])
-  })
-
-  const [fileUploadQueue, setFileUploadQueue] = useState<File[]>([])
-  const [isUploadingTaskFiles, setIsUploadingTaskFiles] = useState(false)
-  const [uploadingCardTaskId, setUploadingCardTaskId] = useState<number | null>(null)
-  const taskFileInputRef = useRef<HTMLInputElement | null>(null)
-
   const reportMonth = monthShift(attributionMonth, 1)
   const notePeriod = `${scope}:${attributionMonth}`
   const visibleNotePeriod = useRef(notePeriod)
@@ -335,13 +327,14 @@ export default function WorkflowBoardPage() {
 
   const listRows = useMemo(() => [...listRowsApi], [listRowsApi])
 
-  const selectedListRow = useMemo(
-    () => listRows.find((item) => item.company_id === selectedCompanyId) ?? null,
-    [listRows, selectedCompanyId]
-  )
-
   const customColumns = useMemo<CustomColumn[]>(() =>
     columnCatalog.map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name })), [columnCatalog])
+  const visibleBaseColumns = scope === 'admin' ? [
+    ...customColumns,
+    ...MONTHLY_INCOME_COLUMNS.filter(income => !customColumns.some(column => getMonthlyIncomeColumn(column.name) === income)),
+  ] : customColumns
+  const [dailyWorkPending, setDailyWorkPending] = useState<Record<string, DailyWorkPresence>>({})
+  const [statementIncomePending, setStatementIncomePending] = useState<Record<string, DailyWorkPresence>>({})
   const [targetModes, setTargetModes] = useState<Record<string, TaskTargetMode>>({})
   const [monthlyItems, setMonthlyItems] = useState<Record<string, TaskBoardItem>>({})
   const dirtyCompanies = useRef(new Set<number>())
@@ -393,13 +386,12 @@ export default function WorkflowBoardPage() {
   )
 
   const templateSourceCompanyId = useMemo(() => {
-    if (selectedCompanyId) return selectedCompanyId
     const ids = listRows
       .map((row) => Number(row.company_id))
       .filter((id) => Number.isFinite(id))
       .sort((a, b) => a - b)
     return ids[0] ?? null
-  }, [listRows, selectedCompanyId])
+  }, [listRows])
 
   const loadAllRowsForColumnBootstrap = useMemo(() => {
     const read = createSharedRequest(async (_key: string): Promise<TaskBoardListItem[]> => {
@@ -447,28 +439,37 @@ export default function WorkflowBoardPage() {
     return entries
   }, [assigneeFilterId, listRowsApi])
 
-  const fileModalTask = useMemo(
-    () => (fileModalTaskId ? detailItems.find((task) => task.id === fileModalTaskId) ?? null : null),
-    [detailItems, fileModalTaskId]
-  )
-  const hasSelectedCustomColumns = customColumns.length > 0
   const groupedHeaders = scope === 'admin'
   const headerRowSpan = groupedHeaders ? 2 : undefined
-  const baseColumnCount = Math.max(1, customColumns.length)
-  const statementColumns = useMemo<ProcessDisplayColumn[]>(() => {
+  const baseColumnCount = Math.max(1, visibleBaseColumns.length)
+  const allStatementColumns = useMemo<ProcessDisplayColumn[]>(() => {
     if (!groupedHeaders) return []
     const remaining = new Map(majorColumns.map(column => [column.id, column]))
-    const columns = STATEMENT_HEADINGS.map(({ name, aliases = [] }) => {
+    const visibleKeys = new Set(statementColumnKeys ?? [])
+    const columns = STATEMENT_HEADINGS.map(({ name, heading = name, aliases = [] }) => {
       const names = [name, ...aliases].map(normalizeText)
+      const statementKey = normalizeText(name)
       const existing = majorColumns.find(column => remaining.has(column.id) && names.includes(normalizeText(column.name)))
-      if (!existing) return { id: `preview:${name}`, name, previewOnly: true }
+      if (!existing) return { id: `statement:${statementKey}`, name, heading, statementKey }
       remaining.delete(existing.id)
-      return { ...existing, heading: name }
+      return { ...existing, heading, statementKey }
     })
-    const additional = [...remaining.values()].filter(column => normalizeText(column.name).includes('지급명세서'))
+    const additional: ProcessDisplayColumn[] = [...remaining.values()]
+      .filter(column => normalizeText(column.name).includes('지급명세서'))
+      .map(column => ({ ...column, statementKey: normalizeText(column.name) }))
+    for (const key of visibleKeys) {
+      if ([...columns, ...additional].some(column => column.statementKey === key)) continue
+      const name = listRows.find(row => row.statement_tasks?.some(task => task.key === key))
+        ?.statement_tasks?.find(task => task.key === key)?.item_name ?? key
+      additional.push({ id: `statement:${key}`, name, statementKey: key })
+    }
     return [...columns, ...additional]
-  }, [groupedHeaders, majorColumns])
-  const statementIds = new Set(statementColumns.map(column => column.id))
+  }, [groupedHeaders, majorColumns, statementColumnKeys, listRows])
+  const statementIds = new Set(allStatementColumns.map(column => column.id))
+  const visibleStatementKeys = new Set(listPeriod === attributionMonth ? statementColumnKeys : null)
+  const statementColumns = allStatementColumns.filter(column => statementColumnKeys === null
+    ? majorColumns.some(existing => existing.id === column.id)
+    : visibleStatementKeys.has(column.statementKey ?? ''))
   const withholdingColumns: ProcessDisplayColumn[] = majorColumns.filter(column => !statementIds.has(column.id))
   const processGroups = [
     {
@@ -483,30 +484,14 @@ export default function WorkflowBoardPage() {
       key: 'statements' as const,
       label: '지급명세서 업무',
       shortLabel: '지',
-      fallbackTitle: '지급명세서',
-      columns: statementColumns,
+      fallbackTitle: '표시할 업무 없음',
+      columns: [...STATEMENT_INCOME_COLUMNS, ...statementColumns],
       expanded: expandedGroups.statements,
     }] : []),
   ]
   const processColumnCount = processGroups.reduce((count, group) => count + (group.expanded ? Math.max(1, group.columns.length) : 1), 0)
   const showProgressColumns = !groupedHeaders
   const tableColumnCount = 8 + baseColumnCount + processColumnCount + Number(isEditMode) + (showProgressColumns ? 2 : 0)
-  const selectedCompanyBaseBadges = useMemo(() => {
-    const orderByName = new Map(customColumns.map((column, index) => [normalizeText(column.name), index]))
-    return detailItems
-      .filter(item => item.template_kind_snapshot === 'base' && item.target_active !== false && item.status !== 'na')
-      .sort((left, right) =>
-        (orderByName.get(normalizeText(left.task_name)) ?? Infinity) -
-        (orderByName.get(normalizeText(right.task_name)) ?? Infinity) || left.id - right.id
-      )
-      .map(item => item.task_name)
-  }, [customColumns, detailItems])
-
-  const detailProcessItems = useMemo(
-    () => detailItems.filter((item) => (item.template_kind_snapshot ?? 'process') === 'process'),
-    [detailItems]
-  )
-
   const columnAllCheckedMap = useMemo(() => {
     const activeRows = listRows.filter((row) => !row.is_excluded)
     const map: Record<string, boolean> = {}
@@ -534,9 +519,13 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     let cancelled = false
     if (!preferenceReady) return
+    const request = JSON.stringify([scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId,
+      incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, requestIdentity])
+    const background = lastLoadedListRequest.current === request
+    const revision = completionRevision.current
     const loadList = async () => {
       try {
-        setListLoading(true)
+        if (!background) setListLoading(true)
         const effectiveQuery = deferredKeyword.trim() || undefined
         const effectiveKind: TaskBoardKind = kindFilter
         const effectiveAssigneeId = assigneeFilterId !== 'all' ? Number(assigneeFilterId) : undefined
@@ -555,6 +544,7 @@ export default function WorkflowBoardPage() {
           assignee_id: effectiveAssigneeId,
           incomplete_only: effectiveIncompleteOnly,
           include_excluded: effectiveIncludeExcluded,
+          include_statement_tasks: scope === 'admin' || undefined,
           sort_by: effectiveSortBy,
           order: effectiveSortOrder,
           page: effectivePage,
@@ -570,99 +560,32 @@ export default function WorkflowBoardPage() {
             items.push(...next.items)
           }
         }
-        if (cancelled) return
+        if (cancelled || (background && completionRevision.current !== revision)) return
+        lastLoadedListRequest.current = request
+        quietListRows.current = background ? items : null
         setTargetingReady(res.targeting_version === 1)
         setListPeriod(attributionMonth)
+        setStatementColumnKeys(res.statement_columns ?? null)
         setListRowsApi(items)
         setListTotal(Number(res.total || 0))
         setListLoaded(true)
       } catch (error) {
-        if (cancelled) return
+        if (cancelled || background) return
         setListPeriod('')
         setListRowsApi([])
+        setStatementColumnKeys(null)
         setListTotal(0)
         setListLoaded(true)
         toast.error(getTaskBoardErrorMessage(error))
       } finally {
-        if (!cancelled) setListLoading(false)
+        if (!cancelled && !background) setListLoading(false)
       }
     }
     void loadList()
     return () => {
       cancelled = true
     }
-  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, preferenceReady])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadDetail = async () => {
-      if (!selectedCompanyId) {
-        setSelectedBoardId(null)
-        setDetailItems([])
-        setDetailTemplates([])
-        setDetailDocCountMap({})
-        setItemFileNameMap({})
-        setFileModalTaskId(null)
-        setFileModalDocs([])
-        return
-      }
-      try {
-        setDetailLoading(true)
-        const ensured = await ensureTaskBoard(scope, selectedCompanyId, {
-          attribution_month: attributionMonth,
-          report_month: reportMonth,
-          copy_from_previous: true,
-        })
-        if (cancelled) return
-        const boardId = ensured.board.id
-        setSelectedBoardId(boardId)
-
-        const [itemsRes, templatesRes] = await Promise.all([
-          listTaskBoardItems(scope, selectedCompanyId, boardId),
-          listTaskTemplates(scope, selectedCompanyId, false),
-        ])
-        if (cancelled) return
-        setDetailItems(itemsRes.items || [])
-        setDetailTemplates(templatesRes.items || [])
-        setTemplateTaskName((prev) => prev || templatesRes.items[0]?.task_name || '')
-
-        const docPairs = await Promise.all(
-          (itemsRes.items || []).map(async (item) => {
-            try {
-              const docs = await listTaskItemDocs(scope, selectedCompanyId, boardId, item.id)
-              return [item.id, docs] as const
-            } catch {
-              return [item.id, { total: 0, items: [] }] as const
-            }
-          })
-        )
-        if (cancelled) return
-        setDetailDocCountMap(Object.fromEntries(docPairs.map(([itemId, docs]) => [itemId, docs.total])))
-        setItemFileNameMap(
-          Object.fromEntries(
-            docPairs.map(([itemId, docs]) => [
-              itemId,
-              (docs.items || []).map((doc) => doc.title?.trim() || doc.file_name?.trim() || `문서 #${doc.docs_entry_id}`),
-            ])
-          )
-        )
-      } catch (error) {
-        if (cancelled) return
-        setSelectedBoardId(null)
-        setDetailItems([])
-        setDetailTemplates([])
-        setDetailDocCountMap({})
-        setItemFileNameMap({})
-        toast.error(getTaskBoardErrorMessage(error))
-      } finally {
-        if (!cancelled) setDetailLoading(false)
-      }
-    }
-    void loadDetail()
-    return () => {
-      cancelled = true
-    }
-  }, [scope, attributionMonth, reportMonth, selectedCompanyId])
+  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, preferenceReady, requestIdentity, completionRefreshKey])
 
   useEffect(() => {
     let cancelled = false
@@ -799,9 +722,13 @@ export default function WorkflowBoardPage() {
 
   useEffect(() => {
     let cancelled = false
+    const background = quietListRows.current === listRowsApi
+    const revision = completionRevision.current
     const hydrateChecklistChecksFromSavedItems = async () => {
-      setChecksReady(false)
-      setCheckError('')
+      if (!background) {
+        setChecksReady(false)
+        setCheckError('')
+      }
       if (listPeriod !== attributionMonth) return
       let failed = false
 
@@ -809,14 +736,12 @@ export default function WorkflowBoardPage() {
       const nextItems: Record<string, TaskBoardItem> = {}
       const nextColumnChecks: Record<string, boolean> = {}
       const nextMajorChecks: Record<string, boolean> = {}
-      const nextMajorCompletedAt: Record<string, string | null> = {}
       listRowsApi.forEach((row) => {
         customColumns.forEach((column) => {
           nextColumnChecks[getColumnCheckKey(row.company_id, column.id)] = false
         })
         majorColumns.forEach((column) => {
           nextMajorChecks[getMajorCheckKey(row.company_id, column.id)] = false
-          nextMajorCompletedAt[getMajorCheckKey(row.company_id, column.id)] = null
         })
       })
 
@@ -827,15 +752,11 @@ export default function WorkflowBoardPage() {
             try {
               const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
               const selectedTaskNormNames = new Set<string>()
-              const doneCompletedAtByNorm = new Map<string, string>()
               ;(res.items || []).forEach((item) => {
                 const normName = normalizeText(item.task_name || '')
                 if (normName) {
                   nextItems[`${row.company_id}:${normName}`] = item
                   if (item.target_active !== false && item.status !== 'na') selectedTaskNormNames.add(normName)
-                }
-                if (normName && item.status === 'done' && item.completed_at) {
-                  doneCompletedAtByNorm.set(normName, item.completed_at)
                 }
               })
               customColumns.forEach((column) => {
@@ -846,7 +767,6 @@ export default function WorkflowBoardPage() {
                 const norm = normalizeText(column.name)
                 nextMajorChecks[key] = selectedTaskNormNames.has(norm)
                 nextModes[key] = nextItems[`${row.company_id}:${norm}`]?.target_mode ?? 'auto'
-                nextMajorCompletedAt[key] = doneCompletedAtByNorm.get(norm) ?? null
               })
             } catch {
               failed = true
@@ -856,16 +776,23 @@ export default function WorkflowBoardPage() {
 
       if (cancelled) return
       if (failed) {
-        setCheckError('업무 선택 상태를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 저장은 차단됩니다.')
+        if (!background) setCheckError('업무 선택 상태를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 저장은 차단됩니다.')
         return
       }
       setTargetModes(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextModes).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
-      setMonthlyItems(prev => ({ ...prev, ...nextItems }))
+      setMonthlyItems(previous => {
+        const merged = { ...previous }
+        for (const [key, item] of Object.entries(nextItems)) {
+          // A status saved after this read started is newer than its response.
+          if ((completionRevisionsByItem.current.get(item.id) ?? 0) > revision && previous[key]?.id === item.id) continue
+          merged[key] = item
+        }
+        return merged
+      })
       setChecksMonth(attributionMonth)
       setChecksReady(true)
       setCompanyColumnChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextColumnChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
       setCompanyMajorChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextMajorChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
-      setCompanyMajorCompletedAt((prev) => ({ ...prev, ...nextMajorCompletedAt }))
     }
     void hydrateChecklistChecksFromSavedItems()
     return () => {
@@ -951,7 +878,143 @@ export default function WorkflowBoardPage() {
     return <ChevronDown className="h-3 w-3 text-sky-700" aria-hidden="true" />
   }
 
-  const handleOpenDetail = (companyId: number) => setSelectedCompanyId(companyId)
+  const refreshAfterCompletion = () => {
+    if (completionRefreshQueued.current) return
+    completionRefreshQueued.current = true
+    const refreshWhenIdle = () => {
+      const pending = workflowCompletionSave.pending
+      if (pending) {
+        void pending.then(refreshWhenIdle, refreshWhenIdle)
+        return
+      }
+      completionRefreshQueued.current = false
+      setCompletionRefreshKey(previous => previous + 1)
+    }
+    refreshWhenIdle()
+  }
+
+  const saveDailyWorkPresence = (row: TaskBoardListItem, value: DailyWorkPresence) => {
+    const key = `${attributionMonth}:${row.company_id}`
+    if (checklistBlocked || row.is_excluded || dailyWorkPending[key] !== undefined) return
+    setDailyWorkPending(previous => ({ ...previous, [key]: value }))
+    const save = Promise.resolve(workflowCompletionSave.pending).then(async () => {
+      try {
+        await patchDailyWorkPresence(row.company_id, {
+          attribution_month: attributionMonth,
+          report_month: reportMonth,
+          daily_work_presence: value,
+        })
+        if (visibleNotePeriod.current === notePeriod) {
+          setListRowsApi(rows => rows.map(item => item.company_id === row.company_id
+            ? { ...item, daily_work_presence: value } : item))
+          if (value === 'yes') setExpandedGroups(previous => ({ ...previous, statements: true }))
+        }
+        refreshAfterCompletion()
+        return true
+      } catch (error) {
+        toast.error(getTaskBoardErrorMessage(error))
+        return false
+      } finally {
+        setDailyWorkPending(previous => {
+          const next = { ...previous }
+          delete next[key]
+          return next
+        })
+        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
+      }
+    })
+    workflowCompletionSave.pending = save
+  }
+
+  const queueStatementSave = (update: () => Promise<void>) => {
+    const save = Promise.resolve(workflowCompletionSave.pending).then(async () => {
+      try {
+        await update()
+        refreshAfterCompletion()
+        return true
+      } catch (error) {
+        toast.error(getTaskBoardErrorMessage(error))
+        return false
+      } finally {
+        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
+      }
+    })
+    workflowCompletionSave.pending = save
+    return save
+  }
+
+  const saveStatementIncome = async (row: TaskBoardListItem, kind: StatementIncomeKind, value: DailyWorkPresence) => {
+    const key = `${attributionMonth}:${row.company_id}:${kind}`
+    if (checklistBlocked || row.is_excluded || statementIncomePending[key] !== undefined) return
+    setStatementIncomePending(previous => ({ ...previous, [key]: value }))
+    await queueStatementSave(async () => {
+      await patchStatementIncome(row.company_id, {
+        income_kind: kind, presence: value, attribution_month: attributionMonth, report_month: reportMonth,
+      })
+      if (visibleNotePeriod.current === notePeriod) {
+        const field = `${kind}_income_presence`
+        setListRowsApi(rows => rows.map(item => item.company_id === row.company_id
+          ? { ...item, [field]: value } : item))
+      }
+    })
+    setStatementIncomePending(previous => {
+      const next = { ...previous }
+      delete next[key]
+      return next
+    })
+  }
+
+  const renderIncomePresence = (row: TaskBoardListItem, kind: StatementIncomeKind | 'daily', name: string) => {
+    const key = `${attributionMonth}:${row.company_id}`
+    const pending = kind === 'daily' ? dailyWorkPending[key] : statementIncomePending[`${key}:${kind}`]
+    const saved = kind === 'daily' ? row.daily_work_presence : row[`${kind}_income_presence`]
+    const value = pending ?? saved ?? 'unknown'
+    return (
+      <select
+        aria-label={`${row.company_name} 이번 달 ${name} 여부`}
+        value={value}
+        disabled={checklistBlocked || isEditMode || pending !== undefined}
+        onChange={event => {
+          const presence = event.target.value as DailyWorkPresence
+          if (kind === 'daily') saveDailyWorkPresence(row, presence)
+          else void saveStatementIncome(row, kind, presence)
+        }}
+        className={`h-7 rounded border px-0.5 text-[10px] font-medium ${value === 'yes'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-zinc-200 bg-white text-zinc-600'}`}
+      >
+        <option value="unknown">미확인</option>
+        <option value="yes">있음</option>
+        <option value="no">없음</option>
+      </select>
+    )
+  }
+
+  const saveStatementTracking = (row: TaskBoardListItem, statement: TaskBoardStatement, change: StatementTrackingChange) => {
+    if (checklistBlocked || !statement.editable) return Promise.resolve(false)
+    const sourceMonth = statement.source_attribution_month ?? attributionMonth
+    return queueStatementSave(async () => {
+      const saved = await patchStatementTracking(row.company_id, {
+        attribution_month: sourceMonth,
+        report_month: monthShift(sourceMonth, 1),
+        key: statement.key,
+        item_id: statement.item_id,
+        ...change,
+      })
+      if (visibleNotePeriod.current === notePeriod) {
+        setListRowsApi(rows => rows.map(item => item.company_id === row.company_id ? {
+          ...item,
+          statement_tasks: item.statement_tasks?.map(task => task.key === statement.key ? {
+            ...task,
+            item_id: saved.item_id,
+            status: saved.status === 'done' ? 'submitted' : task.status === 'submitted' ? 'due' : task.status,
+            work_status: saved.status,
+            processed_on: saved.processed_on,
+          } : task),
+        } : item))
+      }
+    })
+  }
 
   const saveBoardNote = (row: TaskBoardListItem) => {
     const draft = editingNote
@@ -1128,70 +1191,13 @@ export default function WorkflowBoardPage() {
     return updateTaskBoardItem(scope, companyId, boardId, taskId, { status })
   }
 
-  const handleTaskStatusPatch = async (taskId: number, status: TaskItemStatus) => {
-    if (!selectedCompanyId || !selectedBoardId) return
-    try {
-      await saveTaskStatus(selectedCompanyId, selectedBoardId, taskId, status, detailItems.find(item => item.id === taskId))
-      const refreshed = await listTaskBoardItems(scope, selectedCompanyId, selectedBoardId)
-      setDetailItems(refreshed.items || [])
-      setListReloadKey((prev) => prev + 1)
-      toast.success('상태를 저장했습니다.')
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
-    }
-  }
-
-  const openTaskDocs = async (taskId: number) => {
-    if (!selectedCompanyId || !selectedBoardId) return
-    const task = detailItems.find((item) => item.id === taskId)
-    const mode = task?.execution_mode_snapshot ?? 'check_only'
-    if (mode === 'check_only') {
-      toast.error('체크만 항목은 파일 상세를 사용할 수 없습니다.')
-      return
-    }
-    try {
-      const docs = await listTaskItemDocs(scope, selectedCompanyId, selectedBoardId, taskId)
-      setFileModalDocs(
-        (docs.items || []).map((doc) => {
-          const anyDoc = doc as unknown as Record<string, unknown>
-          const uploaderName =
-            (typeof anyDoc.uploader_name === 'string' ? anyDoc.uploader_name : '') ||
-            (typeof anyDoc.uploaderName === 'string' ? anyDoc.uploaderName : '') ||
-            (typeof anyDoc.linked_by_name === 'string' ? anyDoc.linked_by_name : '')
-          return {
-            id: String(doc.id),
-            docsEntryId: doc.docs_entry_id,
-            fileName: doc.title?.trim() || doc.file_name?.trim() || `문서 #${doc.docs_entry_id}`,
-            uploader: uploaderName.trim() || (doc.linked_by_type === 'admin' ? '어드민' : '클라이언트'),
-            uploadedAt: formatKSTDateTimeAssumeUTC(doc.created_at),
-          }
-        })
-      )
-      setFileModalTaskId(taskId)
-      setDetailDocCountMap((prev) => ({ ...prev, [taskId]: docs.total }))
-      setItemFileNameMap((prev) => ({
-        ...prev,
-        [taskId]: (docs.items || []).map((doc) => doc.title?.trim() || doc.file_name?.trim() || `문서 #${doc.docs_entry_id}`),
-      }))
-      setFileUploadQueue([])
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
-    }
-  }
-
-  const queueTaskFiles = (incoming: FileList | File[]) => {
-    const files = Array.from(incoming || [])
-    if (!files.length) return
-    setFileUploadQueue((prev) => [...prev, ...files])
-  }
-
   const getDefaultTitleFromFile = (fileName: string) => {
     const idx = fileName.lastIndexOf('.')
     if (idx <= 0) return fileName
     return fileName.slice(0, idx)
   }
 
-  const uploadTaskFilesWithFallback = async (taskId: number, files: File[], companyId = selectedCompanyId, boardId = selectedBoardId) => {
+  const uploadTaskFilesWithFallback = async (taskId: number, files: File[], companyId: number, boardId: number) => {
     if (!companyId || !boardId) {
       return { total: files.length, successCount: 0, failedCount: files.length, firstError: '업체/보드 정보가 없습니다.' }
     }
@@ -1233,121 +1239,6 @@ export default function WorkflowBoardPage() {
         }
       }
       return { total: files.length, successCount, failedCount, firstError, failedIndexes, failedItems }
-    }
-  }
-
-  const uploadQueuedTaskFiles = async () => {
-    if (!selectedCompanyId || !selectedBoardId || !fileModalTaskId) return
-    if (!fileUploadQueue.length) {
-      toast.error('업로드할 파일을 먼저 선택해 주세요.')
-      return
-    }
-    try {
-      setIsUploadingTaskFiles(true)
-      const result = await uploadTaskFilesWithFallback(fileModalTaskId, fileUploadQueue)
-      if (result.failedCount > 0 && result.successCount > 0) {
-        toast.success(`업로드 부분 성공 (${result.successCount}/${result.total})`)
-      } else if (result.failedCount > 0) {
-        toast.error(result.firstError || '파일 업로드에 실패했습니다.')
-      } else {
-        toast.success(`파일 ${result.successCount}건 업로드 완료`)
-      }
-      setFileUploadQueue([])
-      await openTaskDocs(fileModalTaskId)
-      const refreshed = await listTaskBoardItems(scope, selectedCompanyId, selectedBoardId)
-      setDetailItems(refreshed.items || [])
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
-    } finally {
-      setIsUploadingTaskFiles(false)
-    }
-  }
-
-  const uploadTaskFilesForItem = async (taskId: number, files: File[]) => {
-    if (!selectedCompanyId || !selectedBoardId) return
-    if (!files.length) return
-    try {
-      setUploadingCardTaskId(taskId)
-      const result = await uploadTaskFilesWithFallback(taskId, files)
-      if (result.failedCount > 0 && result.successCount > 0) {
-        toast.success(`업로드 부분 성공 (${result.successCount}/${result.total})`)
-      } else if (result.failedCount > 0) {
-        toast.error(result.firstError || '파일 업로드에 실패했습니다.')
-      } else {
-        toast.success(`파일 ${result.successCount}건 업로드 완료`)
-      }
-
-      try {
-        const docs = await listTaskItemDocs(scope, selectedCompanyId, selectedBoardId, taskId)
-        setDetailDocCountMap((prev) => ({ ...prev, [taskId]: docs.total }))
-        setItemFileNameMap((prev) => ({
-          ...prev,
-          [taskId]: (docs.items || []).map((doc) => doc.title?.trim() || doc.file_name?.trim() || `문서 #${doc.docs_entry_id}`),
-        }))
-      } catch {
-        // noop
-      }
-      const refreshed = await listTaskBoardItems(scope, selectedCompanyId, selectedBoardId)
-      setDetailItems(refreshed.items || [])
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
-    } finally {
-      setUploadingCardTaskId(null)
-    }
-  }
-
-  const addTaskToSelectedCompany = () => {
-    if (!selectedCompanyId || !selectedBoardId) return
-    const nextName = addTab === 'template' ? templateTaskName.trim() : customTaskName.trim()
-    if (!nextName) {
-      toast.error('업무명을 입력해 주세요.')
-      return
-    }
-
-    const duplicated = detailItems.some((item) => normalizeText(item.task_name) === normalizeText(nextName))
-    if (duplicated) {
-      toast.error('동일 텍스트 업무가 이미 존재합니다.')
-      return
-    }
-
-    const matchedTemplate = detailTemplates.find((template) => template.task_name === nextName)
-    void (async () => {
-      try {
-        const created = await createTaskBoardItem(scope, selectedCompanyId, selectedBoardId, {
-          task_name: nextName,
-          template_id: matchedTemplate?.id ?? null,
-        })
-        setDetailItems((prev) => [...prev, created])
-        setDetailDocCountMap((prev) => ({ ...prev, [created.id]: 0 }))
-        setCustomTaskName('')
-        setIsAddModalOpen(false)
-        setListReloadKey((prev) => prev + 1)
-        toast.success('업무 항목이 추가되었습니다.')
-      } catch (error) {
-        toast.error(getTaskBoardErrorMessage(error))
-      }
-    })()
-  }
-
-  const handleDeleteTaskFile = async (docsEntryId: number) => {
-    if (!selectedCompanyId || !selectedBoardId || !fileModalTaskId) return
-    if (fileModalTask?.status === 'done') return
-    const ok = await confirm({
-      title: '파일 삭제',
-      description: '해당 파일을 삭제하시겠습니까?',
-      confirmText: '삭제',
-      cancelText: '취소',
-      variant: 'danger',
-    })
-    if (!ok) return
-    try {
-      await deleteTaskItemFile(scope, selectedCompanyId, selectedBoardId, fileModalTaskId, docsEntryId)
-      toast.success('파일이 삭제되었습니다.')
-      await openTaskDocs(fileModalTaskId)
-      const refreshed = await listTaskBoardItems(scope, selectedCompanyId, selectedBoardId)
-      setDetailItems(refreshed.items || [])
-    } catch (error) {
-      toast.error(getTaskBoardErrorMessage(error))
     }
   }
 
@@ -1653,15 +1544,35 @@ export default function WorkflowBoardPage() {
     return hasBase && !deferred
   }
 
+  const openTaskPanel = (row: TaskBoardListItem, itemId?: number, delivery?: {
+    payrollDelivery: boolean; withholdingDelivery: boolean
+  }) => {
+    const request = ++panelOpenRequest.current
+    const open = (boardId: number) => setQuickWork({
+      companyId: row.company_id, companyName: row.company_name, boardId, itemId, month: attributionMonth,
+      ...delivery,
+    })
+    if (row.board_id) {
+      open(row.board_id)
+      return
+    }
+    if (row.is_excluded) return
+    void ensureTaskBoard(scope, row.company_id, { attribution_month: attributionMonth, report_month: reportMonth })
+      .then(({ board }) => {
+        if (panelOpenRequest.current !== request || visibleNotePeriod.current !== notePeriod) return
+        refreshAfterCompletion()
+        open(board.id)
+      })
+      .catch(error => toast.error(getTaskBoardErrorMessage(error)))
+  }
+
   const toggleListCompletion = async (row: TaskBoardListItem, column: Pick<MajorColumn, "id" | "name">, directDelivery = false) => {
     const key = getMajorCheckKey(row.company_id, column.id)
     const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
     if (!item || item.target_active === false || item.status === "na" || !row.board_id || row.is_excluded || completingKeys.current.has(key) || checklistBlocked) return
     if (directDelivery && (item.status === 'done' || !item.source_item_id || !item.can_deliver || !(item.payment_slip_file_count ?? item.source_file_count))) return
     if (!directDelivery && item.status !== 'done' && (item.source_item_id || item.execution_mode_snapshot === 'file_and_notify')) {
-      // Preserve file/source/notification requirements in the existing detail flow.
-      handleOpenDetail(row.company_id)
-      toast('자료 등록·송부 여부를 상세에서 확인한 후 완료해 주세요.')
+      openTaskPanel(row, item.id)
       return
     }
     const status = item.status === 'done'
@@ -1674,14 +1585,18 @@ export default function WorkflowBoardPage() {
     const save = Promise.resolve(previousSave).then(async () => {
       try {
         const saved = await saveTaskStatus(row.company_id, row.board_id!, item.id, status, item)
+        completionRevisionsByItem.current.set(item.id, ++completionRevision.current)
+        if (scope === 'admin' && saved.status === 'done' && item.template_kind_snapshot === 'base'
+          && ['일용', '일용직', '일용근로', '일용근로소득'].includes(normalizeText(column.name))) {
+          setExpandedGroups(previous => ({ ...previous, statements: true }))
+        }
         setMonthlyItems(previous => previous[itemKey]?.id === item.id
           ? { ...previous, [itemKey]: { ...previous[itemKey], status: saved.status, completed_at: saved.completed_at, notified_at: saved.notified_at } }
           : previous)
-        setListReloadKey(previous => previous + 1)
         return true
       } catch (error) {
         toast.error(getTaskBoardErrorMessage(error))
-        if (item.execution_mode_snapshot === 'file_only') handleOpenDetail(row.company_id)
+        if (item.execution_mode_snapshot === 'file_only') openTaskPanel(row, item.id)
         return false
       } finally {
         completingKeys.current.delete(key)
@@ -1691,6 +1606,7 @@ export default function WorkflowBoardPage() {
           return next
         })
         if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
+        refreshAfterCompletion()
       }
     })
     workflowCompletionSave.pending = save
@@ -1766,7 +1682,7 @@ export default function WorkflowBoardPage() {
 
   const baseColumnHeadings = (
     <>
-      {!hasSelectedCustomColumns ? (
+      {visibleBaseColumns.length === 0 ? (
         <th
           scope="col"
           className="px-1 py-1.5 text-center font-semibold"
@@ -1776,14 +1692,17 @@ export default function WorkflowBoardPage() {
           </span>
         </th>
       ) : null}
-      {customColumns.map((column) => (
+      {visibleBaseColumns.map((column) => {
+        const income = scope === 'admin' ? getMonthlyIncomeColumn(column.name) : undefined
+        const name = income?.name ?? column.name
+        return (
         <th
           scope="col"
           key={column.id}
           className={`${styles.baseTaskColumn} py-2 text-center font-semibold`}
         >
-          <div className={styles.taskHeading} title={column.name}>
-            {isEditMode ? (
+          <div className={styles.taskHeading} title={name}>
+            {isEditMode && column.id !== income?.id ? (
               <button
                 type="button"
                 onClick={() => toggleColumnAll(column.id)}
@@ -1795,17 +1714,18 @@ export default function WorkflowBoardPage() {
                 title="컬럼 전체 선택/해제"
               >
                 <span className="block leading-tight">
-                  {column.name}
+                  {name}
                 </span>
               </button>
             ) : (
               <span className="block px-0 py-0.5 text-[11px] leading-tight">
-                {column.name}
+                {name}
               </span>
             )}
           </div>
         </th>
-      ))}
+        )
+      })}
     </>
   )
 
@@ -1824,233 +1744,8 @@ export default function WorkflowBoardPage() {
   )
 
   return (
-    <div ref={boardViewportRef} className={selectedCompanyId ? "space-y-4" : styles.viewport}
-      style={selectedCompanyId ? undefined : { height: boardViewportHeight }}>
-      {scope === 'admin' && !selectedCompanyId && <WithholdingNavigation active="board" />}
-      {selectedCompanyId ? (
-        <section className="space-y-4 bg-white">
-          <header className="border-b border-zinc-200 pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-zinc-800">
-                  {selectedListRow?.company_name || `업체 #${selectedCompanyId}`} ·{' '}
-                  {mapCompanyKindToLabel(selectedListRow?.company_kind || '')} · 담당자 {selectedListRow?.assignee_name || '-'}
-                </p>
-                <p className="text-xs text-zinc-500">귀속월 {attributionMonth} / 신고월 {reportMonth}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <UiButton
-                  size="sm"
-                  variant="tabInactive"
-                  onClick={() => {
-                    setSelectedCompanyId(null)
-                    setFileModalTaskId(null)
-                    setFileModalDocs([])
-                  }}
-                >
-                  목록으로
-                </UiButton>
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-zinc-600">
-              <p>파일 업로드와 업무 상태 변경은 각각 즉시 저장됩니다.</p>
-            </div>
-          </header>
-
-          {detailLoading ? (
-            <div className="py-16 text-center text-sm text-zinc-500">상세 업무 항목을 불러오는 중입니다.</div>
-          ) : (
-            <div className="space-y-4">
-              <div className="border-b border-zinc-200 pb-2">
-                <p className="text-xs font-semibold text-zinc-700">기준업무</p>
-                {selectedCompanyBaseBadges.length ? (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {selectedCompanyBaseBadges.map((name) => (
-                      <span
-                        key={name}
-                        className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-1.5 text-xs text-zinc-500">선택된 기준업무가 없습니다.</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {detailProcessItems.map((task) => {
-                  const mode = task.execution_mode_snapshot ?? 'check_only'
-                  const isDone = task.status === 'done'
-                  const isApplicable = task.target_active !== false
-                  const docCount = detailDocCountMap[task.id] ?? 0
-                  const hasLinkedSource = Boolean(task.source_item_id)
-                  const sourceLinkedItem =
-                    task.source_item_id != null ? detailItems.find((item) => item.id === task.source_item_id) : null
-                  const sourceLabel = task.source_task_name?.trim() || sourceLinkedItem?.task_name?.trim() || '연동 업무'
-                  const requiresSource = hasLinkedSource || task.payment_slip_file_count != null
-                  const canCompleteByLink = mode === 'check_only' && requiresSource ? Boolean(task.can_deliver) : true
-                  const isCardUploading = uploadingCardTaskId === task.id
-                  const sourceFileNames = task.source_item_id ? itemFileNameMap[task.source_item_id] ?? [] : []
-                  const isCheckOnlyWithoutSource = mode === 'check_only' && !requiresSource
-
-                  return (
-                    <article key={task.id} className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
-                      <div className="mb-2 flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-zinc-800" title={task.task_name}>
-                            {task.task_name}
-                          </p>
-                          {mode === 'file_only' ? (
-                            <p className={`mt-0.5 text-[11px] ${docCount > 0 ? 'text-emerald-700' : 'text-zinc-500'}`}>
-                              현재 {docCount}건
-                            </p>
-                          ) : null}
-                          {hasLinkedSource ? (
-                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500" title={sourceLabel}>
-                              <Link2 className="h-3 w-3" aria-hidden="true" />
-                              {sourceLabel} | 파일 {task.source_file_count ?? 0}건
-                              {task.payment_slip_file_count != null && ` · 납부서 ${task.payment_slip_file_count}건`}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="shrink-0">
-                          <span className="inline-flex rounded-full border border-zinc-300 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700">
-                            {isApplicable ? getExecutionModeLabel(mode) : '해당없음 · 기존 자료 보존'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {mode === 'file_only' ? (
-                        <div
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={(event) => {
-                            event.preventDefault()
-                            if (isDone || isCardUploading) return
-                            const files = Array.from(event.dataTransfer.files || [])
-                            if (!files.length) return
-                            void uploadTaskFilesForItem(task.id, files)
-                          }}
-                          className={`flex min-h-20 w-full items-center justify-center rounded-md border border-dashed px-3 py-2 text-xs ${
-                            isDone
-                              ? 'cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-500'
-                              : 'border-zinc-300 bg-zinc-50 text-zinc-600 hover:border-sky-300 hover:text-sky-700'
-                          }`}
-                        >
-                          {isDone ? (
-                            <span>완료됨 · {formatKSTDateTimeAssumeUTC(task.completed_at)}</span>
-                          ) : isCardUploading ? (
-                            <span>업로드 중...</span>
-                          ) : (
-                            <div className="flex flex-col items-center gap-1">
-                              <span>드래그 업로드</span>
-                              <input
-                                id={`task-card-file-input-${task.id}`}
-                                type="file"
-                                multiple
-                                className="hidden"
-                                onChange={(event) => {
-                                  const files = Array.from(event.target.files || [])
-                                  if (!files.length) return
-                                  void uploadTaskFilesForItem(task.id, files)
-                                  event.currentTarget.value = ''
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-700 hover:border-sky-300 hover:text-sky-700"
-                                onClick={() => {
-                                  const input = document.getElementById(`task-card-file-input-${task.id}`) as HTMLInputElement | null
-                                  input?.click()
-                                }}
-                              >
-                                파일 선택
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div
-                          className={`flex min-h-20 w-full items-center justify-center rounded-md border px-3 py-2 text-xs ${
-                            isDone
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : isCheckOnlyWithoutSource
-                                ? 'border-zinc-200 bg-zinc-50 text-zinc-700'
-                              : canCompleteByLink
-                                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                : 'border-zinc-200 bg-zinc-100 text-zinc-500'
-                          }`}
-                        >
-                          <div className="w-full space-y-1 text-center">
-                            <p>
-                              {isDone
-                                ? `완료됨 · ${formatKSTDateTimeAssumeUTC(task.completed_at)}`
-                                : isCheckOnlyWithoutSource
-                                  ? '완료 버튼으로 처리'
-                                  : canCompleteByLink
-                                    ? '완료 가능'
-                                    : task.blocked_reason || '이전업무미완료'}
-                            </p>
-                            {mode === 'check_only' && hasLinkedSource && sourceFileNames.length > 0 ? (
-                              <div className="space-y-0.5">
-                                {sourceFileNames.map((name, idx) => (
-                                  <p key={`${task.id}-source-file-inline-${idx}`} className="truncate text-[11px]" title={name}>
-                                    {name}
-                                  </p>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex items-center justify-end gap-1">
-                        {mode !== 'check_only' ? (
-                          <UiButton
-                            size="xs"
-                            variant="tabInactive"
-                            onClick={() => openTaskDocs(task.id)}
-                            disabled={isDone}
-                          >
-                            상세
-                          </UiButton>
-                        ) : null}
-                        {isDone && mode !== 'check_only' ? (
-                          <UiButton size="xs" variant="secondary" disabled={!isApplicable} onClick={() => handleTaskStatusPatch(task.id, 'in_progress')}>
-                            수정
-                          </UiButton>
-                        ) : (
-                          <UiButton
-                            size="xs"
-                            variant="primary"
-                            onClick={() => handleTaskStatusPatch(task.id, 'done')}
-                            disabled={!isApplicable || !canCompleteByLink}
-                          >
-                            완료
-                          </UiButton>
-                        )}
-                      </div>
-                      <TaskWorkGuide
-                        taskName={task.task_name}
-                        mode={mode}
-                        sourceName={hasLinkedSource ? sourceLabel : undefined}
-                        attributionMonth={attributionMonth}
-                      />
-                    </article>
-                  )
-                })}
-              </div>
-
-              {!detailProcessItems.length ? (
-                <div className="rounded-lg border border-zinc-200 px-2 py-16 text-center text-zinc-400">
-                  등록된 진행업무 항목이 없습니다.
-                </div>
-              ) : null}
-            </div>
-          )}
-        </section>
-      ) : (
+    <div ref={boardViewportRef} className={styles.viewport} style={{ height: boardViewportHeight }}>
+      {scope === 'admin' && <WithholdingNavigation active="board" />}
         <section className={styles.listSection}>
           <header className="space-y-2 border-b border-zinc-200 pb-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -2342,7 +2037,7 @@ export default function WorkflowBoardPage() {
                           type="button"
                           onClick={() => {
                             if (isEditMode) return
-                            handleOpenDetail(row.company_id)
+                            openTaskPanel(row)
                           }}
                           className={`mx-auto block whitespace-nowrap text-center ${
                             isEditMode ? 'cursor-default text-zinc-800' : 'text-zinc-800 hover:text-sky-700 hover:underline'
@@ -2414,18 +2109,19 @@ export default function WorkflowBoardPage() {
                       >
                         {row.payroll_day ?? '-'}
                       </td>
-                      {!hasSelectedCustomColumns ? (
+                      {visibleBaseColumns.length === 0 ? (
                         <td
                           className="px-1 py-1.5 text-center text-zinc-500"
                         >
                           -
                         </td>
                       ) : null}
-                      {customColumns.map((column) => {
+                      {visibleBaseColumns.map((column) => {
                         const checked = companyColumnChecks[getColumnCheckKey(row.company_id, column.id)] || false
                         const item = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
                         const saving = item != null && pendingCompletion[item.id] !== undefined
                         const done = isListItemDone(item)
+                        const income = scope === 'admin' ? getMonthlyIncomeColumn(column.name) : undefined
                         return (
                           <td
                             key={`${row.company_id}:${column.id}`}
@@ -2433,6 +2129,10 @@ export default function WorkflowBoardPage() {
                           >
                             {row.is_excluded ? (
                               <span aria-label="해당 없음" title="해당 없음" className="text-zinc-400">–</span>
+                            ) : income && !isEditMode ? (
+                              renderIncomePresence(row, income.kind, income.name)
+                            ) : column.id === income?.id ? (
+                              <span className="text-zinc-400">–</span>
                             ) : isEditMode ? (
                               <button
                                 type="button"
@@ -2451,6 +2151,7 @@ export default function WorkflowBoardPage() {
                                   type="button"
                                   aria-label={`${row.company_name} ${column.name} 완료`}
                                   aria-pressed={done}
+                                  aria-busy={saving}
                                   title={done ? '완료 취소' : '완료 처리'}
                                   disabled={checklistBlocked || saving}
                                   onClick={() => void toggleListCompletion(row, column)}
@@ -2458,7 +2159,7 @@ export default function WorkflowBoardPage() {
                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800 enabled:hover:bg-emerald-100'
                                     : 'border-rose-200 bg-rose-50 text-rose-800 enabled:hover:bg-rose-100'}`}
                                 >
-                                  {saving ? <span role="status" aria-label="저장 중" className={styles.spinner} /> : done ? '완료' : '미완료'}
+                                  {done ? '완료' : '미완료'}
                                 </button>
                               ) : (
                                 <span aria-label="해당 없음" title="해당 없음" className="text-zinc-400">–</span>
@@ -2496,11 +2197,46 @@ export default function WorkflowBoardPage() {
                                 <td className="px-1 py-1.5 text-center text-zinc-400">–</td>
                               )}
                               {group.columns.map(column => {
-                              if (column.previewOnly) return (
-                                <td key={column.id} hidden={!group.expanded} className="py-1.5 text-center text-zinc-400">
-                                  <span aria-label="기능 연결 전" title="기능 연결 전">–</span>
-                                </td>
-                              )
+                              if (column.incomeKind) {
+                                return (
+                                  <td key={column.id} hidden={!group.expanded} className="px-1 py-1.5 text-center">
+                                    {row.is_excluded ? <span className="text-zinc-400">–</span>
+                                      : renderIncomePresence(row, column.incomeKind, column.name)}
+                                  </td>
+                                )
+                              }
+                              const statement = row.statement_tasks?.find(task => task.key === column.statementKey)
+                              if (column.statementKey && statementColumnKeys !== null &&
+                                  (!isEditMode || !statement?.item_id || statement.source_attribution_month || statement.item_name !== column.name)) {
+                                const label = statement?.status === 'submitted' ? '제출 완료'
+                                  : statement?.status === 'due' ? '미제출' : '대상 확인'
+                                const statusClass = statement?.status === 'submitted' ? 'text-emerald-700'
+                                  : statement?.status === 'due' ? 'text-rose-700' : 'text-amber-800'
+                                return (
+                                  <td key={column.id} hidden={!group.expanded} className="py-1.5 text-center">
+                                    {statement ? (
+                                      <div className="flex flex-col items-center gap-0.5 text-[11px]">
+                                        {statement.editable && !isEditMode ? (
+                                          <StatementTrackingControls
+                                            key={`${attributionMonth}:${row.company_id}:${statement.key}`}
+                                            statement={statement}
+                                            label={`${row.company_name} ${column.heading ?? column.name}`}
+                                            disabled={checklistBlocked}
+                                            onSave={change => saveStatementTracking(row, statement, change)}
+                                          />
+                                        ) : <span className={statusClass}>{statement.work_status === 'na' ? '해당없음' : label}</span>}
+                                        {statement.period && <span className="text-[10px] tabular-nums text-zinc-500">대상 {statement.period}</span>}
+                                        {statement.payment_count > 0 && (
+                                          <Link className="text-[10px] text-sky-700 underline"
+                                            href={`/admin/company-withholding/business?company_id=${row.company_id}&pay_month=${statement.period}`}>
+                                            지급내역 {statement.payment_count}건
+                                          </Link>
+                                        )}
+                                      </div>
+                                    ) : <span className="text-zinc-400">–</span>}
+                                  </td>
+                                )
+                              }
                               const checked = isProcessTarget(row, column)
                               const task = monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]
                               const taskName = normalizeText(column.name)
@@ -2516,17 +2252,20 @@ export default function WorkflowBoardPage() {
                               const deliveryFileLabel = paymentSlipCount ? `납부서 ${paymentSlipCount}건 상세`
                                 : sourceFileCount ? `파일 ${sourceFileCount}건 상세`
                                   : isWithholdingDelivery && task?.own_file_count ? `기존 첨부 ${task.own_file_count}건 상세` : '파일 대기'
-                              const deliveryCompletedDate = isDelivery && task?.status === 'done'
-                                ? formatKSTShortDate(task.notified_at ?? task.completed_at) : ''
+                              const saving = task != null && pendingCompletion[task.id] !== undefined
+                              const done = isListItemDone(task)
+                              const completionDate = saving && done ? new Date().toISOString() : task?.completed_at
+                              const deliveryCompletedDate = isDelivery && done
+                                ? formatKSTShortDate(saving ? completionDate : task?.notified_at ?? completionDate) : ''
                               const deliveryCellBackground = checked && isDelivery && !isEditMode && !row.is_excluded
-                                ? task?.status === 'done' ? 'bg-emerald-50' : sourceFileCount > 0 ? 'bg-amber-50' : ''
+                                ? done ? 'bg-emerald-50' : sourceFileCount > 0 ? 'bg-amber-50' : ''
                                 : ''
                               const openWorkPanel = () => {
-                                if (task && row.board_id) setQuickWork({ companyId: row.company_id, companyName: row.company_name, boardId: row.board_id,
-                                  itemId: task.id, month: attributionMonth, payrollDelivery: isPayrollDelivery, withholdingDelivery: isWithholdingDelivery })
+                                if (task && row.board_id) openTaskPanel(row, task.id, {
+                                  payrollDelivery: isPayrollDelivery, withholdingDelivery: isWithholdingDelivery,
+                                })
                               }
 
-                              const completedAt = companyMajorCompletedAt[getMajorCheckKey(row.company_id, column.id)] || null
                           return (
                                 <td
                                   key={`${row.company_id}:${column.id}`}
@@ -2561,7 +2300,7 @@ export default function WorkflowBoardPage() {
                                         completedAt={task.completed_at}
                                         disabled={checklistBlocked}
                                         upload={uploadTaskFilesWithFallback}
-                                        onChanged={() => setListReloadKey(previous => previous + 1)}
+                                        onChanged={refreshAfterCompletion}
                                       />
                                     ) : checked && isDelivery ? (
                                       <div className="mx-auto flex w-max flex-col items-center gap-0.5 whitespace-nowrap text-[11px]">
@@ -2571,10 +2310,8 @@ export default function WorkflowBoardPage() {
                                           className="rounded px-0.5 py-0.5 font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
                                           {deliveryFileLabel}
                                         </button>
-                                        {task && pendingCompletion[task.id] !== undefined ? (
-                                          <span role="status" aria-label="저장 중" className={styles.spinner} />
-                                        ) : isListItemDone(task) ? (
-                                          <span className="px-0.5 py-0.5 text-[10px] tabular-nums text-emerald-700">
+                                        {done ? (
+                                          <span aria-busy={saving} className="px-0.5 py-0.5 text-[10px] tabular-nums text-emerald-700">
                                             {deliveryCompletedDate ? `완료 ${deliveryCompletedDate}` : '완료'}
                                           </span>
                                         ) : (
@@ -2591,12 +2328,13 @@ export default function WorkflowBoardPage() {
                                         )}
                                       </div>
                                     ) : checked ? (
-                                      <button type="button" disabled={checklistBlocked || (task != null && pendingCompletion[task.id] !== undefined)}
+                                      <button type="button" disabled={checklistBlocked || saving}
+                                        aria-busy={saving}
                                         onClick={() => void toggleListCompletion(row, column)}
-                                        aria-label={`${row.company_name} ${column.name} ${completedAt ? '완료 취소' : '완료 처리'}`}
-                                        title={completedAt ? `완료 ${formatKSTDate(completedAt)} · 클릭하여 취소` : '미완료 · 클릭하여 처리'}
-                                        className={`rounded px-0.5 py-1 text-[10px] disabled:opacity-50 ${completedAt ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                        {task && pendingCompletion[task.id] !== undefined ? <span role="status" aria-label="저장 중" className={styles.spinner} /> : isListItemDone(monthlyItems[`${row.company_id}:${normalizeText(column.name)}`]) ? (completedAt ? formatKSTDate(completedAt) : '완료') : '미완료'}
+                                        aria-label={`${row.company_name} ${column.name} ${done ? '완료 취소' : '완료 처리'}`}
+                                        title={done ? '완료 · 클릭하여 취소' : '미완료 · 클릭하여 처리'}
+                                        className={`rounded px-0.5 py-1 text-[10px] disabled:opacity-50 ${done ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                        {done ? (completionDate ? formatKSTDate(completionDate) : '완료') : '미완료'}
                                       </button>
                                     ) : <span className="text-xs text-zinc-400" title="해당없음">해당없음</span>
 
@@ -2710,7 +2448,6 @@ export default function WorkflowBoardPage() {
             ) : null}
           </div>
         </section>
-      )}
 
       {isColumnModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
@@ -2846,182 +2583,17 @@ export default function WorkflowBoardPage() {
         </div>
       ) : null}
 
-      {isAddModalOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-zinc-800">업무 항목 추가</p>
-              <UiButton size="xs" variant="tabInactive" onClick={() => setIsAddModalOpen(false)}>
-                닫기
-              </UiButton>
-            </div>
-            <div className="mb-3 flex items-center gap-2">
-              <UiButton size="xs" variant={addTab === 'template' ? 'tabActive' : 'tabInactive'} onClick={() => setAddTab('template')}>
-                템플릿에서 선택
-              </UiButton>
-              <UiButton size="xs" variant={addTab === 'custom' ? 'tabActive' : 'tabInactive'} onClick={() => setAddTab('custom')}>
-                직접 입력
-              </UiButton>
-            </div>
-            {addTab === 'template' ? (
-              <select
-                value={templateTaskName}
-                onChange={(event) => setTemplateTaskName(event.target.value)}
-                className="h-9 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-700"
-              >
-                {detailTemplates.length ? (
-                  detailTemplates.map((template) => (
-                    <option key={template.id} value={template.task_name}>
-                      {template.task_name}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">템플릿이 없습니다.</option>
-                )}
-              </select>
-            ) : (
-              <input
-                value={customTaskName}
-                onChange={(event) => setCustomTaskName(event.target.value)}
-                placeholder="업무명을 입력해 주세요."
-                className="h-9 w-full rounded-md border border-zinc-300 px-2 text-sm text-zinc-700"
-              />
-            )}
-            <p className="mt-2 text-xs text-zinc-500">동일 텍스트 중복은 저장되지 않습니다.</p>
-            <div className="mt-3 flex justify-end gap-2">
-              <UiButton size="sm" variant="tabInactive" onClick={() => setIsAddModalOpen(false)}>
-                취소
-              </UiButton>
-              <UiButton size="sm" variant="primary" onClick={addTaskToSelectedCompany}>
-                <Plus className="h-3.5 w-3.5" />
-                추가
-              </UiButton>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {quickWork && (
-        <TaskWorkPanel {...quickWork}
-          close={() => setQuickWork(null)}
+        <TaskWorkPanel key={`${scope}:${quickWork.companyId}:${quickWork.boardId}:${quickWork.itemId ?? 'company'}`} scope={scope} {...quickWork}
+          close={() => {
+            panelOpenRequest.current += 1
+            setQuickWork(null)
+          }}
           upload={uploadTaskFilesWithFallback}
           saveStatus={(companyId, boardId, item, status) => saveTaskStatus(companyId, boardId, item.id, status, item)}
-          onChanged={() => setListReloadKey(previous => previous + 1)}
+          onChanged={refreshAfterCompletion}
         />
       )}
-
-      {fileModalTask ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-zinc-200 bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-zinc-800">연결 파일 · {fileModalTask.task_name}</p>
-              <div className="flex items-center gap-1">
-                <input
-                  ref={taskFileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => {
-                    if (!event.target.files?.length) return
-                    queueTaskFiles(event.target.files)
-                    event.currentTarget.value = ''
-                  }}
-                />
-                <UiButton
-                  size="xs"
-                  variant="secondary"
-                  onClick={() => taskFileInputRef.current?.click()}
-                  disabled={fileModalTask.status === 'done'}
-                >
-                  파일 추가
-                </UiButton>
-                <UiButton
-                  size="xs"
-                  variant="primary"
-                  onClick={uploadQueuedTaskFiles}
-                  disabled={fileModalTask.status === 'done' || isUploadingTaskFiles || fileUploadQueue.length === 0}
-                >
-                  {isUploadingTaskFiles ? '업로드 중...' : '업로드 완료'}
-                </UiButton>
-                <UiButton
-                  size="xs"
-                  variant="tabInactive"
-                  onClick={() => {
-                    setFileModalTaskId(null)
-                    setFileModalDocs([])
-                    setFileUploadQueue([])
-                  }}
-                >
-                  닫기
-                </UiButton>
-              </div>
-            </div>
-            <div
-              className="mb-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-600"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault()
-                if (fileModalTask.status === 'done') return
-                if (!event.dataTransfer.files?.length) return
-                queueTaskFiles(event.dataTransfer.files)
-              }}
-            >
-              {fileUploadQueue.length > 0
-                ? `업로드 대기 ${fileUploadQueue.length}건`
-                : fileModalTask.status === 'done'
-                  ? '완료 상태입니다. 수정으로 전환 후 파일을 변경할 수 있습니다.'
-                  : '파일을 드래그하거나 파일 추가 버튼으로 선택하세요.'}
-            </div>
-            <div className="overflow-hidden rounded-lg border border-zinc-200">
-              <table className="min-w-full text-xs">
-                <thead className="bg-zinc-100 text-zinc-700">
-                  <tr>
-                    <th className="px-2 py-2 text-left font-semibold">파일명</th>
-                    <th className="px-2 py-2 text-center font-semibold">업로더</th>
-                    <th className="px-2 py-2 text-center font-semibold">업로드일</th>
-                    <th className="px-2 py-2 text-center font-semibold">액션</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fileModalDocs.length ? (
-                    fileModalDocs.map((item) => (
-                      <tr key={item.id} className="border-t border-zinc-200">
-                        <td className="px-2 py-2">{item.fileName}</td>
-                        <td className="px-2 py-2 text-center">{item.uploader}</td>
-                        <td className="px-2 py-2 text-center">{item.uploadedAt}</td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center justify-center">
-                            <UiButton
-                              size="xs"
-                              variant="danger"
-                              onClick={() => void handleDeleteTaskFile(item.docsEntryId)}
-                              disabled={fileModalTask.status === 'done'}
-                              title={fileModalTask.status === 'done' ? '완료 상태에서는 삭제할 수 없습니다.' : '파일 삭제'}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </UiButton>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="px-2 py-10 text-center text-zinc-400">
-                        연결된 문서가 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <TaskWorkGuide
-              taskName={fileModalTask.task_name}
-              mode={fileModalTask.execution_mode_snapshot ?? 'check_only'}
-              attributionMonth={attributionMonth}
-            />
-          </div>
-        </div>
-      ) : null}
 
       {isMajorColumnModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">

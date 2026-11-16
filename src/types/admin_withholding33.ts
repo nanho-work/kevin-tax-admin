@@ -35,6 +35,7 @@ export interface AdminWithholding33ListResponse {
 export interface AdminWithholding33ListParams {
   company_id?: number
   target_month?: string
+  pay_month?: string
   review_status?: WithholdingReviewStatus
   contractor_id?: number
   q?: string

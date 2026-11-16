@@ -75,6 +75,7 @@ export default function Withholding33BusinessSection() {
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
   const [targetMonth, setTargetMonth] = useState('')
+  const [payMonth, setPayMonth] = useState('')
   const [page, setPage] = useState(1)
   const [size] = useState(20)
 
@@ -176,7 +177,8 @@ export default function Withholding33BusinessSection() {
           page: nextPage,
           size: pageSize,
           q: q.trim() || undefined,
-          target_month: toMonthParam(targetMonth),
+          target_month: payMonth ? undefined : toMonthParam(targetMonth),
+          pay_month: payMonth || undefined,
         })
         fetched.push(...data.items)
         if (nextPage * data.size >= data.total) break
@@ -191,7 +193,7 @@ export default function Withholding33BusinessSection() {
       }
 
       const filtered = fetched
-        .filter((item) => item.review_status === 'draft' || item.review_status === 'rejected' || item.review_status === 'reviewed')
+        .filter(item => payMonth || item.review_status !== 'filed')
         .sort((a, b) => {
           const byStatus = order[a.review_status] - order[b.review_status]
           if (byStatus !== 0) return byStatus
@@ -234,6 +236,13 @@ export default function Withholding33BusinessSection() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const companyId = Number(params.get('company_id'))
+    const linkedPayMonth = params.get('pay_month')
+    if (Number.isSafeInteger(companyId) && companyId > 0 && linkedPayMonth && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(linkedPayMonth)) {
+      setPayMonth(linkedPayMonth)
+      setSelectedCompanyId(companyId)
+    }
     loadCompanies()
     loadPendingCounts()
   }, [])
@@ -376,8 +385,9 @@ export default function Withholding33BusinessSection() {
               <input
                 type="month"
                 className={uiInputClass}
-                value={toMonthInput(targetMonth)}
-                onChange={(e) => setTargetMonth(e.target.value)}
+                aria-label={payMonth ? '지급월' : '귀속월'}
+                value={payMonth || toMonthInput(targetMonth)}
+                onChange={(e) => payMonth ? setPayMonth(e.target.value) : setTargetMonth(e.target.value)}
                 disabled={!selectedCompanyId}
               />
               <UiButton
@@ -389,7 +399,9 @@ export default function Withholding33BusinessSection() {
               >
                 조회
               </UiButton>
-              <div className="flex items-center justify-end text-sm text-zinc-500">신고대기 {total}건</div>
+              <div className="flex items-center justify-end text-sm text-zinc-500">
+                {payMonth ? `${payMonth} 지급내역` : '신고대기'} {total}건
+              </div>
             </div>
           </div>
 
@@ -485,6 +497,7 @@ export default function Withholding33BusinessSection() {
                         <p>대상자: <span className="font-medium text-zinc-800">{detail.contractor_name ?? '-'}</span></p>
                         <p>주민번호: <span className="font-medium text-zinc-800">{detail.contractor_rrn ?? '-'}</span></p>
                         <p>귀속월: <span className="font-medium text-zinc-800">{detail.target_month}</span></p>
+                        {detail.pay_date && <p>지급일: <span className="font-medium text-zinc-800">{detail.pay_date}</span></p>}
                         <p>수정일: <span className="font-medium text-zinc-800">{formatDateTime(detail.updated_at)}</span></p>
                       </div>
                     </div>

@@ -18,7 +18,39 @@ export type TaskBoardSortBy =
   | 'updated_at'
 export type TaskBoardSortOrder = 'asc' | 'desc'
 
+export interface TaskBoardStatement {
+  key: string
+  period: string | null
+  status: 'review' | 'due' | 'submitted'
+  payment_count: number
+  item_id: number | null
+  item_name: string | null
+  has_files: boolean
+  source_attribution_month?: string | null
+  work_status?: TaskItemStatus | null
+  processed_on?: string | null
+  editable?: boolean
+}
+
+export type DailyWorkPresence = 'unknown' | 'yes' | 'no'
+export type StatementIncomeKind = 'business' | 'other' | 'interest' | 'dividend'
+
+interface StatementBoardMonth {
+  attribution_month: string
+  report_month: string
+}
+
+export interface StatementTrackingChange {
+  status?: TaskItemStatus
+  processed_on?: string | null
+}
+
 export interface TaskBoardListItem {
+  daily_work_presence?: DailyWorkPresence | null
+  business_income_presence?: DailyWorkPresence | null
+  other_income_presence?: DailyWorkPresence | null
+  interest_income_presence?: DailyWorkPresence | null
+  dividend_income_presence?: DailyWorkPresence | null
   default_version_id?: number | null
   company_id: number
   company_name: string
@@ -37,12 +69,14 @@ export interface TaskBoardListItem {
   done_count: number
   todo_count: number
   major_tasks: string[]
+  statement_tasks?: TaskBoardStatement[] | null
   note?: string | null
   updated_at?: string | null
 }
 
 export interface TaskBoardListResponse {
   targeting_version?: number
+  statement_columns?: string[] | null
   total: number
   page: number
   size: number
@@ -58,6 +92,7 @@ export interface TaskBoardListParams {
   assignee?: string
   incomplete_only?: boolean
   include_excluded?: boolean
+  include_statement_tasks?: boolean
   sort_by?: TaskBoardSortBy
   order?: TaskBoardSortOrder
   page?: number
@@ -722,6 +757,33 @@ export async function bulkUploadTaskItemFiles(
     form
   )
   return res.data
+}
+
+export async function patchStatementIncome(companyId: number, payload: StatementBoardMonth & {
+  income_kind: StatementIncomeKind
+  presence: DailyWorkPresence
+}): Promise<void> {
+  await getHttp('admin').patch(`${getBase('admin')}/${companyId}/task-boards/statement-income`, payload)
+}
+
+export async function patchStatementTracking(companyId: number, payload: StatementBoardMonth & StatementTrackingChange & {
+  key: string
+  item_id: number | null
+}): Promise<{ item_id: number; status: TaskItemStatus; processed_on: string | null }> {
+  const response = await getHttp('admin').patch<{
+    item_id: number
+    status: TaskItemStatus
+    processed_on: string | null
+  }>(`${getBase('admin')}/${companyId}/task-boards/statement-tracking`, payload)
+  return response.data
+}
+
+export async function patchDailyWorkPresence(companyId: number, payload: {
+  attribution_month: string
+  report_month: string
+  daily_work_presence: DailyWorkPresence
+}): Promise<void> {
+  await getHttp('admin').patch(`${getBase('admin')}/${companyId}/task-boards/daily-work`, payload)
 }
 
 export async function patchTaskBoardNote(

@@ -4,20 +4,23 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { useEffect, useRef, useState } from 'react'
 import { Check, FileText, X } from 'lucide-react'
 import PayrollFilePreview from './PayrollFilePreview'
+import TaskWorkGuide from './TaskWorkGuide'
+import { fetchAdminDocsEntryDownloadUrl as fetchClientDocsEntryDownloadUrl } from '@/services/client/clientDocsService'
 import { fetchAdminDocsEntryDownloadUrl } from '@/services/admin/adminDocsService'
 import {
   deleteTaskItemFile, getTaskBoardErrorMessage, listTaskBoardItems, listTaskItemDocs, taskDocumentKindLabels,
-  type TaskBoardItem, type TaskItemDocLink, type TaskItemStatus,
+  type TaskBoardItem, type TaskBoardScope, type TaskItemDocLink, type TaskItemStatus,
 } from '@/services/workflowTaskBoard'
 import { formatKSTDateTimeAssumeUTC } from '@/utils/dateTime'
 import { toast } from 'react-hot-toast'
 
 type Props = {
+  scope: TaskBoardScope
   companyId: number
   companyName: string
   boardId: number
   month: string
-  itemId: number
+  itemId?: number
   deliveryLabel?: string
   payrollDelivery?: boolean
   withholdingDelivery?: boolean
@@ -31,7 +34,7 @@ type Props = {
 
 const MIN_PAYROLL_PANEL_WIDTH = 672
 
-export default function TaskWorkPanel({ companyId, companyName, boardId, month, itemId, deliveryLabel = '전달 완료 기록', payrollDelivery = false, withholdingDelivery = false, close, upload, saveStatus, onChanged }: Props) {
+export default function TaskWorkPanel({ scope, companyId, companyName, boardId, month, itemId, deliveryLabel = '전달 완료 기록', payrollDelivery = false, withholdingDelivery = false, close, upload, saveStatus, onChanged }: Props) {
   const deliveryPanel = payrollDelivery || withholdingDelivery
   const panelTitle = withholdingDelivery ? '납부서 전달' : '급여대장 송부 및 확인'
   const fileInput = useRef<HTMLInputElement>(null)
@@ -39,6 +42,8 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
   const working = useRef(false)
   const [busy, setBusy] = useState(false)
   const [revision, refresh] = useState(0)
+  const [selectedItemId, setSelectedItemId] = useState(itemId)
+  const [companyItems, setCompanyItems] = useState<TaskBoardItem[] | null>(null)
   const [data, setData] = useState<{ item: TaskBoardItem; docs: TaskItemDocLink[]; priorDeliveryDocs: TaskItemDocLink[] } | null>(null)
   const [error, setError] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -52,19 +57,21 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
     setData(null)
     setError('')
     const load = async () => {
-      const { items } = await listTaskBoardItems('admin', companyId, boardId)
-      const item = items.find(task => task.id === itemId)
+      const { items } = await listTaskBoardItems(scope, companyId, boardId)
+      if (active) setCompanyItems(items)
+      if (selectedItemId === undefined) return
+      const item = items.find(task => task.id === selectedItemId)
       if (!item) throw new Error('업무 항목을 찾을 수 없습니다.')
       const linked = (item.execution_mode_snapshot ?? 'check_only') === 'check_only' && item.source_item_id
       const [source, priorDelivery] = await Promise.all([
-        withholdingDelivery && !linked ? null : listTaskItemDocs('admin', companyId, boardId, linked || item.id),
-        withholdingDelivery && item.own_file_count ? listTaskItemDocs('admin', companyId, boardId, item.id) : null,
+        withholdingDelivery && !linked ? null : listTaskItemDocs(scope, companyId, boardId, linked || item.id),
+        withholdingDelivery && item.own_file_count ? listTaskItemDocs(scope, companyId, boardId, item.id) : null,
       ])
       if (active) setData({ item, docs: source?.items ?? [], priorDeliveryDocs: priorDelivery?.items ?? [] })
     }
     void load().catch(error => { if (active) setError(getTaskBoardErrorMessage(error)) })
     return () => { active = false }
-  }, [companyId, boardId, itemId, revision, withholdingDelivery])
+  }, [scope, companyId, boardId, selectedItemId, revision, withholdingDelivery])
 
   useEffect(() => {
     if (!deliveryPanel) return
@@ -99,8 +106,12 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
   const linked = mode === 'check_only' && Boolean(item?.source_item_id)
   const applicable = Boolean(item && item.target_active !== false && item.status !== 'na')
   const done = item?.status === 'done'
-  const canUpload = applicable && !done && mode !== 'check_only' && !deliveryPanel
-  const canComplete = applicable && (done || (deliveryPanel ? linked && Boolean(item?.can_deliver && data?.docs.some(doc => !withholdingDelivery || doc.document_kind === 'payment_slip'))
+  const taskName = item?.task_name.replace(/\s+/g, '') ?? ''
+  const statementReadOnly = scope === 'admin' && (
+    taskName.includes('지급명세서') || ['근로내용확인서', '근로내용확인신고서', '보수총액신고', '보수총액신고서'].includes(taskName)
+  )
+  const canUpload = !statementReadOnly && applicable && !done && mode !== 'check_only' && !deliveryPanel
+  const canComplete = !statementReadOnly && applicable && (done || (deliveryPanel ? linked && Boolean(item?.can_deliver && data?.docs.some(doc => !withholdingDelivery || doc.document_kind === 'payment_slip'))
     : linked ? Boolean(item?.can_deliver) : mode === 'check_only' || Boolean(data?.docs.length)))
   const previewDoc = data?.docs.find(doc => doc.id === previewId) ?? data?.priorDeliveryDocs.find(doc => doc.id === previewId)
   const sourceDocs = withholdingDelivery && data ? [...data.docs].sort((a, b) =>
@@ -116,7 +127,7 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
       setFiles(previous => [...previous, ...added])
     }
   }
-  const completionButton = (className: string) => item && (
+  const completionButton = (className: string) => item && !statementReadOnly && (
     <button type="button" disabled={busy || !canComplete || files.length > 0}
       onClick={() => void mutate(async () => {
         await saveStatus(companyId, boardId, item, done ? 'in_progress' : 'done')
@@ -233,17 +244,45 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs text-zinc-500">{companyName} · {month} 귀속</p>
-              <DialogTitle className="mt-1 text-lg font-semibold">{item?.task_name ?? '업무 파일'}</DialogTitle>
+              <DialogTitle className="mt-1 text-lg font-semibold">{item?.task_name ?? '거래처 업무'}</DialogTitle>
             </div>
             <div className="flex shrink-0 gap-2">
               <button type="button" disabled={busy} onClick={requestClose} className="rounded border px-3 py-1.5 text-sm disabled:opacity-50">닫기</button>
             </div>
           </div>
 
+          {companyItems && (
+            <div className="mt-4 space-y-3">
+              {!itemId && companyItems.some(task => task.template_kind_snapshot === 'base' && task.target_active !== false && task.status !== 'na') && (
+                <div className="flex flex-wrap gap-1 text-xs text-zinc-600">
+                  {companyItems.filter(task => task.template_kind_snapshot === 'base' && task.target_active !== false && task.status !== 'na').map(task => (
+                    <span key={task.id} className="rounded border border-zinc-200 px-2 py-1">{task.task_name}</span>
+                  ))}
+                </div>
+              )}
+              <select aria-label="진행업무 선택" value={selectedItemId ?? ''} disabled={busy || files.length > 0}
+                onChange={event => {
+                  setData(null)
+                  setDeleteId(null)
+                  setSelectedItemId(event.target.value ? Number(event.target.value) : undefined)
+                }}
+                className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                <option value="">진행업무 선택</option>
+                {companyItems.filter(task => task.template_kind_snapshot !== 'base').map(task => (
+                  <option key={task.id} value={task.id}>{task.task_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {error ? (
             <div role="alert" className="mt-5 text-sm text-rose-700">
               {error} <button type="button" className="underline" onClick={() => refresh(value => value + 1)}>다시 불러오기</button>
             </div>
+          ) : selectedItemId === undefined && companyItems ? (
+            !companyItems.some(task => task.template_kind_snapshot !== 'base') && (
+              <p className="mt-5 text-sm text-zinc-500">등록된 진행업무가 없습니다.</p>
+            )
           ) : !data || !item ? <p role="status" className="mt-5 text-sm text-zinc-500">업무와 파일을 불러오는 중…</p> : (
             <>
               <p className="mt-4 text-sm text-zinc-600">{done ? `완료 · ${formatKSTDateTimeAssumeUTC(item.completed_at)}` : applicable ? '미완료' : '해당 없음'}</p>
@@ -288,7 +327,8 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
                   <li key={doc.id} className="flex items-center justify-between gap-3 py-2">
                     <button type="button" className="min-w-0 break-all rounded px-1 text-left text-sky-700 underline" onClick={async () => {
                       try {
-                        const result = await fetchAdminDocsEntryDownloadUrl(doc.docs_entry_id)
+                        const getDownloadUrl = scope === 'admin' ? fetchAdminDocsEntryDownloadUrl : fetchClientDocsEntryDownloadUrl
+                        const result = await getDownloadUrl(doc.docs_entry_id)
                         const link = document.createElement('a')
                         link.href = result.download_url
                         link.target = '_blank'
@@ -300,7 +340,7 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
                       <div className="flex shrink-0 gap-2">
                         <button type="button" disabled={busy} onClick={() => setDeleteId(null)}>취소</button>
                         <button type="button" disabled={busy} className="text-rose-700" onClick={() => void mutate(async () => {
-                          await deleteTaskItemFile('admin', companyId, boardId, item.id, doc.docs_entry_id)
+                          await deleteTaskItemFile(scope, companyId, boardId, item.id, doc.docs_entry_id)
                           setDeleteId(null)
                           return true
                         })}>삭제 확인</button>
@@ -314,6 +354,10 @@ export default function TaskWorkPanel({ companyId, companyName, boardId, month, 
               </ul>
 
               {completionButton('mt-5')}
+              {!statementReadOnly && (
+                <TaskWorkGuide taskName={item.task_name} mode={mode}
+                  sourceName={linked ? item.source_task_name || '원본 업무' : undefined} attributionMonth={month} />
+              )}
             </>
           )}
           </>}

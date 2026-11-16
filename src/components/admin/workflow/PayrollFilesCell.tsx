@@ -35,6 +35,7 @@ type StatusChange = 'done' | 'from_files' | 'in_progress'
 export default function PayrollFilesCell({ companyId, companyName, boardId, itemId, fileCount, disabled, withholdingFiling = false, status, completedAt, upload, onChanged }: Props) {
   const { confirm } = useConfirmDialog()
   const input = useRef<HTMLInputElement>(null)
+  const mutating = useRef(false)
   const [docs, setDocs] = useState<TaskItemDocLink[] | null>(null)
   const [pendingStatus, setPendingStatus] = useState<StatusChange | null>(null)
   const [uploadFailure, setUploadFailure] = useState<string | null>(null)
@@ -61,9 +62,10 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
   const canEdit = !disabled && !busy
 
   const mutate = async (action: () => Promise<{ changed: boolean; ok: boolean }>) => {
-    if (!canEdit || workflowCompletionSave.pending) return
+    if (!canEdit || mutating.current) return
+    mutating.current = true
     setBusy(true)
-    const request = Promise.resolve().then(action).then(({ changed, ok }) => {
+    const request = Promise.resolve(workflowCompletionSave.pending).then(action).then(({ changed, ok }) => {
       if (changed) {
         setRevision(value => value + 1)
         onChanged()
@@ -73,7 +75,8 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
       toast.error(getTaskBoardErrorMessage(error))
       return false
     }).finally(() => {
-      workflowCompletionSave.pending = null
+      if (workflowCompletionSave.pending === request) workflowCompletionSave.pending = null
+      mutating.current = false
       setBusy(false)
     })
     workflowCompletionSave.pending = request
