@@ -4,6 +4,7 @@ import type { StatementTrackingChange, TaskBoardStatement, TaskItemStatus } from
 interface Props {
   statement: TaskBoardStatement
   label: string
+  pendingLabel: string
   disabled: boolean
   onSave: (change: StatementTrackingChange) => Promise<boolean>
 }
@@ -19,7 +20,7 @@ const statusColors = {
   na: 'border-zinc-200 bg-zinc-50 text-zinc-600',
 }
 
-export default function StatementTrackingControls({ statement, label, disabled, onSave }: Props) {
+export default function StatementTrackingControls({ statement, label, pendingLabel, disabled, onSave }: Props) {
   const savedStatus = statement.work_status ?? (statement.status === 'submitted' ? 'done' : 'not_started')
   const savedDate = statement.processed_on ?? ''
   const [date, setDate] = useState(savedDate)
@@ -61,7 +62,7 @@ export default function StatementTrackingControls({ statement, label, disabled, 
         value={savedStatus}
         onChange={event => changeStatus(event.target.value as TaskItemStatus)}
       >
-        <option value="not_started">{statement.status === 'review' ? '대상 확인' : '미제출'}</option>
+        <option value="not_started">{pendingLabel}</option>
         <option value="in_progress">진행중</option>
         <option value="done">완료</option>
         <option value="na">해당없음</option>

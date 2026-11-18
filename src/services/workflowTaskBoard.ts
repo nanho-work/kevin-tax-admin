@@ -33,7 +33,7 @@ export interface TaskBoardStatement {
 }
 
 export type DailyWorkPresence = 'unknown' | 'yes' | 'no'
-export type StatementIncomeKind = 'business' | 'other' | 'interest' | 'dividend'
+export type StatementIncomeKind = 'wage' | 'business' | 'retirement' | 'other' | 'daily' | 'interest' | 'dividend'
 
 interface StatementBoardMonth {
   attribution_month: string
@@ -46,11 +46,14 @@ export interface StatementTrackingChange {
 }
 
 export interface TaskBoardListItem {
+  wage_income_presence?: DailyWorkPresence | null
   daily_work_presence?: DailyWorkPresence | null
+  previous_income_checks?: StatementIncomeKind[]
   business_income_presence?: DailyWorkPresence | null
   other_income_presence?: DailyWorkPresence | null
   interest_income_presence?: DailyWorkPresence | null
   dividend_income_presence?: DailyWorkPresence | null
+  retirement_income_presence?: DailyWorkPresence | null
   default_version_id?: number | null
   company_id: number
   company_name: string
@@ -77,6 +80,10 @@ export interface TaskBoardListItem {
 export interface TaskBoardListResponse {
   targeting_version?: number
   statement_columns?: string[] | null
+  month_items?: Record<number, TaskBoardItem[]> | null
+  month_documents?: Record<number, TaskItemDocLink[]> | null
+  month_column_names?: { base: string[]; process: string[] } | null
+  earliest_registration_month?: string | null
   total: number
   page: number
   size: number
@@ -93,6 +100,8 @@ export interface TaskBoardListParams {
   incomplete_only?: boolean
   include_excluded?: boolean
   include_statement_tasks?: boolean
+  include_month_items?: boolean
+  all_rows?: boolean
   sort_by?: TaskBoardSortBy
   order?: TaskBoardSortOrder
   page?: number

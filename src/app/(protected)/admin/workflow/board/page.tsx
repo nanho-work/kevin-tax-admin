@@ -2,14 +2,12 @@
 
 import styles from './board.module.css'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { createSharedRequest } from '@/utils/sharedRequest'
 import { getAdminAccessToken, getClientAccessToken } from '@/services/http'
-import WithholdingNavigation from '@/components/admin/withholding33/WithholdingNavigation'
 import Link from 'next/link'
 
 import { getMonthlyWorkPeriod } from '@/utils/monthlyWorkProgress'
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, Trash2, X } from 'lucide-react'
+import { Fragment, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Link2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { workflowCompletionSave } from '@/utils/workflowCompletionSave'
 import { toast } from 'react-hot-toast'
@@ -42,7 +40,6 @@ import {
   patchTaskBoardExclude,
   patchTaskBoardExcludeByMonth,
   patchTaskBoardNote,
-  patchDailyWorkPresence,
   patchStatementIncome,
   patchStatementTracking,
   type StatementIncomeKind,
@@ -56,6 +53,8 @@ import {
   type TaskBoardItem,
   type TaskBoardKind,
   type TaskBoardListItem,
+  type TaskBoardListResponse,
+  type TaskItemDocLink,
   type TaskBoardScope,
   type TaskBoardSortBy,
   type TaskBoardSortOrder,
@@ -67,11 +66,7 @@ type CompanyKind = '법인' | '개인' | '미분류'
 type CustomColumn = { id: string; name: string }
 type ColumnCatalogItem = { id: string; name: string; templateId: number; sortOrder: number }
 type MajorColumn = { id: string; name: string }
-type ProcessDisplayColumn = MajorColumn & { heading?: string; statementKey?: string; incomeKind?: StatementIncomeKind }
-
-const STATEMENT_INCOME_COLUMNS: ProcessDisplayColumn[] = [
-  { id: 'statement-income-business', name: '사업소득 발생', incomeKind: 'business' },
-]
+type ProcessDisplayColumn = MajorColumn & { heading?: string; statementKey?: string }
 
 const WAGE_STATEMENT_NAME = '근로소득 간이지급명세서'
 const WAGE_STATEMENT_ALIASES = ['간이지급명세서(근로소득)']
@@ -145,7 +140,10 @@ function monthShift(value: string, delta: number): string {
 }
 
 const MONTHLY_INCOME_COLUMNS = [
-  { id: 'other-income-presence', name: '기타(인적용역)', kind: 'other', aliases: ['기타', '기타소득', '기타소득(인적용역)'] },
+  { id: 'wage-income-presence', name: '근로', kind: 'wage', aliases: ['근로소득'] },
+  { id: 'business-income-presence', name: '사업', kind: 'business', aliases: ['사업소득'] },
+  { id: 'retirement-income-presence', name: '퇴직', kind: 'retirement', aliases: ['퇴직소득'] },
+  { id: 'other-income-presence', name: '기타', kind: 'other', aliases: ['기타(인적용역)', '기타소득', '기타소득(인적용역)'] },
   { id: 'daily-work-presence', name: '일용', kind: 'daily', aliases: ['일용직', '일용근로', '일용근로소득'] },
   { id: 'interest-income-presence', name: '이자', kind: 'interest', aliases: ['이자소득'] },
   { id: 'dividend-income-presence', name: '배당', kind: 'dividend', aliases: ['배당소득'] },
@@ -193,6 +191,7 @@ export default function WorkflowBoardPage() {
   const { confirm } = useConfirmDialog()
 
   const [attributionMonth, setAttributionMonth] = useState(() => getMonthlyWorkPeriod().attribution)
+  const latestAttributionMonth = monthShift(getMonthlyWorkPeriod().report, 1)
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   const [includeExcluded, setIncludeExcluded] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState({ withholding: true, statements: false })
@@ -206,7 +205,9 @@ export default function WorkflowBoardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const month = params.get('attribution_month')
-    if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) setAttributionMonth(month)
+    if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      setAttributionMonth(month > latestAttributionMonth ? latestAttributionMonth : month)
+    }
     const company = params.get('q')
     if (company) setKeyword(company)
   }, [])
@@ -247,15 +248,18 @@ export default function WorkflowBoardPage() {
   const [listLoading, setListLoading] = useState(false)
   const [listLoaded, setListLoaded] = useState(false)
   const [listPeriod, setListPeriod] = useState('')
+  const [earliestRegistrationMonth, setEarliestRegistrationMonth] = useState<string | null>(null)
   const [baseCatalogReady, setBaseCatalogReady] = useState(false)
   const [processCatalogReady, setProcessCatalogReady] = useState(false)
   const [listReloadKey, setListReloadKey] = useState(0)
   const [completionRefreshKey, setCompletionRefreshKey] = useState(0)
   const completionRefreshQueued = useRef(false)
-  const lastLoadedListRequest = useRef('')
-  const quietListRows = useRef<TaskBoardListItem[] | null>(null)
+  const monthCache = useRef(new Map<string, TaskBoardListResponse>())
+  const displayedListRequest = useRef('')
+  const [monthItems, setMonthItems] = useState<Record<number, TaskBoardItem[]>>({})
+  const [monthDocuments, setMonthDocuments] = useState<Record<number, TaskItemDocLink[]>>({})
+  const [monthColumnNames, setMonthColumnNames] = useState<TaskBoardListResponse['month_column_names']>(null)
   const completionRevision = useRef(0)
-  const completionRevisionsByItem = useRef(new Map<number, number>())
 
   const [savedCustomColumns, setCustomColumns] = useState<CustomColumn[]>(() => seedCustomColumns())
   const [columnCatalog, setColumnCatalog] = useState<ColumnCatalogItem[]>(() => seedColumnCatalog())
@@ -287,11 +291,6 @@ export default function WorkflowBoardPage() {
   const editNoticeTimerRef = useRef<number | null>(null)
 
   const requestIdentity = scope === 'admin' ? getAdminAccessToken() : getClientAccessToken()
-  // A new generation after month changes or writes prevents stale completion/file data.
-  const loadSharedItems = useMemo(() => createSharedRequest((key: string) => {
-    const [companyId, boardId] = key.split(':').map(Number)
-    return listTaskBoardItems(scope, companyId, boardId)
-  }), [scope, attributionMonth, listReloadKey, requestIdentity, listRowsApi])
   const boardViewportRef = useRef<HTMLDivElement>(null)
   const [boardViewportHeight, setBoardViewportHeight] = useState<number>()
 
@@ -330,10 +329,9 @@ export default function WorkflowBoardPage() {
   const customColumns = useMemo<CustomColumn[]>(() =>
     columnCatalog.map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name })), [columnCatalog])
   const visibleBaseColumns = scope === 'admin' ? [
-    ...customColumns,
-    ...MONTHLY_INCOME_COLUMNS.filter(income => !customColumns.some(column => getMonthlyIncomeColumn(column.name) === income)),
+    ...MONTHLY_INCOME_COLUMNS.map(income => customColumns.find(column => getMonthlyIncomeColumn(column.name) === income) ?? income),
+    ...customColumns.filter(column => !getMonthlyIncomeColumn(column.name)),
   ] : customColumns
-  const [dailyWorkPending, setDailyWorkPending] = useState<Record<string, DailyWorkPresence>>({})
   const [statementIncomePending, setStatementIncomePending] = useState<Record<string, DailyWorkPresence>>({})
   const [targetModes, setTargetModes] = useState<Record<string, TaskTargetMode>>({})
   const [monthlyItems, setMonthlyItems] = useState<Record<string, TaskBoardItem>>({})
@@ -393,34 +391,10 @@ export default function WorkflowBoardPage() {
     return ids[0] ?? null
   }, [listRows])
 
-  const loadAllRowsForColumnBootstrap = useMemo(() => {
-    const read = createSharedRequest(async (_key: string): Promise<TaskBoardListItem[]> => {
-    const merged: TaskBoardListItem[] = []
-    const size = 100
-    let page = 1
-    let total = 0
-
-    do {
-      const res = await listTaskBoards(scope, {
-        attribution_month: attributionMonth,
-        report_month: reportMonth,
-        kind: 'all',
-        include_excluded: true,
-        incomplete_only: false,
-        page,
-        size,
-      })
-      const items = res.items || []
-      merged.push(...items)
-      total = Number(res.total || 0)
-      page += 1
-      if (items.length === 0) break
-    } while (merged.length < total)
-
-    return merged
-    })
-    return () => read('columns')
-  }, [scope, attributionMonth, reportMonth, listReloadKey, requestIdentity, listRowsApi])
+  const loadAllRowsForDefaultsImport = async () => (await listTaskBoards(scope, {
+    attribution_month: attributionMonth, report_month: reportMonth, kind: 'all',
+    include_excluded: true, all_rows: true,
+  })).items
 
   const assignees = useMemo<AssigneeOption[]>(() => {
     const map = new Map<number, string>()
@@ -485,7 +459,7 @@ export default function WorkflowBoardPage() {
       label: '지급명세서 업무',
       shortLabel: '지',
       fallbackTitle: '표시할 업무 없음',
-      columns: [...STATEMENT_INCOME_COLUMNS, ...statementColumns],
+      columns: statementColumns,
       expanded: expandedGroups.statements,
     }] : []),
   ]
@@ -516,76 +490,98 @@ export default function WorkflowBoardPage() {
     setListPage(1)
   }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder])
 
+  const listRequest = JSON.stringify([
+    scope, requestIdentity, attributionMonth, reportMonth, deferredKeyword,
+    kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, pageSize,
+  ])
+
+  const applyMonthResponse = useCallback((response: TaskBoardListResponse, month: string) => {
+    setTargetingReady(response.targeting_version === 1)
+    setListPeriod(month)
+    setStatementColumnKeys(response.statement_columns ?? null)
+    setMonthItems(response.month_items ?? {})
+    setMonthDocuments(response.month_documents ?? {})
+    setMonthColumnNames(response.month_column_names)
+    setEarliestRegistrationMonth(response.earliest_registration_month ?? null)
+    setListRowsApi(response.items)
+    setListTotal(response.total)
+    setListLoaded(true)
+    setCheckError('')
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!preferenceReady || displayedListRequest.current === listRequest) return
+    const cached = monthCache.current.get(listRequest)
+    if (cached) {
+      displayedListRequest.current = listRequest
+      applyMonthResponse(cached, attributionMonth)
+      setListLoading(false)
+    }
+  }, [applyMonthResponse, attributionMonth, listRequest, preferenceReady])
+
   useEffect(() => {
     let cancelled = false
     if (!preferenceReady) return
-    const request = JSON.stringify([scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId,
-      incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, requestIdentity])
-    const background = lastLoadedListRequest.current === request
-    const revision = completionRevision.current
+    const background = displayedListRequest.current === listRequest
     const loadList = async () => {
+      if (!background) setListLoading(true)
       try {
-        if (!background) setListLoading(true)
-        const effectiveQuery = deferredKeyword.trim() || undefined
-        const effectiveKind: TaskBoardKind = kindFilter
-        const effectiveAssigneeId = assigneeFilterId !== 'all' ? Number(assigneeFilterId) : undefined
-        const effectiveIncompleteOnly = incompleteOnly
-        const effectiveIncludeExcluded = includeExcluded
-        const effectiveSortBy = sortBy
-        const effectiveSortOrder = sortOrder
+        await workflowCompletionSave.pending
+        if (cancelled) return
+        const revision = completionRevision.current
         const loadAll = pageSize === 'all'
-        const effectivePage = loadAll ? 1 : listPage
-        const effectiveSize = loadAll ? TASK_BOARD_EDIT_PAGE_SIZE : Number(pageSize)
-        const params = {
+        const response = await listTaskBoards(scope, {
           attribution_month: attributionMonth,
           report_month: reportMonth,
-          q: effectiveQuery,
-          kind: effectiveKind,
-          assignee_id: effectiveAssigneeId,
-          incomplete_only: effectiveIncompleteOnly,
-          include_excluded: effectiveIncludeExcluded,
+          q: deferredKeyword.trim() || undefined,
+          kind: kindFilter,
+          assignee_id: assigneeFilterId !== 'all' ? Number(assigneeFilterId) : undefined,
+          incomplete_only: incompleteOnly,
+          include_excluded: includeExcluded,
           include_statement_tasks: scope === 'admin' || undefined,
-          sort_by: effectiveSortBy,
-          order: effectiveSortOrder,
-          page: effectivePage,
-          size: effectiveSize,
-        }
-        const res = await listTaskBoards(scope, params)
-        const items = [...(res.items || [])]
-        if (loadAll) {
-          for (let page = 2; items.length < res.total; page += 1) {
-            if (cancelled) return
-            const next = await listTaskBoards(scope, { ...params, page })
-            if (!next.items.length) break
-            items.push(...next.items)
-          }
-        }
+          include_month_items: true,
+          all_rows: loadAll || undefined,
+          sort_by: sortBy,
+          order: sortOrder,
+          page: loadAll ? 1 : listPage,
+          size: loadAll ? TASK_BOARD_EDIT_PAGE_SIZE : Number(pageSize),
+        })
         if (cancelled || (background && completionRevision.current !== revision)) return
-        lastLoadedListRequest.current = request
-        quietListRows.current = background ? items : null
-        setTargetingReady(res.targeting_version === 1)
-        setListPeriod(attributionMonth)
-        setStatementColumnKeys(res.statement_columns ?? null)
-        setListRowsApi(items)
-        setListTotal(Number(res.total || 0))
-        setListLoaded(true)
+        if (!response.month_items || !response.month_column_names) {
+          throw new Error('서버에 월별 업무표 변경 사항을 배포한 후 다시 불러와 주세요.')
+        }
+        const cache = monthCache.current
+        cache.delete(listRequest)
+        cache.set(listRequest, response)
+        const oldest = cache.keys().next()
+        if (cache.size > 12 && !oldest.done) cache.delete(oldest.value)
+        displayedListRequest.current = listRequest
+        applyMonthResponse(response, attributionMonth)
       } catch (error) {
-        if (cancelled || background) return
-        setListPeriod('')
-        setListRowsApi([])
-        setStatementColumnKeys(null)
-        setListTotal(0)
-        setListLoaded(true)
-        toast.error(getTaskBoardErrorMessage(error))
+        if (cancelled) return
+        if (!background) {
+          displayedListRequest.current = ''
+          setListPeriod('')
+          setListRowsApi([])
+          setMonthItems({})
+          setMonthDocuments({})
+          setMonthColumnNames(null)
+          setStatementColumnKeys(null)
+          setListTotal(0)
+          setListLoaded(true)
+          toast.error(getTaskBoardErrorMessage(error))
+        } else {
+          setCheckError('최신 업무표를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.')
+        }
       } finally {
         if (!cancelled && !background) setListLoading(false)
       }
     }
     void loadList()
-    return () => {
-      cancelled = true
-    }
-  }, [scope, attributionMonth, reportMonth, deferredKeyword, kindFilter, assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey, pageSize, preferenceReady, requestIdentity, completionRefreshKey])
+    return () => { cancelled = true }
+  }, [applyMonthResponse, listRequest, scope, attributionMonth, reportMonth, deferredKeyword, kindFilter,
+    assigneeFilterId, incompleteOnly, includeExcluded, sortBy, sortOrder, listPage, listReloadKey,
+    pageSize, preferenceReady, completionRefreshKey])
 
   useEffect(() => {
     let cancelled = false
@@ -665,182 +661,68 @@ export default function WorkflowBoardPage() {
     setPendingMajorSelection((prev) => prev.filter((id) => validIds.includes(id)))
   }, [processTemplateCatalog])
 
-  useEffect(() => {
-    let cancelled = false
-    const bootstrapColumnsFromSavedItems = async () => {
-      if (!columnCatalog.length && !processTemplateCatalog.length) return
-      const allRows = await loadAllRowsForColumnBootstrap()
-      if (cancelled) return
-      const rowsWithBoard = allRows.filter((row) => row.board_id)
-      if (!rowsWithBoard.length) {
-        if (cancelled) return
-        setCustomColumns([])
-        setSelectedMajorTemplateIds([])
-        return
+  useLayoutEffect(() => {
+    if (listPeriod !== attributionMonth || !monthColumnNames) return
+    const baseNames = new Set(monthColumnNames.base.map(normalizeText))
+    const processNames = new Set(monthColumnNames.process.map(normalizeText))
+    setCustomColumns(columnCatalog
+      .filter(item => baseNames.has(normalizeText(item.name)))
+      .map(item => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name })))
+    setSelectedMajorTemplateIds(processTemplateCatalog
+      .filter(item => processNames.has(normalizeText(item.name)))
+      .map(item => item.id))
+  }, [attributionMonth, listPeriod, monthColumnNames, columnCatalog, processTemplateCatalog])
+
+  useLayoutEffect(() => {
+    if (listPeriod !== attributionMonth) return
+    const nextModes: Record<string, TaskTargetMode> = {}
+    const nextItems: Record<string, TaskBoardItem> = {}
+    const nextColumnChecks: Record<string, boolean> = {}
+    const nextMajorChecks: Record<string, boolean> = {}
+
+    for (const row of listRowsApi) {
+      const itemsByName = new Map((monthItems[row.board_id ?? -1] ?? []).map(item => [normalizeText(item.task_name), item]))
+      for (const [name, item] of itemsByName) nextItems[`${row.company_id}:${name}`] = item
+      for (const column of customColumns) {
+        const item = itemsByName.get(normalizeText(column.name))
+        nextColumnChecks[getColumnCheckKey(row.company_id, column.id)] = Boolean(item && item.target_active !== false && item.status !== 'na')
       }
-
-      const selectedBaseTaskNormNames = new Set<string>()
-      const selectedProcessTaskNormNames = new Set<string>()
-      await Promise.all(
-        rowsWithBoard.map(async (row) => {
-          try {
-            const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
-            ;(res.items || []).forEach((item) => {
-              const normName = normalizeText(item.task_name || '')
-              if (!normName) return
-              const kind = item.template_kind_snapshot ?? 'process'
-              if (kind === 'base') {
-                selectedBaseTaskNormNames.add(normName)
-              } else {
-                selectedProcessTaskNormNames.add(normName)
-              }
-            })
-          } catch {
-            // noop
-          }
-        })
-      )
-
-      if (cancelled) return
-
-      const nextColumns = columnCatalog
-        .filter((item) => selectedBaseTaskNormNames.has(normalizeText(item.name)))
-        .map((item) => ({ id: `${TEMPLATE_COLUMN_PREFIX}${item.templateId}`, name: item.name }))
-      setCustomColumns(nextColumns)
-
-      const nextMajorTemplateIds = processTemplateCatalog
-        .filter((item) => selectedProcessTaskNormNames.has(normalizeText(item.name)))
-        .sort((a, b) => (a.sortOrder === b.sortOrder ? a.name.localeCompare(b.name, 'ko') : a.sortOrder - b.sortOrder))
-        .map((item) => item.id)
-      setSelectedMajorTemplateIds(nextMajorTemplateIds)
+      for (const column of majorColumns) {
+        const key = getMajorCheckKey(row.company_id, column.id)
+        const item = itemsByName.get(normalizeText(column.name))
+        nextMajorChecks[key] = Boolean(item && item.target_active !== false && item.status !== 'na')
+        nextModes[key] = item?.target_mode ?? 'auto'
+      }
     }
-    void bootstrapColumnsFromSavedItems()
-    return () => {
-      cancelled = true
-    }
-  }, [columnCatalog, processTemplateCatalog, loadAllRowsForColumnBootstrap, loadSharedItems])
+
+    const preserveDirty = <T,>(previous: Record<string, T>, next: Record<string, T>) => ({
+      ...next,
+      ...Object.fromEntries(Object.entries(previous).filter(([key]) => dirtyCompanies.current.has(Number(key.split(':')[0])))),
+    })
+    setTargetModes(previous => preserveDirty(previous, nextModes))
+    setMonthlyItems(nextItems)
+    setCompanyColumnChecks(previous => preserveDirty(previous, nextColumnChecks))
+    setCompanyMajorChecks(previous => preserveDirty(previous, nextMajorChecks))
+    setChecksMonth(attributionMonth)
+    setChecksReady(true)
+  }, [attributionMonth, listPeriod, listRowsApi, monthItems, customColumns, majorColumns])
 
   useEffect(() => {
-    let cancelled = false
-    const background = quietListRows.current === listRowsApi
-    const revision = completionRevision.current
-    const hydrateChecklistChecksFromSavedItems = async () => {
-      if (!background) {
-        setChecksReady(false)
-        setCheckError('')
+    if (listPeriod !== attributionMonth || !processTemplateCatalog.length) return
+    const sourceByTaskNorm = new Map<string, string>()
+    for (const row of listRowsApi) {
+      for (const item of monthItems[row.board_id ?? -1] ?? []) {
+        const task = normalizeText(item.task_name)
+        const source = item.source_task_name?.trim()
+        if (task && source && !sourceByTaskNorm.has(task)) sourceByTaskNorm.set(task, source)
       }
-      if (listPeriod !== attributionMonth) return
-      let failed = false
-
-      const nextModes: Record<string, TaskTargetMode> = {}
-      const nextItems: Record<string, TaskBoardItem> = {}
-      const nextColumnChecks: Record<string, boolean> = {}
-      const nextMajorChecks: Record<string, boolean> = {}
-      listRowsApi.forEach((row) => {
-        customColumns.forEach((column) => {
-          nextColumnChecks[getColumnCheckKey(row.company_id, column.id)] = false
-        })
-        majorColumns.forEach((column) => {
-          nextMajorChecks[getMajorCheckKey(row.company_id, column.id)] = false
-        })
-      })
-
-      await Promise.all(
-        listRowsApi
-          .filter((row) => row.board_id)
-          .map(async (row) => {
-            try {
-              const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
-              const selectedTaskNormNames = new Set<string>()
-              ;(res.items || []).forEach((item) => {
-                const normName = normalizeText(item.task_name || '')
-                if (normName) {
-                  nextItems[`${row.company_id}:${normName}`] = item
-                  if (item.target_active !== false && item.status !== 'na') selectedTaskNormNames.add(normName)
-                }
-              })
-              customColumns.forEach((column) => {
-                nextColumnChecks[getColumnCheckKey(row.company_id, column.id)] = selectedTaskNormNames.has(normalizeText(column.name))
-              })
-              majorColumns.forEach((column) => {
-                const key = getMajorCheckKey(row.company_id, column.id)
-                const norm = normalizeText(column.name)
-                nextMajorChecks[key] = selectedTaskNormNames.has(norm)
-                nextModes[key] = nextItems[`${row.company_id}:${norm}`]?.target_mode ?? 'auto'
-              })
-            } catch {
-              failed = true
-            }
-          })
-      )
-
-      if (cancelled) return
-      if (failed) {
-        if (!background) setCheckError('업무 선택 상태를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. 저장은 차단됩니다.')
-        return
-      }
-      setTargetModes(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextModes).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
-      setMonthlyItems(previous => {
-        const merged = { ...previous }
-        for (const [key, item] of Object.entries(nextItems)) {
-          // A status saved after this read started is newer than its response.
-          if ((completionRevisionsByItem.current.get(item.id) ?? 0) > revision && previous[key]?.id === item.id) continue
-          merged[key] = item
-        }
-        return merged
-      })
-      setChecksMonth(attributionMonth)
-      setChecksReady(true)
-      setCompanyColumnChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextColumnChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
-      setCompanyMajorChecks(prev => ({ ...prev, ...Object.fromEntries(Object.entries(nextMajorChecks).filter(([key]) => !dirtyCompanies.current.has(Number(key.split(':')[0])))) }))
     }
-    void hydrateChecklistChecksFromSavedItems()
-    return () => {
-      cancelled = true
-    }
-  }, [scope, attributionMonth, listPeriod, listRowsApi, customColumns, majorColumns, loadSharedItems])
-
-  useEffect(() => {
-    let cancelled = false
-    const hydrateProcessSourceFromSavedItems = async () => {
-      if (listPeriod !== attributionMonth) return
-      if (!processTemplateCatalog.length || !listRowsApi.length) return
-      const rowsWithBoard = listRowsApi.filter((row) => row.board_id)
-      if (!rowsWithBoard.length) return
-
-      const sourceByTaskNorm = new Map<string, string>()
-      await Promise.all(
-        rowsWithBoard.map(async (row) => {
-          try {
-            const res = await loadSharedItems(`${row.company_id}:${row.board_id}`)
-            ;(res.items || []).forEach((item) => {
-              const taskNorm = normalizeText(item.task_name || '')
-              const source = item.source_task_name?.trim()
-              if (!taskNorm || !source) return
-              if (!sourceByTaskNorm.has(taskNorm)) {
-                sourceByTaskNorm.set(taskNorm, source)
-              }
-            })
-          } catch {
-            // noop
-          }
-        })
-      )
-
-      if (cancelled || sourceByTaskNorm.size === 0) return
-      setProcessTemplateCatalog((prev) =>
-        prev.map((item) => {
-          const source = sourceByTaskNorm.get(normalizeText(item.name))
-          if (!source) return item
-          return { ...item, sourceTaskName: source }
-        })
-      )
-    }
-    void hydrateProcessSourceFromSavedItems()
-    return () => {
-      cancelled = true
-    }
-  }, [scope, listRowsApi, processTemplateCatalog.length, loadSharedItems, listPeriod, attributionMonth])
+    if (!sourceByTaskNorm.size) return
+    setProcessTemplateCatalog(previous => previous.map(item => {
+      const source = sourceByTaskNorm.get(normalizeText(item.name))
+      return source && source !== item.sourceTaskName ? { ...item, sourceTaskName: source } : item
+    }))
+  }, [attributionMonth, listPeriod, listRowsApi, monthItems, processTemplateCatalog.length])
 
   const renderStatus = (status: TaskItemStatus) => (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[status]}`}>
@@ -853,6 +735,22 @@ export default function WorkflowBoardPage() {
     if (percent >= 100) return 'bg-emerald-600'
     if (percent >= 60) return 'bg-emerald-500'
     return 'bg-emerald-300'
+  }
+
+  useLayoutEffect(() => {
+    if (attributionMonth > latestAttributionMonth) {
+      setListPage(1)
+      setAttributionMonth(latestAttributionMonth)
+    } else if (earliestRegistrationMonth && earliestRegistrationMonth <= latestAttributionMonth && attributionMonth < earliestRegistrationMonth) {
+      setListPage(1)
+      setAttributionMonth(earliestRegistrationMonth)
+    }
+  }, [attributionMonth, earliestRegistrationMonth, latestAttributionMonth])
+
+  const changeBoardMonth = (month: string) => {
+    if (month > latestAttributionMonth || (earliestRegistrationMonth && month < earliestRegistrationMonth)) return
+    setListPage(1)
+    setAttributionMonth(month)
   }
 
   const handleToggleSort = (field: TaskBoardSortBy) => {
@@ -893,39 +791,6 @@ export default function WorkflowBoardPage() {
     refreshWhenIdle()
   }
 
-  const saveDailyWorkPresence = (row: TaskBoardListItem, value: DailyWorkPresence) => {
-    const key = `${attributionMonth}:${row.company_id}`
-    if (checklistBlocked || row.is_excluded || dailyWorkPending[key] !== undefined) return
-    setDailyWorkPending(previous => ({ ...previous, [key]: value }))
-    const save = Promise.resolve(workflowCompletionSave.pending).then(async () => {
-      try {
-        await patchDailyWorkPresence(row.company_id, {
-          attribution_month: attributionMonth,
-          report_month: reportMonth,
-          daily_work_presence: value,
-        })
-        if (visibleNotePeriod.current === notePeriod) {
-          setListRowsApi(rows => rows.map(item => item.company_id === row.company_id
-            ? { ...item, daily_work_presence: value } : item))
-          if (value === 'yes') setExpandedGroups(previous => ({ ...previous, statements: true }))
-        }
-        refreshAfterCompletion()
-        return true
-      } catch (error) {
-        toast.error(getTaskBoardErrorMessage(error))
-        return false
-      } finally {
-        setDailyWorkPending(previous => {
-          const next = { ...previous }
-          delete next[key]
-          return next
-        })
-        if (workflowCompletionSave.pending === save) workflowCompletionSave.pending = null
-      }
-    })
-    workflowCompletionSave.pending = save
-  }
-
   const queueStatementSave = (update: () => Promise<void>) => {
     const save = Promise.resolve(workflowCompletionSave.pending).then(async () => {
       try {
@@ -952,7 +817,7 @@ export default function WorkflowBoardPage() {
         income_kind: kind, presence: value, attribution_month: attributionMonth, report_month: reportMonth,
       })
       if (visibleNotePeriod.current === notePeriod) {
-        const field = `${kind}_income_presence`
+        const field = kind === 'daily' ? 'daily_work_presence' : `${kind}_income_presence`
         setListRowsApi(rows => rows.map(item => item.company_id === row.company_id
           ? { ...item, [field]: value } : item))
       }
@@ -962,32 +827,6 @@ export default function WorkflowBoardPage() {
       delete next[key]
       return next
     })
-  }
-
-  const renderIncomePresence = (row: TaskBoardListItem, kind: StatementIncomeKind | 'daily', name: string) => {
-    const key = `${attributionMonth}:${row.company_id}`
-    const pending = kind === 'daily' ? dailyWorkPending[key] : statementIncomePending[`${key}:${kind}`]
-    const saved = kind === 'daily' ? row.daily_work_presence : row[`${kind}_income_presence`]
-    const value = pending ?? saved ?? 'unknown'
-    return (
-      <select
-        aria-label={`${row.company_name} 이번 달 ${name} 여부`}
-        value={value}
-        disabled={checklistBlocked || isEditMode || pending !== undefined}
-        onChange={event => {
-          const presence = event.target.value as DailyWorkPresence
-          if (kind === 'daily') saveDailyWorkPresence(row, presence)
-          else void saveStatementIncome(row, kind, presence)
-        }}
-        className={`h-7 rounded border px-0.5 text-[10px] font-medium ${value === 'yes'
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-          : 'border-zinc-200 bg-white text-zinc-600'}`}
-      >
-        <option value="unknown">미확인</option>
-        <option value="yes">있음</option>
-        <option value="no">없음</option>
-      </select>
-    )
   }
 
   const saveStatementTracking = (row: TaskBoardListItem, statement: TaskBoardStatement, change: StatementTrackingChange) => {
@@ -1410,7 +1249,7 @@ export default function WorkflowBoardPage() {
     if (scope !== 'admin' || !isEditMode || row?.is_excluded || checklistBlocked || workflowCompletionSave.pending) return
     setImportingDefaultsFor(row?.company_id ?? 'all')
     try {
-      const rows = row ? [row] : await loadAllRowsForColumnBootstrap()
+      const rows = row ? [row] : await loadAllRowsForDefaultsImport()
       const companies = [...new Map(rows.filter(item => !item.is_excluded).map(item => [
         item.company_id, { companyId: item.company_id, companyName: item.company_name },
       ])).values()]
@@ -1547,6 +1386,7 @@ export default function WorkflowBoardPage() {
   const openTaskPanel = (row: TaskBoardListItem, itemId?: number, delivery?: {
     payrollDelivery: boolean; withholdingDelivery: boolean
   }) => {
+    if (listPeriod !== attributionMonth) return
     const request = ++panelOpenRequest.current
     const open = (boardId: number) => setQuickWork({
       companyId: row.company_id, companyName: row.company_name, boardId, itemId, month: attributionMonth,
@@ -1585,7 +1425,7 @@ export default function WorkflowBoardPage() {
     const save = Promise.resolve(previousSave).then(async () => {
       try {
         const saved = await saveTaskStatus(row.company_id, row.board_id!, item.id, status, item)
-        completionRevisionsByItem.current.set(item.id, ++completionRevision.current)
+        completionRevision.current += 1
         if (scope === 'admin' && saved.status === 'done' && item.template_kind_snapshot === 'base'
           && ['일용', '일용직', '일용근로', '일용근로소득'].includes(normalizeText(column.name))) {
           setExpandedGroups(previous => ({ ...previous, statements: true }))
@@ -1745,30 +1585,30 @@ export default function WorkflowBoardPage() {
 
   return (
     <div ref={boardViewportRef} className={styles.viewport} style={{ height: boardViewportHeight }}>
-      {scope === 'admin' && <WithholdingNavigation active="board" />}
         <section className={styles.listSection}>
           <header className="space-y-2 border-b border-zinc-200 pb-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-1">
-                <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, -1))}>
+                <UiButton size="iconSm" variant="secondary" disabled={isEditMode || !listLoaded || Boolean(earliestRegistrationMonth && attributionMonth <= earliestRegistrationMonth)} onClick={() => changeBoardMonth(monthShift(attributionMonth, -1))}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </UiButton>
                 {scope === 'admin' ? <Popover>
-                  <PopoverButton disabled={isEditMode} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-60">
+                  <PopoverButton disabled={isEditMode || !listLoaded} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-60">
                     귀속월 {attributionMonth}<ChevronDown aria-hidden="true" className="h-3 w-3" />
                   </PopoverButton>
                   <PopoverPanel anchor="bottom" className="z-50 max-h-60 w-36 overflow-y-auto overscroll-contain rounded-lg border border-zinc-200 bg-white p-1 shadow-lg [--anchor-gap:4px]">
-                    {({ close }) => <>{Array.from({ length: 241 }, (_, index) => monthShift(attributionMonth, index - 120)).map(month => (
+                    {({ close }) => <>{Array.from({ length: 241 }, (_, index) => monthShift(attributionMonth, 120 - index))
+                      .filter(month => month <= latestAttributionMonth && (!earliestRegistrationMonth || month >= earliestRegistrationMonth)).map(month => (
                       <button key={month} type="button" aria-current={month === attributionMonth ? 'date' : undefined}
                         ref={element => { if (element && month === attributionMonth) element.parentElement?.scrollTo({ top: element.offsetTop - element.parentElement.clientHeight / 2 + element.clientHeight / 2 }) }}
-                        onClick={() => { setAttributionMonth(month); close() }}
+                        onClick={() => { changeBoardMonth(month); close() }}
                         className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-sky-50 ${month === attributionMonth ? 'bg-sky-100 font-semibold text-sky-800' : 'text-zinc-700'}`}>
                         {month}
                       </button>
                     ))}</>}
                   </PopoverPanel>
                 </Popover> : <span className="text-xs font-semibold text-zinc-700">귀속월 {attributionMonth}</span>}
-                <UiButton size="iconSm" variant="secondary" disabled={isEditMode} onClick={() => setAttributionMonth((prev) => monthShift(prev, 1))}>
+                <UiButton size="iconSm" variant="secondary" disabled={isEditMode || attributionMonth >= latestAttributionMonth} onClick={() => changeBoardMonth(monthShift(attributionMonth, 1))}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </UiButton>
                 <span className="ml-2 text-xs text-zinc-500">신고월 {reportMonth}</span>
@@ -1906,7 +1746,8 @@ export default function WorkflowBoardPage() {
           {!listLoading && listLoaded && !targetingReady && (
             <p role="alert" className="text-xs text-amber-700">대상 설정 기능은 SQL 적용 및 서버 업데이트 후 사용할 수 있습니다. 현재는 조회만 가능합니다.</p>
           )}
-          <div className={styles.tableScroller} tabIndex={0} role="region" aria-label="원천세 업무 목록">
+          <div className={styles.tableFrame}>
+          <div className={styles.tableScroller} tabIndex={0} role="region" aria-label="원천세 업무 목록" aria-busy={listLoading}>
             <table className={styles.table}>
               <thead className={groupedHeaders ? styles.groupedHeader : 'bg-zinc-100 text-zinc-700'}>
                 <tr>
@@ -1949,7 +1790,7 @@ export default function WorkflowBoardPage() {
                   </th>
                   {groupedHeaders ? (
                     <>
-                      <th colSpan={baseColumnCount} className={styles.groupHeading}>기준업무</th>
+                      <th colSpan={baseColumnCount} className={styles.groupHeading}>소득확인</th>
                       {processGroups.map(group => (
                         <th key={group.key}
                           colSpan={group.expanded ? Math.max(1, group.columns.length) : 1}
@@ -2046,7 +1887,9 @@ export default function WorkflowBoardPage() {
                         >
                           {row.company_name}
                         </button>
-                        <span className="block text-[10px] text-zinc-400">{row.default_version_id ? `기본 설정 v${row.default_version_id} · 월별 수정 가능` : '기존 월별 설정'}</span>
+                        {row.default_version_id && (
+                          <span className="block text-[10px] text-zinc-400">기본 설정 v{row.default_version_id} · 월별 수정 가능</span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5 text-center text-zinc-600">
                         <span className="block whitespace-nowrap" title={row.assignee_name || '담당자 미지정'}>
@@ -2122,15 +1965,33 @@ export default function WorkflowBoardPage() {
                         const saving = item != null && pendingCompletion[item.id] !== undefined
                         const done = isListItemDone(item)
                         const income = scope === 'admin' ? getMonthlyIncomeColumn(column.name) : undefined
+                        const pendingIncome = income ? statementIncomePending[`${attributionMonth}:${row.company_id}:${income.kind}`] : undefined
+                        const savedIncome = income?.kind === 'daily' ? row.daily_work_presence
+                          : income ? row[`${income.kind}_income_presence`] : null
+                        const incomeConfirmed = (pendingIncome ?? savedIncome) === 'yes'
+                        const previousConfirmed = Boolean(income && row.previous_income_checks?.includes(income.kind))
+                        const incomeCellColor = !income || isEditMode || row.is_excluded ? ''
+                          : incomeConfirmed ? 'bg-emerald-50' : previousConfirmed ? 'bg-amber-50' : ''
                         return (
                           <td
                             key={`${row.company_id}:${column.id}`}
-                            className={`${styles.baseTaskColumn} py-2 text-center`}
+                            className={`${styles.baseTaskColumn} py-2 text-center ${incomeCellColor}`}
                           >
                             {row.is_excluded ? (
                               <span aria-label="해당 없음" title="해당 없음" className="text-zinc-400">–</span>
                             ) : income && !isEditMode ? (
-                              renderIncomePresence(row, income.kind, income.name)
+                              <button
+                                type="button"
+                                aria-label={`${row.company_name} 이번 달 ${income.name} 확인`}
+                                aria-pressed={incomeConfirmed}
+                                aria-busy={pendingIncome !== undefined}
+                                disabled={checklistBlocked || pendingIncome !== undefined}
+                                title={incomeConfirmed ? '확인 취소' : previousConfirmed ? '전월에 확인됨 · 이번 달 확인' : '이번 달 확인'}
+                                className={`inline-flex h-7 min-w-7 items-center justify-center rounded text-sm font-semibold enabled:hover:bg-black/5 focus-visible:outline focus-visible:outline-sky-600 disabled:opacity-60 ${incomeConfirmed ? 'text-emerald-700' : 'text-zinc-500'}`}
+                                onClick={() => void saveStatementIncome(row, income.kind, incomeConfirmed ? 'no' : 'yes')}
+                              >
+                                {incomeConfirmed ? 'O' : '–'}
+                              </button>
                             ) : column.id === income?.id ? (
                               <span className="text-zinc-400">–</span>
                             ) : isEditMode ? (
@@ -2190,36 +2051,49 @@ export default function WorkflowBoardPage() {
                               <td className="px-1 py-1.5 text-center text-zinc-700">{row.is_excluded ? '-' : row.todo_count}</td>
                             </>
                           )}
-                          {processGroups.map(group => (
+                          {processGroups.map(group => {
+                            const canShowCompletion = groupedHeaders && !isEditMode && !row.is_excluded
+                            const applicableColumns = canShowCompletion && group.key === 'withholding'
+                              ? group.columns.filter(column => isProcessTarget(row, column)) : []
+                            const applicableStatements = canShowCompletion && group.key === 'statements' && statementColumnKeys !== null
+                              ? row.statement_tasks?.filter(task => task.work_status !== 'na' && visibleStatementKeys.has(task.key)) ?? []
+                              : []
+                            const groupDone = group.key === 'withholding'
+                              ? applicableColumns.length > 0 && applicableColumns.every(column => {
+                                const name = normalizeText(column.name)
+                                const task = monthlyItems[`${row.company_id}:${name}`]
+                                if (task?.execution_mode_snapshot === 'file_only' && !task.source_item_id &&
+                                    ['급여대장작성', '급여대장작성완료'].includes(name)) {
+                                  return (monthDocuments[task.id]?.length ?? 0) > 0
+                                }
+                                return isListItemDone(task)
+                              })
+                              : applicableStatements.length > 0 && applicableStatements.every(task => task.status === 'submitted')
+                            const groupCompletionClass = groupDone ? styles.completedGroupCell : ''
+                            return (
                             <Fragment key={group.key}>
-                              {!group.expanded && <td className={styles.collapsedCell} aria-hidden="true" />}
+                              {!group.expanded && <td className={`${styles.collapsedCell} ${groupCompletionClass}`} aria-hidden="true" />}
                               {!group.columns.length && group.expanded && (
                                 <td className="px-1 py-1.5 text-center text-zinc-400">–</td>
                               )}
                               {group.columns.map(column => {
-                              if (column.incomeKind) {
-                                return (
-                                  <td key={column.id} hidden={!group.expanded} className="px-1 py-1.5 text-center">
-                                    {row.is_excluded ? <span className="text-zinc-400">–</span>
-                                      : renderIncomePresence(row, column.incomeKind, column.name)}
-                                  </td>
-                                )
-                              }
                               const statement = row.statement_tasks?.find(task => task.key === column.statementKey)
                               if (column.statementKey && statementColumnKeys !== null &&
                                   (!isEditMode || !statement?.item_id || statement.source_attribution_month || statement.item_name !== column.name)) {
-                                const label = statement?.status === 'submitted' ? '제출 완료'
-                                  : statement?.status === 'due' ? '미제출' : '대상 확인'
+                                const pendingLabel = statement?.status === 'due' ? '미제출'
+                                  : statement?.key === '사업소득지급명세서' ? '연간 제출 여부 확인' : '대상 확인'
+                                const label = statement?.status === 'submitted' ? '제출 완료' : pendingLabel
                                 const statusClass = statement?.status === 'submitted' ? 'text-emerald-700'
                                   : statement?.status === 'due' ? 'text-rose-700' : 'text-amber-800'
                                 return (
-                                  <td key={column.id} hidden={!group.expanded} className="py-1.5 text-center">
+                                  <td key={column.id} hidden={!group.expanded} className={`py-1.5 text-center ${groupCompletionClass}`}>
                                     {statement ? (
                                       <div className="flex flex-col items-center gap-0.5 text-[11px]">
                                         {statement.editable && !isEditMode ? (
                                           <StatementTrackingControls
                                             key={`${attributionMonth}:${row.company_id}:${statement.key}`}
                                             statement={statement}
+                                            pendingLabel={pendingLabel}
                                             label={`${row.company_name} ${column.heading ?? column.name}`}
                                             disabled={checklistBlocked}
                                             onSave={change => saveStatementTracking(row, statement, change)}
@@ -2270,7 +2144,7 @@ export default function WorkflowBoardPage() {
                                 <td
                                   key={`${row.company_id}:${column.id}`}
                                   hidden={!group.expanded}
-                                  className={`px-1 py-2 text-center ${deliveryCellBackground}`}
+                                  className={`px-1 py-2 text-center ${groupCompletionClass || deliveryCellBackground}`}
                                 >
                                   {row.is_excluded ? (
                                     <span className="text-zinc-400">-</span>
@@ -2294,7 +2168,7 @@ export default function WorkflowBoardPage() {
                                         companyName={row.company_name}
                                         boardId={row.board_id}
                                         itemId={task.id}
-                                        fileCount={task.source_file_count ?? 0}
+                                        documents={monthDocuments[task.id]}
                                         withholdingFiling={isWithholdingFiling}
                                         status={task.status}
                                         completedAt={task.completed_at}
@@ -2343,7 +2217,8 @@ export default function WorkflowBoardPage() {
                               )
                               })}
                             </Fragment>
-                          ))}
+                            )
+                          })}
                           <td className="px-1 py-1.5 text-center align-middle text-zinc-600">
                             {editingNote?.companyId === row.company_id && editingNote.period === notePeriod ? (
                               <form className="mx-auto w-48 space-y-1" onSubmit={event => {
@@ -2417,18 +2292,15 @@ export default function WorkflowBoardPage() {
                     </td>
                   </tr>
                 ) : null}
-                {listLoading ? (
-                  <tr>
-                    <td
-                      colSpan={tableColumnCount}
-                      className="px-2 py-16 text-center text-zinc-400"
-                    >
-                      업무보드 리스트를 불러오는 중입니다.
-                    </td>
-                  </tr>
-                ) : null}
               </tbody>
             </table>
+          </div>
+          {listLoading && (
+            <div className={styles.tableLoading} role="status">
+              <RefreshCw className={styles.tableLoadingIcon} aria-hidden="true" />
+              <span className="sr-only">월별 업무표를 불러오는 중입니다.</span>
+            </div>
+          )}
           </div>
           <div className="shrink-0 grid grid-cols-1 gap-3 border-t border-zinc-100 pt-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
             <div className="order-2 min-w-0 text-xs leading-5 text-zinc-500 xl:order-1">

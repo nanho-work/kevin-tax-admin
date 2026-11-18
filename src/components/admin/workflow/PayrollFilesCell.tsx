@@ -18,7 +18,7 @@ type Props = {
   companyName: string
   boardId: number
   itemId: number
-  fileCount: number
+  documents?: TaskItemDocLink[]
   disabled: boolean
   withholdingFiling?: boolean
   status?: TaskItemStatus
@@ -30,35 +30,21 @@ type Props = {
   onChanged: () => void
 }
 
+const EMPTY_DOCUMENTS: TaskItemDocLink[] = []
+
 type StatusChange = 'done' | 'from_files' | 'in_progress'
 
-export default function PayrollFilesCell({ companyId, companyName, boardId, itemId, fileCount, disabled, withholdingFiling = false, status, completedAt, upload, onChanged }: Props) {
+export default function PayrollFilesCell({ companyId, companyName, boardId, itemId, documents = EMPTY_DOCUMENTS, disabled, withholdingFiling = false, status, completedAt, upload, onChanged }: Props) {
   const { confirm } = useConfirmDialog()
   const input = useRef<HTMLInputElement>(null)
   const mutating = useRef(false)
-  const [docs, setDocs] = useState<TaskItemDocLink[] | null>(null)
+  const [docs, setDocs] = useState(documents)
   const [pendingStatus, setPendingStatus] = useState<StatusChange | null>(null)
   const [uploadFailure, setUploadFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [revision, setRevision] = useState(0)
-  const [loadFailed, setLoadFailed] = useState(false)
+  useEffect(() => setDocs(documents), [documents])
 
-  useEffect(() => {
-    let active = true
-    setLoadFailed(false)
-    if (fileCount > 0 || revision > 0) {
-      void listTaskItemDocs('admin', companyId, boardId, itemId).then(result => {
-        if (active) setDocs(result.items)
-      }).catch(() => {
-        if (active) setLoadFailed(true)
-      })
-    } else {
-      setDocs([])
-    }
-    return () => { active = false }
-  }, [companyId, boardId, itemId, fileCount, revision])
-
-  const hasFiles = (docs?.length ?? fileCount) > 0
+  const hasFiles = docs.length > 0
   const canEdit = !disabled && !busy
 
   const mutate = async (action: () => Promise<{ changed: boolean; ok: boolean }>) => {
@@ -67,7 +53,6 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
     setBusy(true)
     const request = Promise.resolve(workflowCompletionSave.pending).then(action).then(({ changed, ok }) => {
       if (changed) {
-        setRevision(value => value + 1)
         onChanged()
       }
       return ok
@@ -131,13 +116,13 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
     if (!await confirm({ title: '파일 삭제', description: name, confirmText: '삭제', cancelText: '취소', variant: 'danger' })) return
     await mutate(async () => {
       await deleteTaskItemFile('admin', companyId, boardId, itemId, doc.docs_entry_id)
-      setDocs(previous => previous?.filter(item => item.id !== doc.id) ?? null)
+      setDocs(previous => previous.filter(item => item.id !== doc.id))
       return { changed: true, ok: withholdingFiling || await syncStatus('from_files') }
     })
   }
 
   const fileName = (doc: TaskItemDocLink) => doc.file_name || doc.title || `문서 #${doc.docs_entry_id}`
-  const primaryDoc = docs?.reduce((latest, doc) => doc.created_at > latest.created_at ? doc : latest, docs[0])
+  const primaryDoc = docs.reduce((latest, doc) => doc.created_at > latest.created_at ? doc : latest, docs[0])
   const primaryDate = formatKSTShortDate(primaryDoc?.created_at)
   const filingDate = withholdingFiling && status === 'done' ? formatKSTShortDate(completedAt) : ''
   const classification = (doc: TaskItemDocLink) => (
@@ -146,7 +131,7 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
         const kind = (event.target.value || null) as TaskDocumentKind | null
         void mutate(async () => {
           await updateWithholdingDocumentKind(companyId, boardId, itemId, doc.docs_entry_id, kind)
-          setDocs(previous => previous?.map(item => item.id === doc.id ? { ...item, document_kind: kind } : item) ?? null)
+          setDocs(previous => previous.map(item => item.id === doc.id ? { ...item, document_kind: kind } : item))
           return { changed: true, ok: true }
         })
       }} className="max-w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs disabled:opacity-50">
@@ -180,7 +165,7 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
     <div className={`mx-auto min-h-7 w-[7.5rem] space-y-1 rounded border px-0.5 py-1 text-[11px] ${hasFiles ? 'border-emerald-500 bg-emerald-50' : 'border-dashed border-zinc-200'}`}
       onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = canEdit ? 'copy' : 'none' }}
       onDrop={event => { event.preventDefault(); if (canEdit) addFiles(Array.from(event.dataTransfer.files)) }}>
-      {primaryDoc && docs && (
+      {primaryDoc && (
         <>
           {docs.length === 1 ? renderFile(primaryDoc, true) : (
             <Popover>
@@ -215,7 +200,6 @@ export default function PayrollFilesCell({ companyId, companyName, boardId, item
           </div>
         </>
       )}
-      {loadFailed && <button type="button" onClick={() => setRevision(value => value + 1)} className="text-red-700 underline">파일 다시 불러오기</button>}
       <input ref={input} type="file" multiple className="hidden" disabled={!canEdit}
         onChange={event => { addFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = '' }} />
       {!hasFiles && <button type="button" disabled={!canEdit} aria-label={`${companyName} ${withholdingFiling ? '원천세 신고' : '급여대장'} 파일 선택`}

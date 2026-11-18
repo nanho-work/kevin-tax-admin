@@ -1,5 +1,4 @@
 'use client'
-import CompanyTaskDefaultsSection, { type CompanyTaskDefaultsHandle } from './CompanyTaskDefaultsSection'
 
 import { useManagementSession } from '@/contexts/ManagementSession'
 import { getClientRoleRank } from '@/utils/roleRank'
@@ -450,7 +449,6 @@ export default function CompanyDetailForm({
   const [activeTab, setActiveTab] = useState<'basic' | 'documents'>('basic')
   const management = useManagementSession()
   const canManageContract = Boolean(management.session) && getClientRoleRank(management.session) <= 10
-  const taskDefaultsRef = useRef<CompanyTaskDefaultsHandle>(null)
   const contractRef = useRef<CompanyContractHandle>(null)
   const createdCompanyIdRef = useRef<number | null>(null)
   const [createdCompanyId, setCreatedCompanyId] = useState<number | null>(null)
@@ -1541,7 +1539,6 @@ export default function CompanyDetailForm({
                         setSaving(true)
                         setRegistrationError('')
                         const payload: CompanyCreateRequest = {
-                          task_defaults: taskDefaultsRef.current?.prepare(),
                           manager_name: (contactSlots.find((slot) => slot.key === 'main')?.name || form.manager_name || '').trim() || undefined,
                           manager_phone: (contactSlots.find((slot) => slot.key === 'main')?.phone || form.manager_phone || '').trim() || undefined,
                           manager_email: (contactSlots.find((slot) => slot.key === 'main')?.email || form.manager_email || '').trim() || undefined,
@@ -1828,10 +1825,9 @@ export default function CompanyDetailForm({
               </div>
             )}
           </Section>
-          <Section title="계약·업무 설정" description="사무소가 맡는 계약 형태와 담당 직원을 정하고, 원천세 업무의 기본 설정을 관리합니다. 기장을 선택하면 계약정보를 등록할 수 있습니다.">
+          <Section title="계약·업무 설정" description="사무소가 맡는 계약 형태와 담당 직원을 정합니다. 기장을 선택하면 계약정보를 등록할 수 있습니다.">
             <CompanyManagementFields value={form} editable={canEditFields} onChange={(next) => setForm({ ...form, ...next })}
               contractInfo={canManageContract ? <CompanyContractSection ref={contractRef} companyId={companyId} creating={isCreateMode} engagement={form.engagement_type} disabled={saving} editable={editable} /> : null} />
-            <CompanyTaskDefaultsSection ref={taskDefaultsRef} companyId={companyId} creating={isCreateMode} editable={!!editable} />
           </Section>
           <KakaoAddressSearchModal
             open={addressSearchOpen}
