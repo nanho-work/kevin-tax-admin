@@ -10,6 +10,7 @@ type Props = {
 export default function TaskWorkGuide({ taskName, mode, sourceName, attributionMonth }: Props) {
   const name = taskName.replace(/\s/g, '')
   const period = attributionMonth || '귀속월'
+  const automaticFiling = ['원천세신고', '원천세신고서작성', '원천세신고서제출'].includes(name)
   const example = name.includes('급여')
     ? { description: '해당 귀속월의 직원별 급여 내역이 담긴 급여대장이나 급여명세서를 올려 주세요.', file: `${period}_급여대장.xlsx 또는 급여명세서.pdf` }
     : name.includes('납부')
@@ -31,7 +32,9 @@ export default function TaskWorkGuide({ taskName, mode, sourceName, attributionM
         <>
           <p>{example.description}</p>
           <p className="mt-1 break-words"><span className="text-zinc-600">파일 예시: </span>{example.file}</p>
-          <p className="mt-1">{mode === 'file_and_notify'
+          <p className="mt-1">{automaticFiling
+            ? '신고를 마친 파일을 등록하면 자동으로 완료됩니다. 마지막 파일을 삭제하면 미완료로 바뀝니다.'
+            : mode === 'file_and_notify'
             ? '파일을 등록하고 실제 전달까지 마친 뒤 완료를 눌러 주세요. 완료 버튼이 메일을 자동 발송하지는 않습니다.'
             : '파일 등록 후 완료를 눌러 주세요. 완료 후 파일을 바꾸려면 수정으로 전환해 주세요.'}</p>
         </>

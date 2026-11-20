@@ -2170,8 +2170,6 @@ export default function WorkflowBoardPage() {
                                         itemId={task.id}
                                         documents={monthDocuments[task.id]}
                                         withholdingFiling={isWithholdingFiling}
-                                        status={task.status}
-                                        completedAt={task.completed_at}
                                         disabled={checklistBlocked}
                                         upload={uploadTaskFilesWithFallback}
                                         onChanged={refreshAfterCompletion}

@@ -107,11 +107,12 @@ export default function TaskWorkPanel({ scope, companyId, companyName, boardId, 
   const applicable = Boolean(item && item.target_active !== false && item.status !== 'na')
   const done = item?.status === 'done'
   const taskName = item?.task_name.replace(/\s+/g, '') ?? ''
+  const automaticFiling = ['원천세신고', '원천세신고서작성', '원천세신고서제출'].includes(taskName)
   const statementReadOnly = scope === 'admin' && (
     taskName.includes('지급명세서') || ['근로내용확인서', '근로내용확인신고서', '보수총액신고', '보수총액신고서'].includes(taskName)
   )
-  const canUpload = !statementReadOnly && applicable && !done && mode !== 'check_only' && !deliveryPanel
-  const canComplete = !statementReadOnly && applicable && (done || (deliveryPanel ? linked && Boolean(item?.can_deliver && data?.docs.some(doc => !withholdingDelivery || doc.document_kind === 'payment_slip'))
+  const canUpload = !statementReadOnly && applicable && (!done || automaticFiling) && mode !== 'check_only' && !deliveryPanel
+  const canComplete = !automaticFiling && !statementReadOnly && applicable && (done || (deliveryPanel ? linked && Boolean(item?.can_deliver && data?.docs.some(doc => !withholdingDelivery || doc.document_kind === 'payment_slip'))
     : linked ? Boolean(item?.can_deliver) : mode === 'check_only' || Boolean(data?.docs.length)))
   const previewDoc = data?.docs.find(doc => doc.id === previewId) ?? data?.priorDeliveryDocs.find(doc => doc.id === previewId)
   const sourceDocs = withholdingDelivery && data ? [...data.docs].sort((a, b) =>
@@ -127,7 +128,7 @@ export default function TaskWorkPanel({ scope, companyId, companyName, boardId, 
       setFiles(previous => [...previous, ...added])
     }
   }
-  const completionButton = (className: string) => item && !statementReadOnly && (
+  const completionButton = (className: string) => item && !statementReadOnly && !automaticFiling && (
     <button type="button" disabled={busy || !canComplete || files.length > 0}
       onClick={() => void mutate(async () => {
         await saveStatus(companyId, boardId, item, done ? 'in_progress' : 'done')
